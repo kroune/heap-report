@@ -267,6 +267,7 @@ def _run_download(job):
     data = os.path.join(dump_dir, "data")
     tmp = os.path.join(dump_dir, ".dl")
     _merge_legacy_dl(dump_dir, tmp)
+    os.makedirs(tmp, exist_ok=True)
 
     raws, zsts = matindex.raws_zsts(dump_dir)
     data_ok = os.path.exists(os.path.join(data, "dominator_by_class.csv")) \
