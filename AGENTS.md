@@ -52,9 +52,10 @@ Python-stdlib-only tool repo with a vanilla-JS UI.
   then assembled locally (`cat parts | gzip -dc` / `| tar -x`). Two runs download
   concurrently (`HEAP_REPORT_DL_WORKERS`, default 2). Each part retries
   (`HEAP_REPORT_DL_RETRIES`, default 3) on stalled sockets; completed parts survive
-  a failed job in `.dl/` and are **skipped on the next run**, so re-downloads only
-  fetch what's missing. In CI the dump is streamed through `gzip -dc` — the 18 GB
-  raw never coexists with the .gz there.
+  a failed job in `.dl/` and are **skipped on the next run**, and even a `.tmp`
+  partial part is **resumed via HTTP Range** — network loss costs nothing.
+  Legacy `.dl-<pid>` dirs are adopted. In CI the dump is streamed through
+  `gzip -dc` — the 18 GB raw never coexists with the .gz there.
 - GitHub release assets cap at 2 GiB: dumps ship as `daemon.hprof.gz.part-*`,
   indexes as `indexes.tar.part-*` (the individual `*.index.zst` files can exceed
   2 GiB, so they're tarred first — `tar -x` auto-handles the zstd'd members since

@@ -138,25 +138,39 @@ DL_RETRIES = int(os.environ.get("HEAP_REPORT_DL_RETRIES", "3"))  # attempts per 
 
 def _fetch(entry, job, counter, lock):
     """One asset -> one file (atomic via .tmp rename). Shared progress counter.
-    A stalled socket (this network kills a connection every few GB) retries the
-    part from scratch a couple of times instead of failing the whole job."""
-    name, url, _size, dst = entry
+    Stalled sockets retry the part (HEAP_REPORT_DL_RETRIES); an existing .tmp is
+    resumed with an HTTP Range request, so even mid-part progress survives
+    restarts and network loss. A server that ignores Range (200) restarts the part."""
+    name, url, size, dst = entry
+    tmp = dst + ".tmp"
     for attempt in range(1, DL_RETRIES + 1):
-        if os.path.exists(dst + ".tmp"):
-            os.remove(dst + ".tmp")
+        have = os.path.getsize(tmp) if os.path.exists(tmp) else 0
+        if have >= size and os.path.exists(tmp):
+            os.remove(tmp)   # stale/oversized partial — start over
+            have = 0
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": "heap-report"})
-            with urllib.request.urlopen(req, timeout=120) as resp, open(dst + ".tmp", "wb") as f:
-                while True:
-                    chunk = resp.read(1 << 20)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    with lock:
-                        counter[0] += len(chunk)
-                        job["progress"] = {"stage": "download", "bytes": counter[0],
-                                           "total": job["_total"]}
-            os.replace(dst + ".tmp", dst)
+            headers = {"User-Agent": "heap-report"}
+            if have:
+                headers["Range"] = f"bytes={have}-"
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                if have and resp.status != 206:
+                    with lock:   # Range ignored — full re-download; fix the counter
+                        counter[0] -= have
+                    have = 0
+                with open(tmp, "ab" if have else "wb") as f:
+                    while True:
+                        chunk = resp.read(1 << 20)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        with lock:
+                            counter[0] += len(chunk)
+                            job["progress"] = {"stage": "download", "bytes": counter[0],
+                                               "total": job["_total"]}
+            if os.path.getsize(tmp) != size:
+                raise RuntimeError(f"short file: {os.path.getsize(tmp)}/{size} bytes")
+            os.replace(tmp, dst)
             return
         except Exception as ex:   # noqa: BLE001 - retried / reported by caller
             if attempt == DL_RETRIES:
@@ -178,6 +192,9 @@ def _download_files(entries, job, log):
         if os.path.exists(e[3]) and os.path.getsize(e[3]) == e[2]:
             skipped += e[2]
         else:
+            partial = e[3] + ".tmp"
+            if os.path.exists(partial):   # mid-part progress resumes via Range
+                skipped += os.path.getsize(partial)
             todo.append(e)
     counter, lock = [skipped], threading.Lock()
     if skipped:
