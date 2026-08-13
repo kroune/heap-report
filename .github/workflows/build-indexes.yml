@@ -1,0 +1,152 @@
+name: build-indexes
+
+# Builds Eclipse MAT index files for a heap dump published as a `run-*` release in the
+# benchmark repo (default: kroune/feature-module-3000) and publishes them here as an
+# `idx-<tag>` release (zstd-compressed *.index in a split tar + manifest.json).
+# The local UI (serve.py, Remote tab) discovers these and downloads them on demand,
+# so nobody ever runs the ~40 min MAT parse on their laptop.
+#
+# Triggered automatically by the benchmark workflows via repository_dispatch
+# (event_type=build-indexes, client_payload: source_repo, release_tag), or manually.
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "repo with the run-* release"
+        required: true
+        default: "kroune/feature-module-3000"
+      release_tag:
+        description: "release tag, e.g. run-123 or run-45-base"
+        required: true
+  repository_dispatch:
+    types: [build-indexes]
+
+permissions:
+  contents: write # publish idx-* releases
+
+concurrency:
+  group: idx-${{ github.event.client_payload.release_tag || inputs.release_tag }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPO: ${{ github.event.client_payload.source_repo || inputs.source_repo }}
+  TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+  MAT_VERSION: 1.17.0.20260601
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          echo "== before =="; df -h /; free -h
+          sudo rm -rf /usr/share/dotnet /usr/local/share/boost /opt/ghc /usr/share/swift \
+            /usr/local/graalvm /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          echo "== after =="; df -h /
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache MAT
+        id: mat
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: mat-${{ env.MAT_VERSION }}
+
+      - name: Install MAT
+        if: steps.mat.outputs.cache-hit != 'true'
+        run: python3 tools/get_mat.py
+
+      - name: Install zstd
+        run: command -v zstd >/dev/null || sudo apt-get install -y zstd
+
+      - name: Validate inputs
+        run: |
+          [[ "$TAG" =~ ^run-[0-9]+(-(base|candidate))?$ ]] || { echo "bad release_tag: $TAG"; exit 1; }
+          [[ "$SOURCE_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "bad source_repo: $SOURCE_REPO"; exit 1; }
+
+      - name: Download heap dump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p work && cd work
+          gh release view "$TAG" -R "$SOURCE_REPO" --json name,assets --jq '.assets[].name' > assets.txt
+          if grep -q '^daemon\.hprof\.gz\.part-' assets.txt; then
+            grep '^daemon\.hprof\.gz\.part-' assets.txt | sort | while read -r a; do
+              gh release download "$TAG" -R "$SOURCE_REPO" -p "$a" --clobber
+            done
+            cat daemon.hprof.gz.part-* | gzip -dc > daemon.hprof
+          elif grep -q '^daemon\.hprof\.gz$' assets.txt; then
+            gh release download "$TAG" -R "$SOURCE_REPO" -p daemon.hprof.gz --clobber
+            gzip -dc daemon.hprof.gz > daemon.hprof
+          else
+            echo "release $SOURCE_REPO@$TAG carries no daemon.hprof.gz — nothing to index"
+            exit 1
+          fi
+          ls -lh daemon.hprof
+
+      # First MAT query against a dump parses it and writes the full *.index set;
+      # the histogram doubles as the parse smoke test (and ships in the tar, so the
+      # local bootstrap can skip re-running it).
+      - name: MAT parse (build indexes + histogram)
+        run: |
+          set -euo pipefail
+          cd work
+          ../.tools/mat/ParseHeapDump.sh -data /tmp/mat-ws daemon.hprof \
+            -command=histogram -format=csv -limit=2000000 -filename_suffix=ci \
+            org.eclipse.mat.api:query
+          ls -lh daemon.*.index daemon.threads
+          mkdir -p data
+          unzip -o -j daemon_ci.zip 'pages/*.csv' -d /tmp/hist$$
+          mv /tmp/hist$$/*.csv data/histogram.csv
+          rm daemon_ci.zip
+          head -3 data/histogram.csv
+
+      - name: Compress indexes (zstd)
+        run: python3 compact.py work
+
+      - name: Publish idx release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd work
+          tar -cf indexes.tar data/histogram.csv ./*.index.zst ./*.threads INDEXES-COMPACTED.txt
+          split -b 1900m indexes.tar indexes.tar.part-
+          rm indexes.tar
+          tar_bytes=$(du -cb indexes.tar.part-* | tail -1 | cut -f1)
+          title=$(gh release view "$TAG" -R "$SOURCE_REPO" --json name --jq .name)
+          gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
+          xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //')
+          cat > manifest.json <<EOF
+          {
+            "source_repo": "$SOURCE_REPO",
+            "source_tag": "$TAG",
+            "source_title": $(jq -Rn --arg t "$title" '$t'),
+            "gradle_version": "$gver",
+            "daemon_xmx": "$xmx",
+            "mat_version": "$MAT_VERSION",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "index_bytes": $tar_bytes
+          }
+          EOF
+          gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
+          gh release create "idx-$TAG" -R '${{ github.repository }}' \
+            --title "MAT indexes — $SOURCE_REPO $TAG" \
+            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). Downloaded automatically by heap-report's serve.py (Remote tab). $title" \
+            indexes.tar.part-* manifest.json
+          {
+            echo "## MAT indexes published"
+            echo
+            echo "- source: \`$SOURCE_REPO\` release \`$TAG\` — $title"
+            echo "- indexes.tar: $(numfmt --to=iec $tar_bytes) in $(ls indexes.tar.part-* | wc -l) parts"
+            echo "- release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/idx-$TAG"
+          } >> "$GITHUB_STEP_SUMMARY"

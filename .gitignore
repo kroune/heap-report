@@ -1,0 +1,11 @@
+# Local analysis data — never commit (tens of GB)
+dumps/
+.tools/
+__pycache__/
+*.hprof
+*.hprof.gz
+*.index
+*.index.zst
+*.threads
+*.pyc
+.DS_Store
