@@ -29,14 +29,16 @@ function renderRemote(){
     REMOTE.map(r=>{
       const job = _remJob(r.tag);
       let action;
-      if(r.local==="ready") action = `<button class="pri" data-open="${esc(r.tag)}">Open</button>`;
-      else if(job) action = `<button disabled>${job.status}…</button>`;
+      if(job) action = `<button disabled>${job.status}…</button>`;
+      else if(r.local==="ready" || r.local==="data") action = `<button class="pri" data-open="${esc(r.tag)}">Open</button>`;
+      else if(r.local==="downloaded") action = `<button data-dl="${esc(r.tag)}">Resume</button>`;
       else if(r.indexed) action = `<button data-dl="${esc(r.tag)}">Download</button>`;
       else action = `<button data-dl="${esc(r.tag)}" title="no prebuilt indexes — the bootstrap runs the full MAT parse locally (~40 min, heavy)">Download + full parse</button>`;
       const idx = r.indexed ? `<span class="bdg on">indexed</span> <span class="hint">${fmtB(r.index_bytes)}</span>`
                             : `<span class="bdg">no indexes</span>`;
       const loc = r.local==="ready" ? `<span class="bdg on">ready</span>`
-                : r.local==="downloaded" ? `<span class="bdg">downloaded</span>` : "";
+                : r.local==="data" ? `<span class="bdg on" title="overview usable now; per-class analysis works once the dump + indexes finish downloading">data · overview</span>`
+                : r.local==="downloaded" ? `<span class="bdg">partial</span>` : "";
       return `<tr><td class="cname">${esc(r.tag)}</td><td class="cname">${esc(r.title)}</td>` +
         `<td>${fmtB(r.dump_bytes)}</td><td>${idx}</td><td>${loc}</td><td>${action}</td></tr>`;
     }).join("");

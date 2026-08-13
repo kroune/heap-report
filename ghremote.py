@@ -55,14 +55,13 @@ def _asset_map(rel):
 
 
 def _dump_assets(rel):
-    """daemon.hprof.gz download URLs in reassembly order, or None."""
+    """daemon.hprof.gz assets in reassembly order: [(name, url, size)], or None."""
     assets = _asset_map(rel)
     parts = sorted(n for n in assets if n.startswith("daemon.hprof.gz.part-"))
     names = parts or (["daemon.hprof.gz"] if "daemon.hprof.gz" in assets else None)
     if not names:
         return None
-    return [assets[n]["browser_download_url"] for n in names], \
-        sum(assets[n]["size"] for n in names)
+    return [(n, assets[n]["browser_download_url"], assets[n]["size"]) for n in names]
 
 
 def _tar_assets(rel):
@@ -71,8 +70,7 @@ def _tar_assets(rel):
     names = parts or (["indexes.tar"] if "indexes.tar" in assets else None)
     if not names:
         return None
-    return [assets[n]["browser_download_url"] for n in names], \
-        sum(assets[n]["size"] for n in names)
+    return [(n, assets[n]["browser_download_url"], assets[n]["size"]) for n in names]
 
 
 def remote_runs(source_repo, index_repo):
@@ -102,29 +100,35 @@ def remote_runs(source_repo, index_repo):
             "tag": tag,
             "title": rel.get("name") or tag,
             "created_at": rel.get("created_at", ""),
-            "dump_bytes": dump[1],
+            "dump_bytes": sum(s for _, _, s in dump),
             "indexed": bool(tar),
             "idx_built_at": (i or {}).get("created_at", ""),
-            "index_bytes": tar[1] if tar else 0,
+            "index_bytes": sum(s for _, _, s in tar) if tar else 0,
         })
     out.sort(key=lambda r: r["created_at"], reverse=True)
     return out
 
 
 def dump_urls(source_repo, tag):
+    """Ordered dump assets [(name, url, size)] for the release, or None."""
     rel = _get(f"/repos/{source_repo}/releases/tags/{tag}")
     return _dump_assets(rel)
 
 
 def index_urls(index_repo, tag):
-    """(tar urls, total bytes, manifest dict) for idx-<tag>; (None, 0, {}) when absent."""
+    """(ordered tar assets [(name, url, size)], data bundle asset or None,
+    manifest dict); ([], None, {}) when absent."""
     try:
         rel = _get(f"/repos/{index_repo}/releases/tags/idx-{tag}")
     except Exception:
-        return None, 0, {}
-    tar = _tar_assets(rel)
-    manifest = {}
+        return [], None, {}
+    tar = _tar_assets(rel) or []
     assets = _asset_map(rel)
+    data = None
+    if "data.tar.gz" in assets:
+        a = assets["data.tar.gz"]
+        data = (a["name"], a["browser_download_url"], a["size"])
+    manifest = {}
     if "manifest.json" in assets:
         try:
             with urllib.request.urlopen(assets["manifest.json"]["browser_download_url"],
@@ -132,4 +136,4 @@ def index_urls(index_repo, tag):
                 manifest = json.load(resp)
         except Exception:
             pass
-    return (tar[0] if tar else None), (tar[1] if tar else 0), manifest
+    return tar, data, manifest

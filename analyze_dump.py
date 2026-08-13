@@ -20,7 +20,7 @@ import csv, hashlib, json, os, re, shutil, subprocess, sys, threading, zipfile, 
 
 HERE = os.path.dirname(os.path.abspath(__file__))   # repo root
 ROOT = HERE
-REPORT_ROOT = os.path.join(HERE, "dumps")
+REPORT_ROOT = os.environ.get("HEAP_REPORT_DUMPS", os.path.join(HERE, "dumps"))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "tools"))
 import matindex
@@ -243,14 +243,14 @@ def analyze_class(hprof, data, key, cls, samples=SAMPLES, anatomy=True, log=log)
     return out
 
 
-def bootstrap(hprof, name, log=log):
-    """Global extracts for one dump -> dumps/<name>/data/. Resumable.
+def bootstrap(hprof, name, log=log, outdir=None):
+    """Global extracts for one dump -> <outdir|dumps/<name>>/data/. Resumable.
 
     The histogram runs first and alone: when the MAT indexes are missing (no idx
     release downloaded) the first query triggers the full hprof parse, and concurrent
     parsers would clobber each other's index files. With pre-built indexes in place
     the whole bootstrap takes about a minute."""
-    outdir = os.path.join(REPORT_ROOT, name)
+    outdir = outdir or os.path.join(REPORT_ROOT, name)
     data = os.path.join(outdir, "data")
     os.makedirs(data, exist_ok=True)
     log(f"analyzing {hprof} -> {outdir} (jobs={JOBS})")

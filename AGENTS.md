@@ -44,17 +44,28 @@ Python-stdlib-only tool repo with a vanilla-JS UI.
 
 ## Gotchas (don't rediscover)
 
-- `daemon.hprof.gz` is **streamed through gunzip during download** (serve.py) and
-  through `gzip -dc` in CI — the 18 GB raw never coexists with the .gz on disk.
+- Downloads (serve.py): a run first pulls the tiny `data.tar.gz` bundle
+  (histogram + dominators + meta from CI) so the overview UI is usable in seconds,
+  then all heavy parts — `daemon.hprof.gz.part-*` **and** `indexes.tar.part-*` —
+  are fetched **in parallel** into `dumps/<tag>/.dl/` (`HEAP_REPORT_DL_CONN`,
+  default 6; the CDN throttles per connection, so this multiplies throughput),
+  then assembled locally (`cat parts | gzip -dc` / `| tar -x`). Two runs download
+  concurrently (`HEAP_REPORT_DL_WORKERS`, default 2). Each part retries
+  (`HEAP_REPORT_DL_RETRIES`, default 3) on stalled sockets; completed parts survive
+  a failed job in `.dl/` and are **skipped on the next run**, so re-downloads only
+  fetch what's missing. In CI the dump is streamed through `gzip -dc` — the 18 GB
+  raw never coexists with the .gz there.
 - GitHub release assets cap at 2 GiB: dumps ship as `daemon.hprof.gz.part-*`,
   indexes as `indexes.tar.part-*` (the individual `*.index.zst` files can exceed
   2 GiB, so they're tarred first — `tar -x` auto-handles the zstd'd members since
   the tar itself is uncompressed).
-- The CI histogram CSV ships inside `indexes.tar` as `data/histogram.csv` — the
-  local bootstrap skips re-running it but still runs the dominator queries + meta.
+- The CI ships `data.tar.gz` (histogram + dominators + meta.json) as a separate
+  tiny asset — serve.py downloads it first (instant overview), so per-class
+  analysis is the only thing that waits for the heavy dump+indexes. Older idx
+  releases without the bundle fall back to a local bootstrap after the download.
 - The MAT job queue is serial because each MAT JVM can grow to the `-Xmx10g` in
-  `MemoryAnalyzer.ini`; downloads get their own queue so a 5 GB fetch never blocks
-  an analysis.
+  `MemoryAnalyzer.ini`; downloads run on their own small pool so a big fetch never
+  blocks an analysis (or another download).
 - Cross-repo trigger: the benchmark repo fires `repository_dispatch` with a PAT
   (`HEAP_REPORT_PAT` secret on `kroune/feature-module-3000`, Contents-RW on this
   repo). GITHUB_TOKEN alone cannot dispatch across repos; it *can* read the public

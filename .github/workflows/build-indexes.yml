@@ -116,6 +116,25 @@ jobs:
           rm daemon_ci.zip
           head -3 data/histogram.csv
 
+      # Cheap global extracts (dominators + meta) — the parse is done, so each query
+      # takes ~1 min. Shipped as data.tar.gz (a few MB): the laptop's overview UI
+      # (classes/treemap/compare) is usable seconds after the build ends, while the
+      # heavy dump + indexes download in the background.
+      - name: Bootstrap data extracts (dominators)
+        env:
+          MAT_JOBS: "1" # each MAT JVM may grow to -Xmx10g — serial on a 16 GB runner
+        run: |
+          set -euo pipefail
+          python3 - <<'EOF'
+          import sys, os
+          sys.path.insert(0, os.getcwd())
+          sys.path.insert(0, os.path.join(os.getcwd(), "tools"))
+          import analyze_dump as ad
+          ad.bootstrap(os.path.abspath("work/daemon.hprof"), "x",
+                       outdir=os.path.abspath("work"))
+          EOF
+          ls -lh work/data/
+
       - name: Compress indexes (zstd)
         run: python3 compact.py work
 
@@ -125,10 +144,12 @@ jobs:
         run: |
           set -euo pipefail
           cd work
-          tar -cf indexes.tar data/histogram.csv ./*.index.zst ./*.threads INDEXES-COMPACTED.txt
+          tar -czf data.tar.gz data
+          tar -cf indexes.tar ./*.index.zst ./*.threads INDEXES-COMPACTED.txt
           split -b 1900m indexes.tar indexes.tar.part-
           rm indexes.tar
           tar_bytes=$(du -cb indexes.tar.part-* | tail -1 | cut -f1)
+          data_bytes=$(stat -c%s data.tar.gz)
           title=$(gh release view "$TAG" -R "$SOURCE_REPO" --json name --jq .name)
           gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
           xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //')
@@ -141,18 +162,19 @@ jobs:
             "daemon_xmx": "$xmx",
             "mat_version": "$MAT_VERSION",
             "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "index_bytes": $tar_bytes
+            "index_bytes": $tar_bytes,
+            "data_bytes": $data_bytes
           }
           EOF
           gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
           gh release create "idx-$TAG" -R '${{ github.repository }}' \
             --title "MAT indexes — $SOURCE_REPO $TAG" \
-            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). Downloaded automatically by heap-report's serve.py (Remote tab). $title" \
-            indexes.tar.part-* manifest.json
+            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). \`data.tar.gz\` = histogram + dominators (instant overview); \`indexes.tar.part-*\` = compacted MAT indexes for per-class analysis. Downloaded automatically by heap-report's serve.py (Remote tab). $title" \
+            data.tar.gz indexes.tar.part-* manifest.json
           {
             echo "## MAT indexes published"
             echo
             echo "- source: \`$SOURCE_REPO\` release \`$TAG\` — $title"
-            echo "- indexes.tar: $(numfmt --to=iec $tar_bytes) in $(ls indexes.tar.part-* | wc -l) parts"
+            echo "- indexes.tar: $(numfmt --to=iec $tar_bytes) in $(ls indexes.tar.part-* | wc -l) parts + data.tar.gz ($(numfmt --to=iec $data_bytes))"
             echo "- release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/idx-$TAG"
           } >> "$GITHUB_STEP_SUMMARY"

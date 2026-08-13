@@ -12,14 +12,16 @@ instant and survives restarts.
 Remote tab: discovers the benchmark repo's `run-*` releases (daemon heap dumps) and
 this repo's `idx-*` releases (MAT indexes pre-built on CI — see
 .github/workflows/build-indexes.yml), downloads both on demand and bootstraps the
-cheap analysis locally (histogram + dominators). Downloads run on their own worker
-so they never block the MAT queue.
+cheap analysis locally (histogram + dominators). All parts of a run (dump + indexes)
+are fetched in parallel (HEAP_REPORT_DL_CONN, default 6 — the CDN throttles per
+connection) on a small pool of download workers (HEAP_REPORT_DL_WORKERS, default 2),
+so downloads never block the MAT queue or each other.
 
 MAT indexes next to a dump may be stored compressed (*.index.zst — see compact.py /
 matindex.py): they are restored on demand when an Analyze job runs and re-compressed
 automatically once the queue has been idle for a bit.
 """
-import argparse, glob, json, os, queue, re, subprocess, sys, threading, time, traceback
+import argparse, glob, json, os, queue, re, shutil, subprocess, sys, threading, time, traceback
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
@@ -129,28 +131,88 @@ def _worker():
 
 # ---------------------------------------------------------------- downloads
 
-def _stream_into(urls, total, argv, stdout_path, job, stage):
-    """Concatenate asset downloads straight into a subprocess' stdin
-    (gunzip for the dump, tar for the indexes) — no intermediate files.
-    Raises on failure."""
-    out = open(stdout_path, "wb") if stdout_path else subprocess.DEVNULL
-    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=out)
-    done = 0
-    try:
-        for u in urls:
-            _log(job, f"  {stage}: downloading {u.rsplit('/', 1)[-1]} ...")
-            req = urllib.request.Request(u, headers={"User-Agent": "heap-report"})
-            with urllib.request.urlopen(req, timeout=120) as resp:
+DL_WORKERS = int(os.environ.get("HEAP_REPORT_DL_WORKERS", "2"))  # concurrent run downloads
+DL_CONN = int(os.environ.get("HEAP_REPORT_DL_CONN", "6"))        # connections per download
+DL_RETRIES = int(os.environ.get("HEAP_REPORT_DL_RETRIES", "3"))  # attempts per part
+
+
+def _fetch(entry, job, counter, lock):
+    """One asset -> one file (atomic via .tmp rename). Shared progress counter.
+    A stalled socket (this network kills a connection every few GB) retries the
+    part from scratch a couple of times instead of failing the whole job."""
+    name, url, _size, dst = entry
+    for attempt in range(1, DL_RETRIES + 1):
+        if os.path.exists(dst + ".tmp"):
+            os.remove(dst + ".tmp")
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "heap-report"})
+            with urllib.request.urlopen(req, timeout=120) as resp, open(dst + ".tmp", "wb") as f:
                 while True:
                     chunk = resp.read(1 << 20)
                     if not chunk:
                         break
-                    try:
-                        proc.stdin.write(chunk)
-                    except BrokenPipeError:
-                        raise RuntimeError(f"{' '.join(argv)} died mid-stream")
-                    done += len(chunk)
-                    job["progress"] = {"stage": stage, "bytes": done, "total": total}
+                    f.write(chunk)
+                    with lock:
+                        counter[0] += len(chunk)
+                        job["progress"] = {"stage": "download", "bytes": counter[0],
+                                           "total": job["_total"]}
+            os.replace(dst + ".tmp", dst)
+            return
+        except Exception as ex:   # noqa: BLE001 - retried / reported by caller
+            if attempt == DL_RETRIES:
+                raise
+            wait = 5 * attempt * attempt
+            with lock:
+                job["log"].append(f"  {name}: {ex} — retry {attempt + 1}/{DL_RETRIES} in {wait}s")
+            time.sleep(wait)
+
+
+def _download_files(entries, job, log):
+    """All parts (dump + indexes) fetched concurrently — the CDN throttles per
+    connection (~5 MB/s), so N connections multiply the throughput. Parts already
+    fully on disk (from a previous failed attempt) are skipped, so a re-run only
+    fetches what's missing."""
+    todo = []
+    skipped = 0
+    for e in entries:
+        if os.path.exists(e[3]) and os.path.getsize(e[3]) == e[2]:
+            skipped += e[2]
+        else:
+            todo.append(e)
+    counter, lock = [skipped], threading.Lock()
+    if skipped:
+        log(f"  reusing {skipped / 1e9:.2f} GB of parts from the previous attempt")
+    sem = threading.Semaphore(DL_CONN)
+    errors = []
+
+    def work(e):
+        with sem:
+            try:
+                _fetch(e, job, counter, lock)
+                log(f"  downloaded {e[0]}")
+            except Exception as ex:   # noqa: BLE001 - re-raised on the main thread
+                errors.append((e[0], ex))
+
+    ts = [threading.Thread(target=work, args=(e,)) for e in todo]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join()
+    job["progress"] = None
+    if errors:
+        raise RuntimeError(f"download failed: {errors[0][0]}: {errors[0][1]}")
+
+
+def _assemble(files, argv, stdout_path, job, stage):
+    """Concatenate local part files into a subprocess' stdin (gunzip for the dump,
+    tar for the indexes/data bundle) and let it stream out the result."""
+    out = open(stdout_path, "wb") if stdout_path else subprocess.DEVNULL
+    proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=out)
+    try:
+        for fp in files:
+            _log(job, f"  {stage}: {os.path.basename(fp)}")
+            with open(fp, "rb") as src:
+                shutil.copyfileobj(src, proc.stdin, 1 << 20)
         proc.stdin.close()
         rc = proc.wait()
     finally:
@@ -160,7 +222,23 @@ def _stream_into(urls, total, argv, stdout_path, job, stage):
             proc.kill()
     if rc != 0:
         raise RuntimeError(f"{' '.join(argv)} exited {rc}")
-    job["progress"] = None
+
+
+def _merge_legacy_dl(dump_dir, tmp):
+    """Adopt parts left behind by an older server version (.dl-<pid> dirs), so a
+    restarted download reuses them instead of starting over."""
+    for d in glob.glob(os.path.join(dump_dir, ".dl-*")):
+        if not os.path.isdir(d):
+            continue
+        os.makedirs(tmp, exist_ok=True)
+        for f in os.listdir(d):
+            if f.endswith(".tmp"):
+                continue
+            src = os.path.join(d, f)
+            dst = os.path.join(tmp, f)
+            if not os.path.exists(dst) and os.path.isfile(src):
+                os.replace(src, dst)
+        shutil.rmtree(d, ignore_errors=True)
 
 
 def _run_download(job):
@@ -169,47 +247,72 @@ def _run_download(job):
     dump_dir = os.path.join(rd.REPORT_ROOT, tag)
     os.makedirs(dump_dir, exist_ok=True)
     hprof = os.path.join(dump_dir, "daemon.hprof")
-
-    # 1) the heap dump itself, streamed through gunzip (the .gz never lands on disk)
-    if not os.path.exists(hprof):
-        got = ghremote.dump_urls(SOURCE_REPO, tag)
-        if not got:
-            raise RuntimeError(f"release {tag} in {SOURCE_REPO} has no daemon.hprof.gz")
-        urls, total = got
-        tmp = hprof + f".part{os.getpid()}"
-        try:
-            _stream_into(urls, total, ["gzip", "-dc"], tmp, job, "dump")
-            os.replace(tmp, hprof)
-        finally:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-        log(f"  dump: {os.path.getsize(hprof) / 1e9:.1f} GB -> {hprof}")
-    else:
-        log("  dump: already on disk")
-
-    # 2) pre-built MAT indexes from the idx-<tag> release (optional — without them
-    #    the bootstrap below runs the full parse locally, which is the slow path)
-    raws, zsts = matindex.raws_zsts(dump_dir)
-    if not raws and not zsts:
-        turls, tbytes, _manifest = ghremote.index_urls(INDEX_REPO, tag)
-        if turls:
-            _stream_into(turls, tbytes, ["tar", "-x", "-C", dump_dir], None, job, "indexes")
-            log(f"  indexes: unpacked {tbytes / 1e9:.1f} GB (compacted *.index.zst)")
-        else:
-            log("  indexes: no idx release — bootstrap will run the full MAT parse "
-                "locally (slow, ~40 min)")
-    else:
-        log("  indexes: already on disk")
-
-    # 3) local bootstrap: dominators + meta (cheap once indexes exist). The tar
-    #    ships data/histogram.csv, so the histogram query is usually skipped.
     data = os.path.join(dump_dir, "data")
-    if not os.path.exists(os.path.join(data, "dominator_by_class.csv")) \
-            or not os.path.exists(os.path.join(data, "histogram.csv")):
+    tmp = os.path.join(dump_dir, ".dl")
+    _merge_legacy_dl(dump_dir, tmp)
+
+    raws, zsts = matindex.raws_zsts(dump_dir)
+    data_ok = os.path.exists(os.path.join(data, "dominator_by_class.csv")) \
+        and os.path.exists(os.path.join(data, "histogram.csv"))
+    tparts_all, dentry, _manifest = ghremote.index_urls(INDEX_REPO, tag)
+    tparts = [] if (raws or zsts) else tparts_all
+
+    # phase 1: the tiny data bundle (histogram + dominators + meta, a few MB) —
+    # the full overview UI (classes/treemap/compare) works right after this,
+    # while the heavy assets keep downloading in the background.
+    if not data_ok and dentry:
+        job["_total"] = dentry[2]
+        try:
+            _download_files([(dentry[0], dentry[1], dentry[2], os.path.join(tmp, dentry[0]))],
+                            job, log)
+            _assemble([os.path.join(tmp, dentry[0])], ["tar", "-xz", "-C", dump_dir],
+                      None, job, "data")
+            os.remove(os.path.join(tmp, dentry[0]))
+            rd.invalidate(data)
+            data_ok = True
+            log("  data: overview ready (classes/treemap/compare) — heavy download continues")
+        except Exception as e:   # noqa: BLE001 - fall through to the local bootstrap
+            log(f"  data bundle failed ({e}); will bootstrap locally after the download")
+            data_ok = False
+
+    # phase 2: the heap dump + pre-built MAT indexes (all parts in parallel)
+    dparts = None
+    if not os.path.exists(hprof):
+        dparts = ghremote.dump_urls(SOURCE_REPO, tag)
+        if not dparts:
+            raise RuntimeError(f"release {tag} in {SOURCE_REPO} has no daemon.hprof.gz")
+    entries = [(n, u, s, os.path.join(tmp, n)) for n, u, s in (dparts or []) + tparts]
+    if entries:
+        os.makedirs(tmp, exist_ok=True)
+        job["_total"] = sum(s for _, _, s, _ in entries)
+        _download_files(entries, job, log)
+        if dparts:
+            out = hprof + f".part{os.getpid()}"
+            try:
+                _assemble([os.path.join(tmp, n) for n, _, _ in dparts],
+                          ["gzip", "-dc"], out, job, "gunzip")
+                os.replace(out, hprof)
+            finally:
+                if os.path.exists(out):
+                    os.remove(out)
+            log(f"  dump: {os.path.getsize(hprof) / 1e9:.1f} GB -> {hprof}")
+        if tparts:
+            _assemble([os.path.join(tmp, n) for n, _, _ in tparts],
+                      ["tar", "-x", "-C", dump_dir], None, job, "untar")
+            log(f"  indexes: unpacked {sum(s for _, _, s in tparts) / 1e9:.1f} GB "
+                "(compacted *.index.zst)")
+        shutil.rmtree(tmp, ignore_errors=True)   # success only — failures keep parts
+    if not raws and not zsts and not tparts_all:
+        log("  indexes: no idx release — bootstrap will run the full MAT parse "
+            "locally (slow, ~40 min)")
+
+    # phase 3: local bootstrap — only needed when the release had no data bundle
+    if not data_ok:
         ad.bootstrap(hprof, tag, log=log)
     rd.invalidate(data)
     log("  ready")
     return {"downloaded": tag}
+
 
 
 def _dl_worker():
@@ -274,10 +377,21 @@ def _job_json(j):
 # ---------------------------------------------------------------- remote runs
 
 def _local_status(tag):
-    if rd.data_dir_of(tag):
-        return "ready"
+    """ready = data + hprof + indexes on disk · data = overview only (heavy part
+    missing, e.g. still downloading) · downloaded = hprof only · None = not here."""
     d = os.path.join(rd.REPORT_ROOT, tag)
-    return "downloaded" if os.path.isdir(d) and glob.glob(os.path.join(d, "*.hprof")) else None
+    if not os.path.isdir(d):
+        return None
+    has_data = rd.data_dir_of(tag) is not None
+    raws, zsts = matindex.raws_zsts(d)
+    has_hprof = os.path.exists(os.path.join(d, "daemon.hprof"))
+    if has_data and has_hprof and (raws or zsts):
+        return "ready"
+    if has_data:
+        return "data"
+    if has_hprof:
+        return "downloaded"
+    return None
 
 
 def _remote_runs(fresh=False):
@@ -469,7 +583,8 @@ def main():
         print(f"WARNING: MAT not found at {ad.MAT} — it will be downloaded on first use "
               "(or run: python3 tools/get_mat.py)", file=sys.stderr)
     threading.Thread(target=_worker, daemon=True).start()
-    threading.Thread(target=_dl_worker, daemon=True).start()
+    for _ in range(DL_WORKERS):
+        threading.Thread(target=_dl_worker, daemon=True).start()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
     print(f"heap-report UI: http://127.0.0.1:{a.port}/  (Ctrl-C to stop)")
     try:

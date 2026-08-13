@@ -7,12 +7,12 @@ benchmark, with the expensive part moved to CI:
 - The benchmark publishes every run as a `run-N` / `run-N-base|candidate` **release**
   carrying `daemon.hprof.gz` (18 GB decompressed).
 - The **`build-indexes` workflow here** parses those dumps with Eclipse MAT (the
-  ~40 min, ~20 GB step) and publishes `idx-<tag>` releases with the zstd-compressed
-  index files.
+  ~15–45 min, ~20 GB step) and publishes `idx-<tag>` releases with the zstd-compressed
+  index files **plus a tiny `data.tar.gz`** (histogram + dominators + meta).
 - The local UI (**`serve.py`**) autodiscovers both release series in its **Remote
-  tab**, downloads the dump + prebuilt indexes on demand, and runs only the cheap
-  analysis locally (histogram/dominators bootstrap ≈ 1 min; per-class drill-down
-  queries on demand).
+  tab**. A download first pulls the few-MB data bundle — the overview (classes,
+  treemap, compare) is usable within seconds — then fetches the dump + indexes in
+  parallel in the background for per-class drill-down analysis.
 
 ## Quick start
 
@@ -51,10 +51,12 @@ gh workflow run build-indexes.yml -R kroune/heap-report \
 
 Also fired automatically via `repository_dispatch` by the benchmark repo's
 publish steps (needs a `HEAP_REPORT_PAT` secret there). The job downloads the
-dump, runs the MAT parse (`-Xmx10g`, histogram as smoke test), zstd-compresses
-the indexes with this repo's own `compact.py`, and publishes
-`indexes.tar.part-*` + `manifest.json` as an `idx-<tag>` release. Standard
+dump, runs the MAT parse (`-Xmx10g`, histogram as smoke test), adds the dominator
+extracts (`data.tar.gz`), zstd-compresses the indexes with this repo's own
+`compact.py`, and publishes everything as an `idx-<tag>` release. Standard
 ubuntu-latest runners; several builds parallelize freely (one runner per run).
+Measured on an 8g dump: ~3 min download, ~15 min parse, ~1.5 min extracts,
+~1.3 min compress, ~2–4 min publish.
 
 ## Layout
 
