@@ -45,6 +45,12 @@ def ensure(log=print):
     log(f"unpacking {ZIP_NAME} -> {TOOLS}/ ...")
     with zipfile.ZipFile(zpath) as zf:
         zf.extractall(TOOLS)
+        # zipfile.extractall drops unix permission bits — restore them from the
+        # zip metadata or the MemoryAnalyzer binary won't be executable
+        for zi in zf.infolist():
+            mode = (zi.external_attr >> 16) & 0o777
+            if mode:
+                os.chmod(os.path.join(TOOLS, zi.filename), mode)
     if not os.path.exists(dst):
         raise RuntimeError(f"ParseHeapDump.sh not found after unpack of {zpath}")
     os.chmod(dst, 0o755)

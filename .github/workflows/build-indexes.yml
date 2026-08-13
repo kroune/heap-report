@@ -58,7 +58,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .tools
-          key: mat-${{ env.MAT_VERSION }}
+          key: mat-${{ env.MAT_VERSION }}-v2
 
       - name: Install MAT
         if: steps.mat.outputs.cache-hit != 'true'
