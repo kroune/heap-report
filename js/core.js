@@ -14,7 +14,9 @@ const fmtB = v => v>=1e9?(v/1e9).toFixed(2)+" GB":v>=1e6?(v/1e6).toFixed(1)+" MB
 const fmtN = v => v>=1e6?(v/1e6).toFixed(2)+"M":v>=1e3?(v/1e3).toFixed(1)+"k":""+v;
 const fmtD = v => (v>0?"+":"")+fmtB(Math.abs(v)).replace(/^/,"") ;
 const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
-const jget = async u => { const r = await fetch(u); if(r.status===404) return null; if(!r.ok) throw new Error(await r.text()); return r.json(); };
+const jget = async u => { const r = await fetch(u); if(r.status===404) return null;
+  if(!r.ok){ const t = await r.text(); let m = t; try{ m = JSON.parse(t).error || t; }catch{} throw new Error(m); }
+  return r.json(); };
 const NS = "http://www.w3.org/2000/svg";
 const tip = document.getElementById("tip");
 
@@ -31,28 +33,31 @@ let activeJobs = new Map();
 /* ============================== boot ============================== */
 async function refreshDumps(){
   DUMPS = await jget("/api/dumps");
+  const ready = DUMPS.filter(d=>!d.incomplete);
   const sel = document.getElementById("dumpsel");
-  sel.style.display = DUMPS.length>1 ? "" : "none";
-  sel.innerHTML = DUMPS.map(d=>`<option>${d.name}</option>`).join("");
+  sel.style.display = ready.length>1 ? "" : "none";
+  sel.innerHTML = ready.map(d=>`<option>${d.name}</option>`).join("");
   sel.value = dump || "";
   const os = document.getElementById("cmp-old"), ns = document.getElementById("cmp-new");
-  os.innerHTML = ns.innerHTML = DUMPS.map(d=>`<option>${d.name}</option>`).join("");
-  if(DUMPS.length>1){ os.value = DUMPS[0].name; ns.value = DUMPS[1].name; }
+  os.innerHTML = ns.innerHTML = ready.map(d=>`<option>${d.name}</option>`).join("");
+  if(ready.length>1){ os.value = ready[0].name; ns.value = ready[1].name; }
 }
 
 async function boot(){
   if(API){
     await refreshDumps();
-    if(!DUMPS.length){
-      document.getElementById("hsub").textContent =
-        "no local dumps yet — grab one from the Remote tab";
+    const ready = DUMPS.filter(d=>!d.incomplete);
+    if(!ready.length){
+      document.getElementById("hsub").textContent = DUMPS.length
+        ? "local dumps are incomplete (interrupted download/bootstrap) — resume them from the Remote tab"
+        : "no local dumps yet — grab one from the Remote tab";
       document.querySelector('#tabs button[data-t="remote"]').click();
       pollJobs();
       return;
     }
     const sel = document.getElementById("dumpsel");
     const want = new URLSearchParams(location.search).get("dump");
-    dump = DUMPS.find(d=>d.name===want)?.name || DUMPS[0].name;
+    dump = ready.find(d=>d.name===want)?.name || ready[0].name;
     sel.value = dump;
     sel.onchange = ()=>{ dump = sel.value; TREES=null; loadDump(); };
   } else {
@@ -67,7 +72,9 @@ async function boot(){
 
 async function loadDump(){
   if(API){
-    const t = await jget(`/api/${dump}/trees`);
+    let t;
+    try{ t = await jget(`/api/${dump}/trees`); }
+    catch(e){ document.getElementById("hsub").textContent = `${dump}: ${e.message}`; return; }
     STATS = t.stats; TREES = t.trees;
   } else {
     STATS = INLINE.stats; TREES = INLINE.trees;

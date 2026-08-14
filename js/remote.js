@@ -58,7 +58,9 @@ async function startDownload(tag){
 
 async function openDump(name){
   await refreshDumps();
-  if(!DUMPS.find(d=>d.name===name)) return;
+  const d = DUMPS.find(d=>d.name===name);
+  if(!d){ alert(`${name}: not downloaded yet`); return; }
+  if(d.incomplete){ alert(`${name}: dump data is incomplete (${d.error}) — resume the download to repair it`); return; }
   dump = name;
   const sel = document.getElementById("dumpsel");
   sel.value = name;

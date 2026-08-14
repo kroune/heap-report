@@ -401,6 +401,10 @@ def _local_status(tag):
     if not os.path.isdir(d):
         return None
     has_data = rd.data_dir_of(tag) is not None
+    # an interrupted bootstrap can leave histogram.csv without the dominators —
+    # the overview is not usable in that state, so don't offer Open for it
+    if has_data and not os.path.exists(os.path.join(d, "data", "dominator_by_class.csv")):
+        has_data = False
     raws, zsts = matindex.raws_zsts(d)
     has_hprof = os.path.exists(os.path.join(d, "daemon.hprof"))
     if has_data and has_hprof and (raws or zsts):
@@ -504,7 +508,10 @@ class Handler(BaseHTTPRequestHandler):
             if not data:
                 return self._send(404, {"error": "unknown dump"})
             if cmd == "trees":
-                return self._send(200, {"stats": rd.stats(data), "trees": rd.trees(data)})
+                try:
+                    return self._send(200, {"stats": rd.stats(data), "trees": rd.trees(data)})
+                except Exception as e:   # noqa: BLE001 - incomplete dump (interrupted bootstrap)
+                    return self._send(409, {"error": f"dump data incomplete: {e}"})
             if cmd == "classes":
                 return self._classes(data, q)
             if cmd == "composition" and rest:

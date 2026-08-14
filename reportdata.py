@@ -997,8 +997,13 @@ def list_dumps():
     out = []
     for d in sorted(os.listdir(REPORT_ROOT)):
         data = data_dir_of(d)
-        if data:
+        if not data:
+            continue
+        try:
             st = stats(data)
-            st["name"] = d
-            out.append(st)
+        except Exception as e:   # noqa: BLE001 - interrupted bootstrap/download must not 500 the whole list
+            out.append({"name": d, "incomplete": True, "error": str(e)})
+            continue
+        st["name"] = d
+        out.append(st)
     return out
