@@ -4,11 +4,9 @@ Concurrency policy (pinned by core.JobRegistry): DOWNLOAD jobs run on a small
 pool of threads; INDEX/ANALYZE/COMPACT share one serial worker (MAT JVMs are
 heavy, -Xmx10g each — one at a time is the whole point).
 
-Mined from the old serve.py machinery (_new_job/_worker/_dl_worker/_log/
-_jobs_order), with the locking the old code never had: one lock guards the
-jobs dict, the order list, state transitions and log tails. get()/list()
-return snapshot copies so HTTP threads never iterate live structures (the old
-"dictionary changed size during iteration" bug).
+One lock guards the jobs dict, the order list, state transitions and log
+tails. get()/list() return snapshot copies so HTTP threads never iterate
+live structures.
 """
 from __future__ import annotations
 
@@ -19,7 +17,7 @@ import traceback
 
 from . import core
 
-LOG_CAP = 200        # job.log keeps only this tail (old _log behavior)
+LOG_CAP = 200        # job.log keeps only this tail
 _ERROR_TAIL = 2000   # chars of traceback kept in job.error
 
 
@@ -30,9 +28,8 @@ class InMemoryJobRegistry:
     def __init__(self, download_workers: int = 2):
         self._lock = threading.Lock()
         self._jobs = {}            # id -> live Job (the fn's mutable handle)
-        self._order = []           # ids in creation order (old _jobs_order)
+        self._order = []           # ids in creation order
         self._seq = 0
-        self._closed = False
         self._mat_q = queue.Queue()   # INDEX/ANALYZE/COMPACT — strictly serial
         self._dl_q = queue.Queue()    # DOWNLOAD — pool
         threading.Thread(target=self._worker, args=(self._mat_q,),
@@ -47,8 +44,6 @@ class InMemoryJobRegistry:
         """Queue fn(job). An identical active (QUEUED/RUNNING) job — same
         (kind, dump_id, detail) — is returned instead of duplicated."""
         with self._lock:
-            if self._closed:
-                raise RuntimeError("job registry is shut down")
             for j in self._jobs.values():
                 if (j.kind is kind and j.dump_id == dump_id
                         and j.detail == detail
@@ -68,7 +63,7 @@ class InMemoryJobRegistry:
             return self._snapshot(job) if job is not None else None
 
     def list(self, limit: int = 30) -> list:
-        """Most-recent-first snapshots (old /api/jobs shape)."""
+        """Most-recent-first snapshots."""
         with self._lock:
             ids = self._order[-limit:]
             return [self._snapshot(self._jobs[i]) for i in reversed(ids)]
@@ -85,14 +80,6 @@ class InMemoryJobRegistry:
         with self._lock:
             job.log.append(str(line))
             job.log[:] = job.log[-LOG_CAP:]
-
-    def shutdown(self) -> None:
-        """Stop accepting new jobs; queued/running ones finish (workers are
-        daemon threads beyond that)."""
-        with self._lock:
-            self._closed = True
-        self._mat_q.join()
-        self._dl_q.join()
 
     # --------------------------------------------------------------- worker
 

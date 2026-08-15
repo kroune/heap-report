@@ -29,9 +29,8 @@ export const kind = 'anatomy';
 
 /* ---------- pure transforms (node-testable) ---------- */
 
-/* The old UI got objCount/shallow from the classes-table row the modal was
-   opened from; openViz only has a class name, so look the class up in the
-   dump trees (histogram leaves carry c/s, dominator leaves carry r). */
+/* openViz only has a class name, so objCount/shallow come from the dump
+   trees (histogram leaves carry c/s, dominator leaves carry r). */
 export function findClassStats(trees, className) {
   let out = null;
   const walk = n => {
@@ -298,7 +297,7 @@ export function render(container, vm, ctx) {
 
     const note = el('div', 'viz-note');
     note.textContent = o.v2
-      ? `v2 over the full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the old 48-slot array cap hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it).`
+      ? `v2 over the full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it).`
       : `×N = occurrences across the ${K} samples; "in k/K" = field non-null in k of the ${K} sampled instances (a field missing from some instances is normal — lazily created). "(shared)" = referenced but owned by someone else, so its bytes are not inside this class's retained set.`;
     container.appendChild(note);
   };

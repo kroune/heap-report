@@ -1,23 +1,25 @@
-# ARCHITECTURE.md — target design (rewrite spec)
+# ARCHITECTURE.md — design source of truth
 
-This is the target architecture for the rewrite. The current code (`serve.py`,
-`reportdata.py`, `analyze_dump.py`, `ghremote.py`, `js/*`) is the *reference
-implementation* to mine for behavior — not a structure to preserve. When this
-doc and the old code disagree, this doc wins.
+This doc pins the design. When it and the code disagree, the doc wins — fix
+the code (or update the doc in the same commit).
 
-## Why (root causes being fixed)
+## Why (design rationale)
 
-The audit found most bugs come from missing ownership, not local mistakes:
+The failure modes this design exists to prevent all come from missing
+ownership, not local mistakes:
 
-- A dump's state is implicitly encoded in which files exist; every module
-  re-interprets that encoding differently (partial-untar poisons resume,
-  `_assemble` masks errors).
-- `meta.json` is written from multiple threads with inconsistent locking.
-- Caches (Python mtime cache, JS `CC`) have no owner, so invalidation is
-  forgotten (stale data after dump switch).
-- Error handling is per-endpoint and per-call-site, so failures drop
-  connections or spin forever.
-- v1/v2 features were built by copy-paste and have already drifted.
+- State derived from file existence gets re-interpreted differently by every
+  module → a dump's state is explicit and persisted by the store.
+- `meta.json` written from multiple threads with inconsistent locking →
+  single writer, one locked read-modify-write path.
+- A cache without an owner gets its invalidation forgotten → every cache has
+  exactly one owner (the query engine backend-side, the data layer
+  frontend-side).
+- Per-endpoint, per-call-site error handling drops connections or spins
+  forever → one error type, mapped uniformly at the HTTP boundary; every
+  async UI path has a terminal error state.
+- Features built by copy-paste drift → shared logic is extracted, never
+  copied.
 
 ## Principles
 
@@ -84,14 +86,17 @@ what's "ready" locally — it only describes what exists remotely.
 
 MAT engine: `LocalIndexer` (bootstrap = histogram + dominators) and the MAT
 `QueryEngine` (per-class analysis). Serial executor (one MAT JVM at a time,
-`-Xmx10g`). Restores compacted indexes before running (matindex logic moves
-here). Temp workspaces always cleaned up; MAT output streamed to job log, not
+`-Xmx10g`). Restores compacted indexes before running.
+
+A package (`backend/mat/`): `engine.py` (`MatQueryEngine` — queries, caches,
+analyze/bootstrap orchestration), `extract.py` (`MatRunner` — the only place
+MAT subprocesses exist), `parsing.py` (extract files → structures),
+`payloads.py` (structures → JSON, pure and unit-tested). Temp workspaces always cleaned up; MAT output streamed to job log, not
 buffered whole.
 
-**CI dependency:** `build-indexes.yml` imports `analyze_dump` as a module.
-The indexing logic must remain callable as a library entry point from the
-workflow (update the workflow import if the module moves — do not delete the
-capability).
+**CI dependency:** `build-indexes.yml` drives `backend/ci.py`. The indexing
+logic must remain callable as a library entry point from the workflow — do
+not delete the capability.
 
 ### `impl/jobs`
 
@@ -100,7 +105,7 @@ In-memory `JobRegistry` + two executors: serial MAT queue, download pool
 
 ### `impl/http`
 
-Thin HTTP adapter (today's `serve.py` role). No logic: parse → call core →
+Thin HTTP adapter. No logic: parse → call core →
 map result/error. Every endpoint returns either the payload or
 `{error, code}` — no exception ever kills a handler silently.
 
@@ -150,7 +155,7 @@ endpoint, always JSON.
 - `data/dumpdatarepo.js` — per-dump queries; **cache keyed by dump id, lives
   here and only here** (fixes the stale-`CC` bug structurally).
 - `data/inlinerepo.js` — same interface over the inlined snapshot payload
-  (replaces today's `if(!API)` branches; keeps `generate.py` snapshots working).
+  (keeps snapshot exports working).
 - `app/` — shell: tab routing + current-dump selection (the only app-level
   mutable state).
 - `ui/tabs/` — classes, treemap, compare. Stable, thin, nearly done.
@@ -161,14 +166,12 @@ endpoint, always JSON.
     plus a dumb renderer** (no fetch, no globals in the renderer)
   - opened from any tab via an explicit `openViz(kind, className)` API
   - hard rule: logic shared by ≥2 viz modules lives in `viz/common/`, never
-    copied. (The v1/v2 anatomy drift is the cautionary tale.)
+    copied
 
 ## Compatibility: one-time migration, not a permanent burden
 
-Compatibility with the pre-rewrite `dumps/` layout was handled by a one-time
-migration script (ran 2026-08 on the existing dumps, then deleted — the store
-contains **no** legacy-adoption code). Future format changes get the same
-treatment: a throwaway migration, never permanent compat layers.
+The store contains **no** legacy-adoption code. Format changes are handled by
+a one-time throwaway migration script, never permanent compat layers.
 
 Hard requirements that remain:
 

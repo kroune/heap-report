@@ -36,10 +36,10 @@ sources, store, query engine, jobs); the impls plug into it. See
 **web/CONTRACTS.md** (frontend modules).
 
 - `backend/` — the server: `localstore.py` (the writable dump store, single
-  writer), `github.py` (release source), `mat.py` (MAT query engine),
-  `jobs.py` (job registry + executors), `http.py` (thin HTTP adapter),
-  `kernel.py` (wiring + CLI), `ci.py` (library entries for the workflow),
-  `snapshot.py` (static HTML export).
+  writer), `github.py` (release source), `mat/` (MAT query engine package:
+  engine / extract / parsing / payloads), `jobs.py` (job registry + executors),
+  `http.py` (thin HTTP adapter), `kernel.py` (wiring + CLI), `ci.py` (library
+  entries for the workflow), `snapshot.py` (static HTML export).
 - `web/` — the UI: native ES modules, no build step. Data layer
   (`web/data/*`) owns all server interaction and caching; tabs are thin;
   experimental visualizations live isolated in `web/viz/`.

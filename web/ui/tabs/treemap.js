@@ -4,7 +4,8 @@ import {esc, fmtB, fmtN} from '../../data/http.js';
 import * as ddr from '../../data/dumpdatarepo.js';
 import {getDump, onDumpChange} from '../../app/state.js';
 import {openViz} from '../../viz/common.js';
-import {catOfName, catCls, dumpNotReady} from './classes.js';
+import {catCls, dumpNotReady} from './classes.js';
+import {catOf} from '../../data/http.js';
 
 const NS = 'http://www.w3.org/2000/svg';
 const CAT_HEX = {gradle: '#e8743b', agp: '#3ba272', kotlin: '#9b7ede', jdk: '#4a90d9', other: '#7d8590'};
@@ -143,7 +144,7 @@ export function mount(container, repo, opts = {}){
     }
     return n;
   }
-  function catOf(node){ return node.cat || catOfName(node.disp || node.name || ''); }
+  function catOfNode(node){ return node.cat || catOf(node.disp || node.name || ''); }
 
   /* ---- render ---- */
   function render(){
@@ -170,7 +171,7 @@ export function mount(container, repo, opts = {}){
       r.setAttribute('x', b.x); r.setAttribute('y', b.y);
       r.setAttribute('width', Math.max(0, b.w - 0.5));
       r.setAttribute('height', Math.max(0, b.h - 0.5));
-      r.setAttribute('fill', shade(CAT_HEX[catOf(node)] || CAT_HEX.other, node.name || ''));
+      r.setAttribute('fill', shade(CAT_HEX[catOfNode(node)] || CAT_HEX.other, node.name || ''));
       r.setAttribute('rx', 2);
       g.appendChild(r);
       if(b.w > 46 && b.h > 15){

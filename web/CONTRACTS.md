@@ -1,16 +1,13 @@
-# web/ — frontend contracts (rewrite)
+# web/ — frontend contracts
 
-The new UI. Native ES modules, no build step, no framework, no dependencies.
-Served by the new backend at `/web/` during the migration (becomes `/` at
-cutover). Talks ONLY to the new backend API (`backend/http.py`, see
-ARCHITECTURE.md). The old UI (`template.html` + `js/`) is the behavior
-reference — mine it, never import it.
+The UI. Native ES modules, no build step, no framework, no dependencies.
+Talks ONLY to the backend API (`backend/http.py`, see ARCHITECTURE.md).
 
 ## Module map (each file has exactly one owner)
 
 ```
 web/index.html          shell page: dump selector, tab bar, containers, boot call   (shell)
-web/app.css             shell + shared styles (mined from template.html)            (shell)
+web/app.css             shell + shared styles                                        (shell)
 web/tabs.css            styles for the three tabs                                   (tabs)
 web/viz.css             styles for viz popups                                       (viz)
 web/graph.css           styles for the graph viz                                    (viz-graph)
@@ -37,7 +34,7 @@ web/viz/graph.js        reference graph viz (layout split from rendering)       
    `../data/http.js`). No default exports, no re-exports, no dynamic imports,
    no named-import aliases (`{a as b}`). Namespace imports exist for the
    multi-`mount`/`prepare` wiring (boot, tabs) — prefer named imports
-   otherwise. Never import from `../js/` (old UI).
+   otherwise.
 2. No top-level side effects: modules export functions/constants; nothing runs
    at import time. `boot()` is the single entry, called from a
    `<script type="module">` in index.html. index.html links exactly these
@@ -130,9 +127,12 @@ export function render(container, viewModel, ctx) -> void
 openViz(kind, dumpId, className)   // the ONLY way a viz opens; owns the popup
                                    // container, loading + error states
 registerViz(module)                // called by boot for each viz module
+initViz(repo)                      // called by boot once with the active repo
+                                   // (HTTP dumpdatarepo or inline); no globals
 // shared helpers exported for prepares: extrapolation factor, class-name
-// shortening, category colors, byte/number formatting — ONE implementation
-// each, here.
+// shortening, category colors — ONE implementation each, here. Byte/number
+// formatting, esc() and catOf live in data/http.js (shared with the tabs);
+// viz/common.js delegates them into ctx.
 ```
 
 Any tab may open any viz via `ctx.onOpenViz`/`openViz` (e.g. a button per row

@@ -2,7 +2,7 @@
 
   python3 -m backend.snapshot --dump <id> --out <file.html> [--dumps <root>]
 
-Replaces the old generate.py for the new web/ frontend. Two parts:
+Self-contained read-only HTML snapshot of one READY dump. Two parts:
 
 a. Payload — pulled from the local dump through backend.mat.MatQueryEngine,
    constructed directly (job registry + FsDumpStore with NO remote sources,
@@ -36,8 +36,7 @@ because the pinned tab/viz contracts make it unwirable otherwise — see
 _check_style's docstring.
 
 Snapshot payload shape (window.__INLINE__) — pinned by the header comment of
-web/data/inlinerepo.js (that module owns the shape); the old generate.py keys
-with the old compact class rows, anatomy v1 only at the default sample count:
+web/data/inlinerepo.js (that module owns the shape):
 
   {name, stats, trees, classes, comps, anats}
     name     dump id
@@ -329,7 +328,7 @@ def build_html(web_root, payload):
         raise SnapshotError("\n".join(lines))
 
     payload_json = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-    payload_json = payload_json.replace("</", "<\\/")   # the old generate.py </script> bug
+    payload_json = payload_json.replace("</", "<\\/")   # a raw "</script" would end the script tag
 
     chunks = ["window.__INLINE__ = " + payload_json + ";"]
     for rel in _topo(graph):

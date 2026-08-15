@@ -2,20 +2,13 @@
    Filter/sort/page go through classes(id, {filter, sort, page}); per-row buttons
    open viz popups via openViz(); Analyze queues a server job (the jobs panel
    shows progress) and the table refreshes once the job finishes. */
-import {esc, fmtB, fmtN} from '../../data/http.js';
+import {esc, fmtB, fmtN, catOf} from '../../data/http.js';
 import {listDumps, pollJobs} from '../../data/dumprepo.js';
 import * as ddr from '../../data/dumpdatarepo.js';
 import {getDump, onDumpChange} from '../../app/state.js';
 import {openViz} from '../../viz/common.js';
 
 const CAT_IDS = {gradle: 1, agp: 1, kotlin: 1, jdk: 1, other: 1};
-
-export function catOfName(n){
-  return n.startsWith('org.gradle') ? 'gradle'
-       : n.startsWith('com.android') ? 'agp'
-       : n.startsWith('org.jetbrains.kotlin') ? 'kotlin'
-       : /^(java|jdk|sun|com\.sun)/.test(n) ? 'jdk' : 'other';
-}
 
 export function catCls(id){
   return 'c-' + (CAT_IDS[id] ? id : 'other');
@@ -113,7 +106,7 @@ export function mount(container, repo, opts = {}){
     const disp = String(r.disp || '');
     const name = r.name || disp.split('.').pop();
     const pkg = r.pkg || (disp.includes('.') ? disp.slice(0, disp.lastIndexOf('.')) : '(no package)');
-    const cat = catCls(r.cat || catOfName(disp));
+    const cat = catCls(r.cat || catOf(disp));
     const anat = r.anat || [];
     const badges = (r.comp ? '<span class="bdg on" title="retained-set composition available">rs</span>' : '') +
       anat.map(k => `<span class="bdg on" title="anatomy extracted with ${esc(String(k))} samples">a${esc(String(k))}</span>`).join('');

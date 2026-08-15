@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """GitHub Releases source: remote dump discovery + downloads (backend impl).
 
-Behavior mined from the old ghremote.py: the benchmark repo publishes `run-*`
+The benchmark repo publishes `run-*`
 releases carrying `daemon.hprof.gz.part-*`; this repo's CI publishes matching
 `idx-<tag>` releases carrying `indexes.tar.part-*` + `data.tar.gz` +
 `manifest.json`. Both repos are public, so anonymous REST works; when the `gh`
 CLI is authenticated it is used instead (higher rate limits).
 
-Unlike ghremote.py, API/transport failures are NEVER swallowed into empty
+API/transport failures are NEVER swallowed into empty
 results — they raise core.ApiError('upstream', ..., status=502). Only a
 confirmed-absent release (HTTP 404) means "this source doesn't have it".
 """

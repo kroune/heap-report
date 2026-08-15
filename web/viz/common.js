@@ -8,39 +8,36 @@
  *  - ctx.refetch(params): re-runs the current viz's prepare with merged params
  *    and re-renders in place — the pinned path for interactive re-slicing that
  *    needs a fetch (e.g. the anatomy sample-count picker).
- *  - the shared helpers (esc/fmtB/fmtN/catColor/catOf/shortClass/scaleFactor/
- *    buildSeg) — ONE implementation each, mined from the old js/core.js and the
- *    three copy-pasted segmented controls (anatomy v1/v2/graph).
+ *  - the shared helpers (catColor/shortClass/scaleFactor/buildSeg) — ONE
+ *    implementation each; esc/fmtB/fmtN/catOf are delegated from data/http.js.
  *
- * Repo indirection (kept tiny on purpose): in API mode prepare receives the
- * real dumpdatarepo module; in INLINE/snapshot mode boot puts a same-interface
- * repo object on window.__INLINE_REPO__ (the single allowed global — a
- * snapshot page has no server). openViz passes whichever is set; viz modules
- * never know which mode they run in.
+ * Repo indirection: boot() calls initViz(repo) once with the active repo — the
+ * real dumpdatarepo module in API mode, makeInlineRepo(payload) in snapshot
+ * mode. openViz passes it to prepare; viz modules never know which mode they
+ * run in. No globals: the repo is module-local state set once at boot.
  */
 
 import { trees, anatomy, composition } from '../data/dumpdatarepo.js';
+import * as fmt from '../data/http.js';
 
-const API_REPO = { trees, anatomy, composition };
+let activeRepo = null;   // set once by boot() via initViz
+
+export function initViz(repo) {   // called by boot before any viz can open
+  activeRepo = repo;
+}
 
 function currentRepo() {
-  const w = typeof window !== 'undefined' ? window : null;
-  return (w && w.__INLINE_REPO__) || API_REPO;
+  if (!activeRepo) throw new Error('viz used before initViz()');
+  return activeRepo;
 }
 
 /* ============================== shared helpers ============================== */
 
-export const esc = s => String(s)
-  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-
-export const fmtB = v => v >= 1e9 ? (v / 1e9).toFixed(2) + ' GB'
-  : v >= 1e6 ? (v / 1e6).toFixed(1) + ' MB'
-  : v >= 1e3 ? (v / 1e3).toFixed(1) + ' KB'
-  : (v >= 100 ? Math.round(v) : v.toFixed(1)) + ' B';
-
-export const fmtN = v => v >= 1e6 ? (v / 1e6).toFixed(2) + 'M'
-  : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : '' + v;
+/* esc/fmtB/fmtN/catOf: single implementation lives in data/http.js (shared with
+   the tabs); delegated here so viz modules keep one import site. */
+export const esc = fmt.esc;
+export const fmtB = fmt.fmtB;
+export const fmtN = fmt.fmtN;
 
 const CAT_COLORS = {
   gradle: '#e8743b', agp: '#3ba272', kotlin: '#9b7ede',
@@ -49,16 +46,12 @@ const CAT_COLORS = {
 
 export const catColor = id => CAT_COLORS[id] || CAT_COLORS.other;
 
-export const catOf = n => n.startsWith('org.gradle') ? 'gradle'
-  : n.startsWith('com.android') ? 'agp'
-  : n.startsWith('org.jetbrains.kotlin') ? 'kotlin'
-  : /^java|^jdk|^sun|^com\.sun/.test(n) ? 'jdk' : 'other';
+export const catOf = fmt.catOf;
 
 export const shortClass = cls => cls.split('.').pop();
 
 /* Sample→global extrapolation: per-instance average over K samples scaled to
-   all objCount instances (old `Mf = Math.max(1, M.objCount)/K`, computed in 3
-   places in the old UI). */
+   all objCount instances. */
 export const scaleFactor = (objCount, K) => Math.max(1, objCount) / K;
 
 /* Unwrap a data-layer Result or throw — a throw inside prepare() becomes the
@@ -68,10 +61,9 @@ export function orThrow(res) {
   throw new Error((res && res.error) || `request failed (HTTP ${res && res.status})`);
 }
 
-/* The ONE segmented control (old code had 3 copies: anatomy v1, anatomy v2,
-   graph). options: [{value, label, title?}]; the clicked button gets .on,
-   then onPick(value) fires. Pure DOM, no fetch — callers decide whether
-   onPick re-renders locally or goes through ctx.refetch. */
+/* The ONE segmented control. options: [{value, label, title?}]; the clicked
+   button gets .on, then onPick(value) fires. Pure DOM, no fetch — callers
+   decide whether onPick re-renders locally or goes through ctx.refetch. */
 export function buildSeg(options, current, onPick) {
   const seg = document.createElement('div');
   seg.className = 'anatseg';

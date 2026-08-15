@@ -3,7 +3,7 @@ name: build-indexes
 # Builds Eclipse MAT index files for a heap dump published as a `run-*` release in the
 # benchmark repo (default: kroune/feature-module-3000) and publishes them here as an
 # `idx-<tag>` release (zstd-compressed *.index in a split tar + manifest.json).
-# The local UI (serve.py, Remote tab) discovers these and downloads them on demand,
+# The local UI (python3 -m backend.kernel) discovers these and downloads them on demand,
 # so nobody ever runs the ~40 min MAT parse on their laptop.
 #
 # Triggered automatically by the benchmark workflows via repository_dispatch
@@ -173,7 +173,7 @@ jobs:
           gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
           gh release create "idx-$TAG" -R '${{ github.repository }}' \
             --title "MAT indexes — $SOURCE_REPO $TAG" \
-            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). \`data.tar.gz\` = histogram + dominators (instant overview); \`indexes.tar.part-*\` = compacted MAT indexes for per-class analysis. Downloaded automatically by heap-report's serve.py (Remote tab). $title" \
+            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). \`data.tar.gz\` = histogram + dominators (instant overview); \`indexes.tar.part-*\` = compacted MAT indexes for per-class analysis. Downloaded automatically by the heap-report UI. $title" \
             data.tar.gz indexes.tar.part-* manifest.json
           {
             echo "## MAT indexes published"

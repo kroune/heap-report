@@ -1,11 +1,11 @@
 /* Reference graph viz: class-level reference DAG over the union retained set,
-   fed by the anatomy-v2 payload (old endpoint GET /api/{dump}/anat2/{class}?samples=k,
-   new backend GET /api/dumps/{id}/anatomy?class=…&v=2&samples=…; payload shape
+   fed by the anatomy-v2 payload (GET /api/dumps/{id}/anatomy?class=…&v=2&samples=…;
+   payload shape
    {samples, available, graph:{nodes:[[cls,n,shallow,retained]], links:[[s,t,field,n,bytes]]}}).
    Layout is split from rendering: computeLayout() is pure (no DOM, no fetch) and
    unit-testable in node; prepare() fetches + shapes the viewModel; render() only
-   draws the viewModel. Behavior ported from the old js/graph.js initGraph() —
-   see that file for the design rationale (value lane, cycle edges, pair merging). */
+   draws the viewModel. Layout rationale (value lane, cycle edges, pair merging)
+   is documented at computeLayout(). */
 
 import { fmtB, fmtN, catOf, shortClass, scaleFactor } from "./common.js";
 import { findClassStats } from "./anatomy.js";

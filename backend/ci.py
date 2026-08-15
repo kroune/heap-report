@@ -1,8 +1,7 @@
 """backend.ci — library entry points for build-indexes.yml (the index builder).
 
 CI builds indexes on a GitHub runner; this module lets the workflow drive the
-new backend directly instead of the retired flat modules (analyze_dump.py /
-compact.py). Not used by the server.
+backend directly. Not used by the server.
 """
 from __future__ import annotations
 

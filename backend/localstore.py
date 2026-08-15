@@ -2,8 +2,7 @@
 
 The single writer for everything under dumps/<id>/: meta.json state, .dl/
 download parts, assembly (gzip/tar), index compaction. On-disk contract:
-LAYOUT.md; state machine: core.DumpState. Behavior mined from the old
-serve.py download pipeline and matindex.py (never imported).
+LAYOUT.md; state machine: core.DumpState.
 """
 import fcntl, glob, json, os, re, shutil, subprocess, tempfile, threading, time
 
@@ -16,7 +15,7 @@ DL_RETRIES = int(os.environ.get("HEAP_REPORT_DL_RETRIES", "3"))  # attempts per 
 ASSEMBLE_TIMEOUT = int(os.environ.get("HEAP_REPORT_ASSEMBLE_TIMEOUT", "7200"))
 
 ZSTD = os.environ.get("ZSTD", "zstd")
-LEVEL = int(os.environ.get("MATINDEX_LEVEL", "3"))     # see matindex.py for the rationale
+LEVEL = int(os.environ.get("MATINDEX_LEVEL", "3"))     # zstd level for index compaction
 THREADS = int(os.environ.get("MATINDEX_THREADS", "4"))
 MARKER = "INDEXES-COMPACTED.txt"
 
@@ -88,7 +87,7 @@ def compact_dir(d, log=lambda m: None, progress=None):
     raws, _ = raws_zsts(d)
     archived = dropped = 0
     if raws:
-        lf = _flock(d, ".matindex.lock")   # same lock file the old matindex.py used
+        lf = _flock(d, ".matindex.lock")   # guards compact vs restore across processes
         try:
             for i, raw in enumerate(raws):
                 if progress:
@@ -195,7 +194,7 @@ class FsDumpStore:
                 state = core.DumpState.DOWNLOADING   # kept parts resume — normal operation
             else:
                 state = core.DumpState.FAILED
-                error = error or "no recorded state — pre-rewrite dump dir (or corruption); delete and re-download"
+                error = error or "no recorded state — dump dir without state tracking (or corruption); delete and re-download"
         progress = None
         if state is core.DumpState.DOWNLOADING and os.path.isdir(os.path.join(d, ".dl")):
             done = sum(os.path.getsize(os.path.join(d, ".dl", f))
@@ -271,7 +270,7 @@ class FsDumpStore:
                                 lambda job: self._run_download(job, dump_id, source, plan))
 
     def _run_download(self, job, dump_id, source, plan):
-        log = lambda m: job.log.append(str(m))
+        log = lambda m: self.jobs.log(job, m)
         d = self._dir(dump_id)
         hprof = os.path.join(d, "daemon.hprof")
         data = os.path.join(d, "data")
@@ -418,7 +417,7 @@ class FsDumpStore:
                 if attempt == DL_RETRIES:
                     raise
                 wait = 5 * attempt * attempt
-                job.log.append(f"  {part.name}: {ex} — retry {attempt + 1}/{DL_RETRIES} in {wait}s")
+                self.jobs.log(job, f"  {part.name}: {ex} — retry {attempt + 1}/{DL_RETRIES} in {wait}s")
                 time.sleep(wait)
 
     def _assemble(self, files, argv, stdout_path, job, stage):
@@ -432,7 +431,7 @@ class FsDumpStore:
         try:
             try:
                 for fp in files:
-                    job.log.append(f"  {stage}: {os.path.basename(fp)}")
+                    self.jobs.log(job, f"  {stage}: {os.path.basename(fp)}")
                     with open(fp, "rb") as src:
                         shutil.copyfileobj(src, proc.stdin, 1 << 20)
                 proc.stdin.close()
@@ -507,7 +506,7 @@ class FsDumpStore:
         return out
 
     def _compact(self, job, dump_id):
-        log = lambda m: job.log.append(str(m))
+        log = lambda m: self.jobs.log(job, m)
         compact_dir(self._dir(dump_id), log=log,
                     progress=lambda i, n: setattr(job, "progress", (i, n)))
         job.progress = None

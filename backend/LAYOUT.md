@@ -20,29 +20,29 @@ dumps/<id>/
 
 ```json
 {
-  "state": "ready",                // DumpState value; absent in legacy dirs
+  "state": "ready",                // DumpState value; absent only in unmigrated dirs
   "error": null,                   // last failure text when state == "failed"
   "dump": "daemon.hprof",          // hprof filename
   "classes": { "<key>": "<fqcn>" },// analyzed classes (analysis index)
   "rs": { "<key>": {...} },        // retained-set extract info
   "anatSamples": { "<key>": [32] },// which sample counts were extracted
-  "...": "other analysis-index fields (see backend/mat.py _analysis_index)"
+  "...": "other analysis-index fields (see backend/mat/parsing.py _analysis_index_build)"
 }
 ```
 
-The analysis-index fields keep the old on-disk format (it is written and read
-only by `MatQueryEngine`; nothing else may rely on it). Readers treat a
-missing/invalid meta.json as "not ready". Legacy dirs (no `state` field) are
-normalized by the one-time migration, not by the store.
+The analysis-index fields are written and read only by `MatQueryEngine`;
+nothing else may rely on them. Readers treat a missing/invalid meta.json as
+"not ready". Dirs without a `state` field are not adopted by the store —
+normalize them with a throwaway migration, never with compat code.
 
-## Index mtime convention (unchanged from matindex.py)
+## Index mtime convention
 
 A raw `*.index` whose mtime exactly equals its `*.index.zst` sibling is
 untouched since compaction and may be deleted. Any other mtime means
 "modified since compaction" → re-compress. MAT must never be run against a
 dump without restoring (`zstd -d`) missing indexes first.
 
-## .dl/ download conventions (unchanged from serve.py)
+## .dl/ download conventions
 
 - Parts land as `.dl/<name>`; a partially written part is `.dl/<name>.tmp`
   and is resumed via HTTP Range from its current size.
@@ -57,10 +57,8 @@ dump without restoring (`zstd -d`) missing indexes first.
   `cat index parts | tar -x` (tar members are individually zstd-compressed;
   the tar itself is not).
 
-## Migration (historical)
+## Migration
 
-Pre-rewrite dump dirs were normalized into this contract once by a throwaway
-script (ran 2026-08, since deleted): it derived `state` from old evidence and
-wrote it into meta.json. Dirs from before that run show up as FAILED with "no
-recorded state" — delete and re-download them. Future format changes get the
-same treatment: a throwaway migration, never permanent compat code.
+Format changes are handled by a one-time throwaway migration script, never by
+permanent compat code in the store. Dirs without a recorded `state` show up
+as FAILED with "no recorded state" — delete and re-download them.

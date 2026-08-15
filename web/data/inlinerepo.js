@@ -1,14 +1,13 @@
 /* data/inlinerepo.js — same interface and Result shapes as dumpdatarepo.js,
  * reading an inlined snapshot payload instead of the HTTP API.
  *
- * PAYLOAD CONTRACT (what backend/snapshot.py must inline as window.__INLINE__;
- * matches the OLD generate.py payload):
+ * PAYLOAD CONTRACT (what backend/snapshot.py must inline as window.__INLINE__):
  * {
  *   name:    string                                  dump name
  *   stats:   {totalRetained, totalShallow, totalObjects, classes, analyzed,
  *             modules, buildFileBytes, dump}         -> trees().data.stats
- *   trees:   {dom, hist}                             treemap trees (reportdata.trees
- *             shape: package nodes with children, leaves {name,disp,pkg,cat,c,s,r?,leaf})
+ *   trees:   {dom, hist}                             treemap trees
+ *             (package nodes with children, leaves {name,disp,pkg,cat,c,s,r?,leaf})
  *                                                    -> trees().data.trees
  *   classes: [[disp, c, s, r, comp, anat, lams], ...]  full class table:
  *             r = retained bytes|null, comp = 0/1, anat = [sampleCounts],
@@ -21,16 +20,14 @@
  *
  * Class rows are mapped to the server class-table shape
  * {disp,name,pkg,cat,c,s,pi,r,comp,anat,lams,analyzable} and filtered/sorted/
- * paged client-side exactly like the old static snapshot (page size 200).
+ * paged client-side (page size 200, like the server).
  * Ops that need the server (analyze) and compare (a snapshot holds one dump)
  * return {ok:false, code:'snapshot', error:'static snapshot'}.
  */
 
-const SNAP = () => ({ok:false, code:"snapshot", error:"static snapshot"});
+import {catOf} from "./http.js";
 
-const catOf = n => n.startsWith("org.gradle") ? "gradle" : n.startsWith("com.android") ? "agp"
-  : n.startsWith("org.jetbrains.kotlin") ? "kotlin"
-  : /^java|^jdk|^sun|^com\.sun/.test(n) ? "jdk" : "other";
+const SNAP = () => ({ok:false, code:"snapshot", error:"static snapshot"});
 
 const NOT_ANALYZED = {ok:false, status:404, data:{analyzed:false}};
 

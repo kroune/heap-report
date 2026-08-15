@@ -6,14 +6,13 @@ modules (one file each, owned by one author/agent):
   backend/localstore.py  FsDumpStore        — LocalDumpStore (the writable source)
   backend/github.py      GitHubSource       — RemoteDumpSource over GitHub releases
   backend/jobs.py        InMemoryJobRegistry — JobRegistry + executors
-  backend/mat.py         MatQueryEngine     — QueryEngine + LocalIndexer (MAT)
+  backend/mat/         MatQueryEngine     — QueryEngine + LocalIndexer (MAT);
+                       package: parsing / payloads / extract / engine
   backend/http.py        serve(app, port)   — thin HTTP adapter
   backend/kernel.py      build_app(root)    — wires the impls into an App
 
-Behavior was mined from the retired pre-rewrite flat modules (serve.py,
-reportdata.py, analyze_dump.py, matindex.py, ghremote.py, compact.py — see
-git history). See ARCHITECTURE.md for the design rationale and LAYOUT.md for
-the on-disk contract.
+See ARCHITECTURE.md for the design rationale and LAYOUT.md for the on-disk
+contract.
 """
 from __future__ import annotations
 
@@ -205,8 +204,8 @@ class LocalDumpStore(DumpSource, Protocol):
 class QueryEngine(Protocol):
     """Read queries over READY dumps, plus on-demand MAT analysis jobs.
     Owns all payload caches; invalidates them when a dump's data changes.
-    Returned dicts are JSON-serializable payloads in the shapes the old
-    reportdata.py produces today (the HTTP layer passes them through)."""
+    Returned dicts are JSON-serializable payloads (the HTTP layer passes them
+    through)."""
 
     def trees(self, dump_id: DumpId) -> dict:
         """{"stats": …, "trees": …} — the overview tab."""
@@ -215,7 +214,7 @@ class QueryEngine(Protocol):
     def classes(self, dump_id: DumpId, filter: str = "", sort: str = "-s",
                 page: int = 0) -> dict:
         """{"rows": [...], "total", "page", "pages"} — filter/sort/page
-        semantics of the old serve.py _classes."""
+        semantics live in the engine."""
         ...
 
     def composition(self, dump_id: DumpId, cls: str) -> Optional[dict]:
@@ -224,14 +223,15 @@ class QueryEngine(Protocol):
 
     def anatomy(self, dump_id: DumpId, cls: str, version: int = 1,
                 samples: Optional[int] = None) -> Optional[dict]:
-        """version 1 = old anatomy(), 2 = old anat2(). None = not analyzed."""
+        """version 1 = aggregated named-reference tree, 2 = full-graph
+        reference tree. None = not analyzed."""
         ...
 
     def compare(self, a: DumpId, b: DumpId) -> dict: ...
 
     def analyze(self, dump_id: DumpId, cls: str, samples: int = 32,
                 with_anatomy: bool = True) -> Job:
-        """Queue on-demand per-class MAT analysis (old analyze_class).
+        """Queue on-demand per-class MAT analysis.
         A failed extraction must surface as a FAILED job — never recorded
         in meta.json as if it succeeded."""
         ...

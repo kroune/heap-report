@@ -13,7 +13,7 @@ import * as classesTab from '../ui/tabs/classes.js';
 import * as treemapTab from '../ui/tabs/treemap.js';
 import * as compareTab from '../ui/tabs/compare.js';
 import { mountJobs } from '../ui/jobs.js';
-import { registerViz } from '../viz/common.js';
+import { registerViz, initViz } from '../viz/common.js';
 import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
 import * as graph from '../viz/graph.js';
@@ -27,7 +27,7 @@ const TABS = [
 export function boot() {
   const payload = typeof window !== 'undefined' && window.__INLINE__ ? window.__INLINE__ : null;
   const repo = payload ? makeInlineRepo(payload) : datarepo;
-  if (payload) window.__INLINE_REPO__ = repo;   // viz/common.js reads it in INLINE mode
+  initViz(repo);   // viz prepares receive this repo; they never know the mode
 
   registerViz(anatomy);
   registerViz(hierarchy);

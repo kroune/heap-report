@@ -1,5 +1,5 @@
-/* reference graph viz (web/viz/graph.js) — mined from template.html's ref-graph
-   block; the old raw hex edge/marker colors are CSS custom properties now */
+/* reference graph viz (web/viz/graph.js) — edge/marker colors are CSS custom
+   properties, set once here */
 .gcol{display:flex;flex-direction:column;height:100%}
 .gtopbar{display:flex;gap:14px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
 .gtop{width:110px}

@@ -1,4 +1,4 @@
-/* app.css — app shell + shared styles, mined from template.html.
+/* app.css — app shell + shared styles.
    Owns: layout, header, tab bar, form controls/buttons, shared table base,
    tooltip, category color properties, error box, spinner/loading, jobs panel.
    Tab-specific classes live in tabs.css, viz popup styles in viz.css,

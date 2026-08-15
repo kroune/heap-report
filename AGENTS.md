@@ -27,9 +27,12 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
 - `backend/github.py` — `GitHubSource`: release discovery + asset streaming.
   Transport failures raise `ApiError('upstream', 502)`; only a confirmed 404
   means "we don't have it". Never swallow errors into empty results.
-- `backend/mat.py` — `MatQueryEngine`: read queries (payload caches it owns) +
-  on-demand MAT analysis jobs + local bootstrap (`submit_bootstrap`). Restores
-  compacted indexes before any MAT run.
+- `backend/mat/` — the MAT package. `engine.py` — `MatQueryEngine`: read
+  queries (payload caches it owns) + on-demand MAT analysis jobs + local
+  bootstrap (`submit_bootstrap`). `extract.py` — `MatRunner`: every MAT
+  subprocess; restores compacted indexes before any MAT run. `parsing.py` —
+  extract files (CSV/sidecars) → structures. `payloads.py` — structures →
+  JSON payloads, pure.
 - `backend/jobs.py` — `InMemoryJobRegistry`: serial queue for INDEX/ANALYZE/
   COMPACT (one MAT JVM at a time, `-Xmx10g`), pool of 2 for DOWNLOAD.
 - `backend/http.py` / `kernel.py` — thin HTTP adapter (uniform
@@ -42,7 +45,7 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   `app/` shell + current-dump state; `ui/tabs/` (classes/treemap/compare);
   `ui/jobs.js`; `viz/` isolated visualizations (pure `prepare` → dumb `render`).
 - `tools/get_mat.py` — pinned MAT (1.17.0.20260601) into `.tools/`;
-  `MAT_HOME`/`MAT_PARSE` env overrides. Used by `backend/mat.py` and CI.
+  `MAT_HOME`/`MAT_PARSE` env overrides. Used by `backend/mat/extract.py` and CI.
 
 ## Commands
 
@@ -50,7 +53,8 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
 - Snapshot: `python3 -m backend.snapshot --dump <id> --out report.html`
 - Trigger an index build: `gh workflow run build-indexes.yml -R kroune/heap-report
   -f source_repo=kroune/feature-module-3000 -f release_tag=run-123`.
-- Smoke: `python3 -m py_compile backend/*.py tools/*.py`,
+- Smoke: `python3 -m py_compile backend/*.py backend/mat/*.py tools/*.py`,
+  `python3 -m unittest discover -s tests -t .`,
   `for f in $(find web -name '*.js'); do node --input-type=module --check < $f; done`,
   PyYAML-load the workflow, then a real download of a small run via the UI.
 
@@ -74,7 +78,7 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   never name sorting.
 - Index mtime convention: a raw `.index` whose mtime matches its `.zst` is
   untouched and can be dropped. **Never** run `ParseHeapDump.sh` against a
-  compacted dump except through `backend/mat.py` (it restores first).
+  compacted dump except through `backend/mat/` (`MatRunner` restores first).
 - Autocompact (kernel timer) re-compresses indexes when the MAT queue is idle.
 - GitHub unauthenticated REST is rate-limited to 60 req/h/IP — the source
   caches listings for 60 s; `gh auth login` lifts it.
@@ -91,7 +95,6 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   no build step; obey web/CONTRACTS.md (named/namespace relative imports only,
   no top-level side effects, `esc()` everything data-derived, every async path
   has a terminal error state).
-- Shared logic is extracted, never copied (the pre-rewrite v1/v2 anatomy
-  copy-paste drift is the cautionary tale).
+- Shared logic is extracted, never copied.
 - Workflow changes: validate YAML before pushing; smoke-test with a small
   `run-*` tag before trusting a full 10g dump run.

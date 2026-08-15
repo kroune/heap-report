@@ -18,8 +18,8 @@ export function sortRows(rows, mode){
 }
 
 const LAM = /\$\$Lambda\+0x[0-9a-f]+$/;   // per-run address — merge specializations like the histogram does
-// note: the replacement is a function — '$$' in a replacement string is a literal '$'
-// (the old UI's plain-string replace silently merged into '$Lambda*' instead).
+// note: the replacement is a function — '$$' in a replacement string is a
+// literal '$', so a plain-string replace would silently merge into '$Lambda*'.
 /* Merge two composition payloads into [name, oldShallow, newShallow, Δshallow, oldObjs, newObjs]. */
 export function rsDiffRows(co, cn){
   const m = new Map();

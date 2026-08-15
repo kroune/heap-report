@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Download Eclipse MAT (MemoryAnalyzer) into .tools/ — used by backend/mat.py
-locally and by the CI workflow. Pinned version, same as the original local setup.
+"""Download Eclipse MAT (MemoryAnalyzer) into .tools/ — used by
+backend/mat/extract.py locally and by the CI workflow. Pinned version, same as
+the original local setup.
 
   python3 tools/get_mat.py            # download + unpack if missing, print ParseHeapDump.sh path
   MAT_HOME=/elsewhere python3 ...     # override the install root

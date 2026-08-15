@@ -1,5 +1,5 @@
-/* viz/hierarchy.js — package-hierarchy drill view (icicle), mined from the old
- * js/hierarchy.js. Data comes from trees(id): the dominator tree
+/* viz/hierarchy.js — package-hierarchy drill view (icicle).
+ * Data comes from trees(id): the dominator tree
  * (category → package → class leaves {name, disp, cat, c, s, r, leaf}) —
  * width = share of parent, click = descend, breadcrumb = back up,
  * double-click a class leaf = open its anatomy viz. Metric segment switches
@@ -57,7 +57,7 @@ export function findPath(root, className) {
 
 const metricVal = (n, m) => m === 'r' ? n.r : m === 's' ? n.s : n.c;
 
-/* Icicle layout (old initHier): kids sized by share of parent, widest first,
+/* Icicle layout: kids sized by share of parent, widest first,
    rows of ROWH, cells narrower than 0.7px and everything past CAP dropped. */
 export function layoutCells(zroot, W, metric) {
   const ROWH = 22, CAP = 2400;

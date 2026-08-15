@@ -22,6 +22,14 @@ export const fmtB = v => {
 /* number grouping: 1234567 -> "1,234,567" */
 export const fmtN = v => Number(v).toLocaleString("en-US");
 
+/* class -> category; mirrors backend cat_of (mat.py) exactly. */
+export const catOf = n =>
+  n.startsWith("org.gradle") ? "gradle"
+  : n.startsWith("com.android") ? "agp"
+  : n.startsWith("org.jetbrains.kotlin") ? "kotlin"
+  : (n.startsWith("java.") || n.startsWith("jdk.") || n.startsWith("sun.")
+     || n.startsWith("com.sun") || !n.includes(".")) ? "jdk" : "other";
+
 const req = async (path, opts) => {
   let r;
   try { r = await fetch(path, opts); } catch (e) {
