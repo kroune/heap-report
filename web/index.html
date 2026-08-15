@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Heap report</title>
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="tabs.css">
+<link rel="stylesheet" href="viz.css">
+<link rel="stylesheet" href="graph.css">
+</head>
+<body>
+<header>
+  <h1>Heap report <span class="sub">Gradle sync-OOM benchmark · Eclipse MAT extracts</span></h1>
+  <select id="dumpsel" aria-label="heap dump"></select>
+  <span id="dump-state" class="stbadge"></span>
+  <button id="dl-btn" class="api-only pri" hidden>Download</button>
+</header>
+
+<div id="shell-err" class="errbox" hidden></div>
+
+<nav class="tabs" id="tabs">
+  <button data-t="classes" class="on">Classes</button>
+  <button data-t="treemap">Treemap</button>
+  <button data-t="compare">Compare</button>
+</nav>
+
+<main>
+  <section class="tabpane on" id="tab-classes"></section>
+  <section class="tabpane" id="tab-treemap"></section>
+  <section class="tabpane" id="tab-compare"></section>
+</main>
+
+<div id="jobs" class="api-only"></div>
+<div id="viz-root"></div>
+
+<script type="module">
+import { boot } from './app/boot.js';
+boot();
+</script>
+</body>
+</html>

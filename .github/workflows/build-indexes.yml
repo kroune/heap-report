@@ -128,15 +128,14 @@ jobs:
           python3 - <<'EOF'
           import sys, os
           sys.path.insert(0, os.getcwd())
-          sys.path.insert(0, os.path.join(os.getcwd(), "tools"))
-          import analyze_dump as ad
-          ad.bootstrap(os.path.abspath("work/daemon.hprof"), "x",
-                       outdir=os.path.abspath("work"))
+          from backend import ci
+          ci.bootstrap(os.path.abspath("work/daemon.hprof"), "x",
+                       os.path.abspath("work"))
           EOF
           ls -lh work/data/
 
       - name: Compress indexes (zstd)
-        run: python3 compact.py work
+        run: python3 -c "from backend.ci import compact; compact('work')"
 
       - name: Publish idx release
         env:
@@ -153,6 +152,10 @@ jobs:
           title=$(gh release view "$TAG" -R "$SOURCE_REPO" --json name --jq .name)
           gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
           xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //')
+          # per-member sizes of the index tar — heap-report validates the
+          # extracted set against this before marking a dump ready
+          files_json=$(stat -c '%n %s' ./*.index.zst ./*.threads INDEXES-COMPACTED.txt \
+            | jq -Rn '[inputs | split(" ") | {key: (.[0] | sub("^\\./"; "")), value: (.[1] | tonumber)}] | from_entries')
           cat > manifest.json <<EOF
           {
             "source_repo": "$SOURCE_REPO",
@@ -163,7 +166,8 @@ jobs:
             "mat_version": "$MAT_VERSION",
             "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "index_bytes": $tar_bytes,
-            "data_bytes": $data_bytes
+            "data_bytes": $data_bytes,
+            "files": $files_json
           }
           EOF
           gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
