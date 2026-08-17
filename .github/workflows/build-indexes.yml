@@ -75,7 +75,7 @@ jobs:
 
       - name: Validate inputs
         run: |
-          [[ "$TAG" =~ ^run-[0-9]+(-(base|candidate))?$ ]] || { echo "bad release_tag: $TAG"; exit 1; }
+          [[ "$TAG" =~ ^run-[0-9]+(-[a-z0-9]+)?(-(base|candidate))?$ ]] || { echo "bad release_tag: $TAG"; exit 1; }
           [[ "$SOURCE_REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || { echo "bad source_repo: $SOURCE_REPO"; exit 1; }
 
       - name: Download heap dump
