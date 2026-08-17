@@ -57,10 +57,15 @@ export function findPath(root, className) {
 
 const metricVal = (n, m) => m === 'r' ? n.r : m === 's' ? n.s : n.c;
 
-/* Icicle layout: kids sized by share of parent, widest first,
-   rows of ROWH, cells narrower than 0.7px and everything past CAP dropped. */
+/* Icicle layout: kids sized by share of parent, widest first, rows of ROWH,
+   everything past CAP dropped. Sub-pixel kids (< 0.7px) are NOT dropped: they
+   fold into a synthetic "· N smaller" node (kept kids shrink a hair to give it
+   a clickable floor width) which can be descended into like any other node —
+   its children lay out full-width there. The aggregate's children are not laid
+   out in the current view (they would be sub-pixel again, folding into endless
+   nested aggregates). */
 export function layoutCells(zroot, W, metric) {
-  const ROWH = 22, CAP = 2400;
+  const ROWH = 22, CAP = 2400, SLIVER = 0.7, AGG_MIN = 14;
   const cells = [];
   const lay = (n, x, w, depth) => {
     if (cells.length > CAP) return;
@@ -69,12 +74,32 @@ export function layoutCells(zroot, W, metric) {
       .sort((p, q) => metricVal(q, metric) - metricVal(p, metric));
     const tot = kids.reduce((t, k) => t + metricVal(k, metric), 0);
     if (tot <= 0) return;
-    let cx = x;
-    for (const k of kids) {
-      const kw = w * metricVal(k, metric) / tot;
-      if (kw >= 0.7 && cells.length <= CAP) lay(k, cx, kw, depth + 1);
-      cx += kw;
+    const ws = kids.map(k => w * metricVal(k, metric) / tot);
+    let split = ws.length;
+    while (split > 0 && ws[split - 1] < SLIVER) split--;   // sorted desc: sub-pixel tail
+    const kept = kids.slice(0, split), keptW = ws.slice(0, split);
+    let agg = null, aggW = 0;
+    if (split < kids.length) {
+      const drop = kids.slice(split);
+      agg = { name: `· ${drop.length} smaller`, cat: n.cat, leaf: 0, more: 1,
+              disp: `${drop.length} smaller entries inside ${n.disp || n.name}`,
+              c: drop.reduce((a, k) => a + k.c, 0),
+              s: drop.reduce((a, k) => a + k.s, 0),
+              r: drop.reduce((a, k) => a + k.r, 0),
+              children: drop };
+      aggW = ws.slice(split).reduce((a, v) => a + v, 0);
+      if (!kept.length) aggW = w;   // everything tiny: the fold IS the row
+      else if (aggW < AGG_MIN) aggW = Math.min(AGG_MIN, w);
     }
+    const keptSum = keptW.reduce((a, v) => a + v, 0);
+    const scale = keptSum > 0 ? (w - aggW) / keptSum : 1;
+    let cx = x;
+    kept.forEach((k, i) => {
+      const kw = keptW[i] * scale;
+      if (cells.length <= CAP) lay(k, cx, kw, depth + 1);
+      cx += kw;
+    });
+    if (agg && cells.length <= CAP) cells.push({ n: agg, x: cx, w: aggW, depth: depth + 1 });
   };
   lay(zroot, 0, W, 0);
   const maxD = Math.max(...cells.map(c => c.depth), 0);
@@ -106,7 +131,15 @@ const el = (tag, cls, text) => {
 };
 
 export function render(container, vm, ctx) {
-  const view = { metric: vm.metric, path: vm.path.slice() };
+  // zoom stack of node refs (not names): synthetic "· N smaller" fold nodes
+  // created by layoutCells are descendable too, and they have no tree path
+  const stack = [vm.tree];
+  for (const nm of vm.path) {
+    const k = (stack[stack.length - 1].children || []).find(c => c.name === nm);
+    if (!k) { stack.length = 1; break; }   // pre-zoom name vanished: reset
+    stack.push(k);
+  }
+  const view = { metric: vm.metric };
   const tip = el('div', 'viz-tip');
 
   const paint = () => {
@@ -121,22 +154,17 @@ export function render(container, vm, ctx) {
       { value: 'n', label: 'objects' },
     ], m, v => { view.metric = v; paint(); }));
     tools.appendChild(el('span', 'hint',
-      'the dominator tree as a top-down hierarchy — width = share of parent · click = descend · breadcrumb = back up · double-click a class = open its anatomy'));
+      'the dominator tree as a top-down hierarchy — width = share of parent · click = descend ("· N smaller" unfolds the slivers) · breadcrumb = back up · double-click a class = open its anatomy'));
     container.appendChild(tools);
 
-    // zoom root by descending the path by name (reset when a name vanished)
-    let zroot = vm.tree;
-    for (const nm of view.path) {
-      const k = (zroot.children || []).find(c => c.name === nm);
-      if (!k) { view.path = []; zroot = vm.tree; break; }
-      zroot = k;
-    }
+    const zroot = stack[stack.length - 1];
 
     const crumbs = el('div', 'hiercrumbs');
-    [vm.tree.name, ...view.path].forEach((nm, i) => {
+    stack.forEach((n, i) => {
       if (i) crumbs.appendChild(document.createTextNode(' › '));
+      const nm = n.name;
       const a = el('a', '', nm.length > 46 ? nm.slice(0, 46) + '…' : nm);
-      a.addEventListener('click', () => { view.path = view.path.slice(0, i); paint(); });
+      a.addEventListener('click', () => { stack.length = i + 1; paint(); });
       crumbs.appendChild(a);
     });
     container.appendChild(crumbs);
@@ -160,6 +188,7 @@ export function render(container, vm, ctx) {
       r.setAttribute('width', Math.max(0, c.w - 0.6));
       r.setAttribute('height', ROWH - 1.5);
       r.setAttribute('fill', catColor(c.n.cat));
+      if (c.n.more) r.setAttribute('class', 'more');
       r.setAttribute('rx', 1);
       g.appendChild(r);
       if (c.w > 46) {
@@ -167,7 +196,7 @@ export function render(container, vm, ctx) {
         t.setAttribute('x', c.x + 4);
         t.setAttribute('y', c.depth * ROWH + 15);
         t.setAttribute('class', 'hier-label');
-        const maxCh = Math.floor((c.w - 8) / 6.4);
+        const maxCh = Math.floor((c.w - 8) / 7.3);
         let label = c.n.name;
         if (label.length > maxCh) label = label.slice(0, Math.max(1, maxCh - 1)) + '…';
         t.textContent = label;
@@ -184,7 +213,7 @@ export function render(container, vm, ctx) {
       g.addEventListener('mousemove', e => showTip(e, c.n, zv));
       g.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
       if ((c.n.children || []).length)
-        g.addEventListener('click', () => { view.path.push(c.n.name); paint(); });
+        g.addEventListener('click', () => { stack.push(c.n); paint(); });
       if (c.n.leaf && c.n.disp && !c.n.name.startsWith('·'))
         g.addEventListener('dblclick', () => ctx.onOpenViz('anatomy', vm.dumpId, c.n.disp));
       svg.appendChild(g);
@@ -209,7 +238,9 @@ export function render(container, vm, ctx) {
     tr('in this view', `${(100 * metricVal(n, m) / zv).toFixed(1)}%`);
     tip.appendChild(tbl);
     tip.appendChild(el('div', 't-hint',
-      n.leaf ? 'double-click — open class anatomy' : 'click — descend · double-click a class — open anatomy'));
+      n.more ? 'click — unfold the smaller entries'
+             : n.leaf ? 'double-click — open class anatomy'
+                      : 'click — descend · double-click a class — open anatomy'));
     tip.style.display = 'block';
     const tw = tip.offsetWidth, th = tip.offsetHeight;
     tip.style.left = Math.min(e.clientX + 14, document.documentElement.clientWidth - tw - 10) + 'px';

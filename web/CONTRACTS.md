@@ -22,9 +22,10 @@ web/ui/tabs/classes.js  classes tab                                             
 web/ui/tabs/treemap.js  treemap tab                                                 (tabs)
 web/ui/tabs/compare.js  compare tab                                                 (tabs)
 web/viz/common.js       viz registry + popup host + openViz() + shared helpers      (viz)
-web/viz/anatomy.js      anatomy v1+v2 (one module, version param)                   (viz)
+web/viz/anatomy.js      anatomy viz (full-graph reference tree)                   (viz)
 web/viz/hierarchy.js    hierarchy viz                                               (viz)
 web/viz/graph.js        reference graph viz (layout split from rendering)           (viz-graph)
+web/viz/flow.js         flow viz (top-down layered DAG, pinned column, nesting)    (viz-graph)
 ```
 
 ## Module style (HARD rules — the snapshot bundler depends on them)
@@ -75,9 +76,9 @@ pollJobs(onJobs, ms=2500)  -> stopFn               // polls GET /api/jobs; onJob
 trees(id)                                  -> Result<{stats, trees}>
 classes(id, {filter='', sort='-s', page=0})-> Result<{rows,total,page,pages}>
 composition(id, className)                 -> Result<payload>; 404 -> {ok:false, status:404, data:{analyzed:false}}
-anatomy(id, className, {version=1, samples=null}) -> Result<payload|same 404>
+anatomy(id, className, {samples=null})   -> Result<payload|same 404>
 compare(aId, bId)                          -> Result<payload>
-analyze(id, className, {samples=32, anatomy=true}) -> Result<Job>
+analyze(id, className, {samples=8, anatomy=true}) -> Result<Job>
 invalidate(id=null)                        // drop one dump's or all cached entries
 
 // data/inlinerepo.js — same functions, same result shapes, reading the
@@ -110,7 +111,8 @@ loading, error (from Result — never a silent spinner), and data.
 `mountJobs(container)` — self-contained: subscribes via `pollJobs`, renders
 every job kind uniformly (kind, dump, state, progress bar from
 progress.done/total, log tail expandable, error in red). Rebuilds DOM at most
-once per poll tick.
+once per poll tick; rebuilds preserve expanded logs and log scroll positions.
+Every card has a close button — dismissal is UI-only (the job keeps running).
 
 ## Viz contract
 
@@ -121,13 +123,21 @@ export async function prepare(repo, dumpId, className) -> viewModel
 //   ^ pure data step: fetches via the passed dumpdatarepo, computes everything
 export function render(container, viewModel, ctx) -> void
 //   ^ dumb: no fetch, no data-repo imports, no mutation of shared state.
-//     ctx = {esc, fmtB, fmtN, catColor, onOpenViz} (shared helpers from viz/common)
+//     ctx = {esc, fmtB, fmtN, catColor, catOf, shortClass, onOpenViz, refetch,
+//            analyze} (shared helpers from viz/common; analyze is null in
+//            INLINE mode, otherwise queues analysis for the popup's class,
+//            reports via onStatus(text, isErr) and reopens the viz when done —
+//            "not analyzed" states must offer it instead of pointing at tabs)
 
 // viz/common.js
 openViz(kind, dumpId, className)   // the ONLY way a viz opens; owns the popup
-                                   // container, loading + error states
+                                   // container, loading + error states, and a
+                                   // header kind switcher over every
+                                   // registered viz (same class, fresh params).
+                                   // Refetches of the same kind+class keep the
+                                   // body scroll position.
 registerViz(module)                // called by boot for each viz module
-initViz(repo)                      // called by boot once with the active repo
+initViz(repo, {inline})            // called by boot once with the active repo
                                    // (HTTP dumpdatarepo or inline); no globals
 // shared helpers exported for prepares: extrapolation factor, class-name
 // shortening, category colors — ONE implementation each, here. Byte/number
@@ -135,8 +145,11 @@ initViz(repo)                      // called by boot once with the active repo
 // viz/common.js delegates them into ctx.
 ```
 
-Any tab may open any viz via `ctx.onOpenViz`/`openViz` (e.g. a button per row
-in the classes tab). New viz = new module + one `registerViz` line.
+Any tab may open any viz via `ctx.onOpenViz`/`openViz` (e.g. the "viz ▸" button
+per row in the classes tab). Once the popup is open, its header switcher jumps
+between all registered kinds for the same class — entry points never need to
+know about each other. New viz = new module + one `registerViz` line (it shows
+up in the switcher automatically).
 
 ## Snapshot mode
 

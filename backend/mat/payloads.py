@@ -132,39 +132,40 @@ def _composition_build(p):
             "classes": len(rows)}
 
 
-# ---------------------------------------------------------------- anatomy v1 (aggregated named-reference tree)
+# ---------------------------------------------------------------- anatomy (full-graph aggregated reference tree)
 
-def _new_agg(label, cls, sk=False, v2=False):
-    """Aggregate tree node. v2 nodes carry `refs` (in-set inbound reference count)
-    and the skip flag; v1 nodes must not (load-bearing payload difference)."""
-    n = {"name": label, "full": cls, "n": 0, "s": 0, "r": 0, "kids": {}}
-    if v2:
-        n["refs"] = 0
-        if sk:
-            n["sk"] = 1
+def _new_agg(label, cls, sk=False):
+    """Aggregate tree node. `refs` is the in-set inbound reference count (refs >
+    n ⇒ shared within the set); `sk` marks synthetic fields (this$0, …)."""
+    n = {"name": label, "full": cls, "n": 0, "s": 0, "r": 0, "kids": {}, "refs": 0}
+    if sk:
+        n["sk"] = 1
     return n
 
 
-def _finish_agg(n, max_kids, v2):
+def _finish_agg(n, max_kids):
     kids = sorted(n["kids"].values(), key=lambda k: (-k["r"], -k["s"]))
+    more = None
     if len(kids) > max_kids:
+        # pure UI collapse: the overflow keeps its full structure inside a
+        # "· N more" fold node, so the frontend can expand it on click
         rest = kids[max_kids:]
+        kids = kids[:max_kids]
         more = {"name": f"· {len(rest)} more", "full": "",
                 "n": sum(k["n"] for k in rest), "s": sum(k["s"] for k in rest),
-                "r": sum(k["r"] for k in rest)}
-        if v2:
-            more["refs"] = sum(k["refs"] for k in rest)
-        more["kids"] = {}
-        kids = kids[:max_kids] + [more]
+                "r": sum(k["r"] for k in rest),
+                "kids": [_finish_agg(k, max_kids) for k in rest]}
+        refs = sum(k["refs"] for k in rest)
+        if refs > more["n"]:
+            more["refs"] = refs
     out = {"name": n["name"], "full": n["full"], "n": n["n"], "s": n["s"], "r": n["r"]}
     if "pres" in n:
         out["pres"] = n["pres"]
-    if v2:
-        if n.get("sk"):
-            out["sk"] = 1
-        if n["refs"] > n["n"]:
-            out["refs"] = n["refs"]
-    out["kids"] = [_finish_agg(k, max_kids, v2) for k in kids]
+    if n.get("sk"):
+        out["sk"] = 1
+    if n["refs"] > n["n"]:
+        out["refs"] = n["refs"]
+    out["kids"] = [_finish_agg(k, max_kids) for k in kids] + ([more] if more else [])
     return out
 
 
@@ -175,92 +176,7 @@ def _attach_pres(n, pres):
         _attach_pres(k, pres)
 
 
-def _anatomy_build(src, full, K, avail, max_depth, max_kids):
-    """v1: aggregated named-reference tree. Depth-1 children carry `pres` = in how
-    many of the K samples the field was non-null."""
-    nodes, addr2id = src["nodes"], src["addr2id"]
-    named, allrefs, prims = _split_refs(src, v2=False)
-    edges, strings = src["edges"], src["strings"]
-
-    root = _new_agg(_short(full), full)
-    visited = set()
-    stack = []
-    pres = {}   # depth-1 label -> set of root ids where the field is non-null
-    shared = _new_agg("(shared — held by others too)", "(external)")
-    for rid in src["ids"]:
-        if rid not in nodes or rid in visited:
-            continue
-        visited.add(rid)
-        root["n"] += 1
-        root["s"] += nodes[rid]["used"]
-        root["r"] += nodes[rid]["ret"]
-        stack.append((rid, root, 0, True))
-    while stack:
-        oid, agg, depth, is_root = stack.pop()
-        if is_root:
-            # true presence: field non-null in the instance, regardless of whether
-            # the target is inside the retained set (shared targets would otherwise
-            # vanish — the 'missing resolutionStrategy' trap)
-            for fname, tgt in allrefs.get(oid, []):
-                if tgt in addr2id:
-                    continue   # handled as a regular child below
-                label = f"{fname}: (shared)"
-                child = shared["kids"].setdefault(label, _new_agg(label, "(external)"))
-                child["n"] += 1
-                pres.setdefault(label, set()).add(oid)
-        if depth >= max_depth:
-            continue
-        cls = nodes[oid]["cls"]
-        if cls.endswith("[]") or oid not in named:
-            children = [("[]", t) for t in edges.get(oid, [])]
-        else:
-            children = named[oid]
-            for pname, pval in prims.get(oid, []):
-                label = f"{pname}: {pval}"
-                child = agg["kids"].setdefault(label, _new_agg(label, "(field)"))
-                child["n"] += 1
-                if is_root:
-                    pres.setdefault(label, set()).add(oid)
-        for label, tid in children:
-            if tid not in nodes or tid in visited:
-                continue
-            visited.add(tid)
-            tcls = nodes[tid]["cls"]
-            if tcls == "java.lang.String":
-                val = strings.get(nodes[tid]["addr"])
-                clabel = f'{label}: "{val}"' if val is not None else f"{label}: String"
-            else:
-                clabel = f"{label}: {_short(tcls)}" if label != "[]" else f"[]: {_short(tcls)}"
-            child = agg["kids"].setdefault(clabel, _new_agg(clabel, tcls))
-            child["n"] += 1
-            child["s"] += nodes[tid]["used"]
-            child["r"] += nodes[tid]["ret"]
-            if tcls != "java.lang.String":
-                stack.append((tid, child, depth + 1, False))
-            if is_root:
-                pres.setdefault(clabel, set()).add(oid)
-    if shared["kids"]:
-        root["kids"][shared["name"]] = shared
-    leftover = [oid for oid in nodes if oid not in visited]
-    if leftover:
-        un = _new_agg("(held via untracked/shared refs)", "")
-        for oid in leftover:
-            un["n"] += 1
-            un["s"] += nodes[oid]["used"]
-            un["r"] += nodes[oid]["ret"]
-            ccls = nodes[oid]["cls"]
-            child = un["kids"].setdefault(ccls, _new_agg(_short(ccls), ccls))
-            child["n"] += 1
-            child["s"] += nodes[oid]["used"]
-            child["r"] += nodes[oid]["ret"]
-        root["kids"]["(held via untracked/shared refs)"] = un
-
-    _attach_pres(root, pres)
-    return {"tree": _finish_agg(root, max_kids, v2=False), "samples": K,
-            "available": avail, "roots": root["n"]}
-
-
-# ---------------------------------------------------------------- anatomy v2 (full graph)
+# ---------------------------------------------------------------- the walk
 
 def _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth, prims=None, pres=None, allowed=None):
     """BFS over the in-set adjacency, folding objects into (label, class)-aggregated
@@ -288,7 +204,7 @@ def _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth, prims=None,
         if prims is not None and not cls.endswith("[]"):
             for pname, pval in prims.get(oid, []):
                 label = f"{pname}: {pval}"
-                child = agg["kids"].setdefault(label, _new_agg(label, "(field)", v2=True))
+                child = agg["kids"].setdefault(label, _new_agg(label, "(field)"))
                 child["n"] += 1
                 if is_root and pres is not None:
                     pres.setdefault(label, set()).add(oid)
@@ -302,7 +218,7 @@ def _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth, prims=None,
                 clabel = f'{label}: "{val}"' if val is not None else f"{label}: String"
             else:
                 clabel = f"{label}: {_short(tcls)}" if label != "[]" else f"[]: {_short(tcls)}"
-            child = agg["kids"].setdefault(clabel, _new_agg(clabel, tcls, sk, v2=True))
+            child = agg["kids"].setdefault(clabel, _new_agg(clabel, tcls, sk))
             child["n"] += 1
             child["s"] += nodes[tid]["used"]
             child["r"] += nodes[tid]["ret"]
@@ -313,14 +229,14 @@ def _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth, prims=None,
     return depthcut
 
 
-def _anat2_build(src, full, K, avail, max_depth, max_kids):
-    """v2: full-graph reference tree (complete outbounds, deeper walk, skipped
+def _anatomy_build(src, full, K, avail, max_depth, max_kids):
+    """Full-graph reference tree (complete outbounds, deeper walk, skipped
     fields traversed), `refs` on aggregate nodes, `untracked` grouped by cause,
     and a class-level reference `graph`."""
     nodes, addr2id = src["nodes"], src["addr2id"]
     edges, edges_full, elen = src["edges"], src["edgesFull"], src["elen"]
     strings, ids = src["strings"], src["ids"]
-    named, allrefs, prims = _split_refs(src, v2=True)
+    named, allrefs, prims = _split_refs(src)
 
     def outedges(oid):
         return edges_full.get(oid) or edges.get(oid, [])
@@ -339,13 +255,13 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
             for _, t, _ in ch:
                 indeg[t] = indeg.get(t, 0) + 1
 
-    root = _new_agg(_short(full), full, v2=True)
+    root = _new_agg(_short(full), full)
     visited = set()
     pres = {}
     depthcut = _agg_walk([(rid, root) for rid in ids], adj, nodes, strings, indeg,
                          visited, max_depth, prims=prims, pres=pres)
     # root fields pointing outside the retained set (owned by someone else)
-    shared = _new_agg("(shared — held by others too)", "(external)", v2=True)
+    shared = _new_agg("(shared — held by others too)", "(external)")
     for rid in ids:
         if rid not in nodes:
             continue
@@ -353,15 +269,15 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
             if tgt in addr2id:
                 continue
             label = f"{fname}: (shared)"
-            child = shared["kids"].setdefault(label, _new_agg(label, "(external)", v2=True))
+            child = shared["kids"].setdefault(label, _new_agg(label, "(external)"))
             child["n"] += 1
             pres.setdefault(label, set()).add(rid)
     if shared["kids"]:
         root["kids"][shared["name"]] = shared
 
     # whatever is still unreachable gets structure too, grouped by *why* it is
-    # unreachable — this replaces v1's flat "held via untracked/shared refs" bucket.
-    # Depth-cut children are always taken as forest seeds: below them sit the deep
+    # unreachable. Depth-cut children are always taken as forest seeds: below
+    # them sit the deep
     # chains (LinkedHashMap$Entry.after ×700, …) whose members mutually reference
     # each other, so they have no natural forest root.
     leftover = [oid for oid in nodes if oid not in visited]
@@ -405,13 +321,13 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
                     break
                 # pure cycle with no entry point — pick any member as the seed
                 why, roots_ = "cyclic reference cluster", [leftover[0]]
-            un = _new_agg(f"(held via {why})", "", v2=True)
+            un = _new_agg(f"(held via {why})", "")
             seeds = []
             for oid in roots_:
                 if oid not in nodes or oid in visited:
                     continue
                 ccls = nodes[oid]["cls"]
-                kid = un["kids"].setdefault(ccls, _new_agg(_short(ccls), ccls, v2=True))
+                kid = un["kids"].setdefault(ccls, _new_agg(_short(ccls), ccls))
                 seeds.append((oid, kid))
             while seeds:
                 cut = _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth,
@@ -424,7 +340,7 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
                     for _, t, _ in adj.get(oid, []):
                         if t in lset and t not in visited:
                             ccls = nodes[t]["cls"]
-                            kid = un["kids"].setdefault(ccls, _new_agg(_short(ccls), ccls, v2=True))
+                            kid = un["kids"].setdefault(ccls, _new_agg(_short(ccls), ccls))
                             seeds.append((t, kid))
             if not un["kids"]:
                 continue
@@ -432,7 +348,7 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
             un["s"] = sum(k["s"] for k in un["kids"].values())
             un["r"] = sum(k["r"] for k in un["kids"].values())
             untracked.append({"why": why, "n": un["n"], "s": un["s"], "r": un["r"],
-                              "tree": _finish_agg(un, max_kids, v2=True)})
+                              "tree": _finish_agg(un, max_kids)})
         untracked.sort(key=lambda g: -g["r"])
 
     _attach_pres(root, pres)
@@ -462,7 +378,7 @@ def _anat2_build(src, full, K, avail, max_depth, max_kids):
     links = sorted(([gidx[s], gidx[t], f, n, b] for (s, f, t), (n, b) in glinks.items()),
                    key=lambda x: -x[4])[:5000]
 
-    return {"tree": _finish_agg(root, max_kids, v2=True), "samples": K, "available": avail,
+    return {"tree": _finish_agg(root, max_kids), "samples": K, "available": avail,
             "roots": root["n"], "untracked": untracked, "fullEdges": src["hasFullEdges"],
             "depth": max_depth, "graph": {"nodes": gnodes, "links": links}}
 
@@ -489,6 +405,12 @@ def _flatten_anat(node, prefix, out):
     # lambda-normalize like everywhere else: the hex suffix is a per-run address and
     # would otherwise show up as phantom remove+add pairs in the diff
     name = norm_lambda(node["name"])
+    if name.startswith("· "):
+        # "· N more" UI fold: transparent in the diff — its kids flatten under the
+        # parent path, exactly as if the fold (and its double counting) didn't exist
+        for k in node["kids"]:
+            _flatten_anat(k, prefix, out)
+        return
     path = f"{prefix}/{name}"
     e = out.setdefault(path, [0, 0])
     e[0] += node["s"]
@@ -498,7 +420,7 @@ def _flatten_anat(node, prefix, out):
 
 
 def _anatomy_diff(a, b):
-    """Diff of two v1 anatomy payloads, matched by label path. Values are
+    """Diff of two anatomy payloads, matched by label path. Values are
     per-sampled-instance averages (tree totals / K), so extractions with different
     sample counts still compare."""
     if not a or not b:

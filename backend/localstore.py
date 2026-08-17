@@ -4,9 +4,11 @@ The single writer for everything under dumps/<id>/: meta.json state, .dl/
 download parts, assembly (gzip/tar), index compaction. On-disk contract:
 LAYOUT.md; state machine: core.DumpState.
 """
-import fcntl, glob, json, os, re, shutil, subprocess, tempfile, threading, time
+import fcntl, glob, json, logging, os, re, shutil, subprocess, tempfile, threading, time
 
 from . import core
+
+log = logging.getLogger("backend.localstore")
 
 DUMP_RE = re.compile(r"^[\w.-]+$")
 
@@ -38,8 +40,11 @@ def _mtime(path):
 
 
 def raws_zsts(dump_dir):
-    raws = sorted(glob.glob(os.path.join(dump_dir, "*.index")))
-    zsts = sorted(glob.glob(os.path.join(dump_dir, "*.index.zst")))
+    def keep(p):   # MAT parse debris (crashed/in-progress parse) is not an index set
+        n = os.path.basename(p)
+        return not n.endswith(".lock.index") and ".temp." not in n
+    raws = [p for p in sorted(glob.glob(os.path.join(dump_dir, "*.index"))) if keep(p)]
+    zsts = [p for p in sorted(glob.glob(os.path.join(dump_dir, "*.index.zst"))) if keep(p)]
     return raws, zsts
 
 
@@ -127,6 +132,31 @@ class FsDumpStore:
 
     def init(self):
         os.makedirs(self.root, exist_ok=True)
+
+    def recover_interrupted(self):
+        """Jobs are process-lifetime, so a persisted busy state after a
+        restart is a zombie: no live job behind it. Resubmit the work —
+        .dl/ parts resume, assembly is idempotent, the registry dedups.
+        If resubmission is impossible (remote unreachable/gone), fail the
+        dump so the UI offers Retry instead of a frozen badge.
+
+        Server startup only (kernel, after wiring) — never in init():
+        snapshot/CI build source-less stores where resubmission is
+        impossible and a *live* download of another process would be
+        failed by mistake."""
+        for info in self.list():
+            if info.state not in _BUSY:
+                continue
+            try:
+                job = self.start_download(info.id)
+                log.warning("recovered interrupted %s dump %s -> job #%s",
+                            info.state.value, info.id, job.id)
+            except Exception as e:   # noqa: BLE001 - recovery must not abort startup
+                log.error("cannot recover %s dump %s: %s",
+                          info.state.value, info.id, e)
+                self._set_state(info.id, core.DumpState.FAILED,
+                                error=f"interrupted {info.state.value}; "
+                                      f"auto-resume failed: {e}")
 
     # ------------------------------------------------------------ meta / state
 

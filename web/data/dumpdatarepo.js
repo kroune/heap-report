@@ -31,10 +31,10 @@ export const composition = (id, className) =>
   cached(id, `comp|${className}`, () =>
     api(`${dq(id)}/composition?class=${encodeURIComponent(className)}`));
 
-export function anatomy(id, className, {version = 1, samples = null} = {}) {
-  const path = `${dq(id)}/anatomy?class=${encodeURIComponent(className)}&v=${version}` +
+export function anatomy(id, className, {samples = null} = {}) {
+  const path = `${dq(id)}/anatomy?class=${encodeURIComponent(className)}` +
     (samples ? `&samples=${samples}` : "");
-  return cached(id, `anat|${className}|${version}|${samples ?? ""}`, () => api(path));
+  return cached(id, `anat|${className}|${samples ?? ""}`, () => api(path));
 }
 
 export const compare = (aId, bId) =>
@@ -42,7 +42,7 @@ export const compare = (aId, bId) =>
     api(`/api/compare?a=${encodeURIComponent(aId)}&b=${encodeURIComponent(bId)}`));
 
 /* starts a server-side MAT analysis; the returned Job is NOT cached */
-export const analyze = (id, className, {samples = 32, anatomy = true} = {}) =>
+export const analyze = (id, className, {samples = 8, anatomy = true} = {}) =>
   apiPost(`${dq(id)}/analyze`, {"class": className, samples, anatomy});
 
 export function invalidate(id = null) {

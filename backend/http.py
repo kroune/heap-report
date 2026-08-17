@@ -15,6 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import core
+from .mat.extract import SAMPLES
 
 log = logging.getLogger("backend.http")
 
@@ -226,10 +227,8 @@ class _Handler(BaseHTTPRequestHandler):
                 cls = qs.get("class", [""])[0]
                 if not cls:
                     raise core.ApiError("bad_request", "class required", 400)
-                version = _int(qs, "v", 1)
                 samples = _int(qs, "samples", 0) or None
-                res = app.engine.anatomy(dump_id, cls, version=version,
-                                         samples=samples)
+                res = app.engine.anatomy(dump_id, cls, samples=samples)
                 if res is None:
                     return self._json(404, {"analyzed": False})
                 return self._json(200, res)
@@ -240,9 +239,9 @@ class _Handler(BaseHTTPRequestHandler):
                     raise core.ApiError("bad_request",
                                         f"invalid class name: {cls!r}", 400)
                 try:
-                    samples = int(body.get("samples", 32))
+                    samples = int(body.get("samples", SAMPLES))
                 except (TypeError, ValueError):
-                    samples = 32
+                    samples = SAMPLES
                 samples = max(1, min(1024, samples))
                 job = app.engine.analyze(dump_id, cls, samples=samples,
                                          with_anatomy=bool(body.get("anatomy", True)))

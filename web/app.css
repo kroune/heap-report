@@ -10,16 +10,16 @@
   --c-gradle:#e8743b; --c-agp:#3ba272; --c-kotlin:#9b7ede; --c-jdk:#4a90d9; --c-other:#7d8590;
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.45 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
 code,.num{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 
 /* ---- header ---- */
 header{padding:16px 24px 8px;display:flex;align-items:baseline;gap:16px;flex-wrap:wrap}
-h1{font-size:19px;margin:0}
-h1 .sub{color:var(--dim);font-weight:400;font-size:13px}
+h1{font-size:21px;margin:0}
+h1 .sub{color:var(--dim);font-weight:400;font-size:14.5px}
 
 /* dump state badge (shell) */
-.stbadge{font-size:11px;padding:2px 9px;border-radius:9px;border:1px solid var(--border);color:var(--dim);white-space:nowrap}
+.stbadge{font-size:12px;padding:2px 10px;border-radius:10px;border:1px solid var(--border);color:var(--dim);white-space:nowrap}
 .stbadge:empty{display:none}
 .stbadge.st-ready{border-color:var(--c-agp);color:var(--c-agp)}
 .stbadge.st-remote{border-color:var(--link);color:var(--link)}
@@ -31,16 +31,16 @@ h1 .sub{color:var(--dim);font-weight:400;font-size:13px}
 body.inline .api-only{display:none}
 
 /* ---- form controls + buttons (shared) ---- */
-select,input[type=text],input[type=number]{background:var(--panel2);border:1px solid var(--border);border-radius:7px;color:var(--fg);padding:6px 10px;font-size:12.5px}
+select,input[type=text],input[type=number]{background:var(--panel2);border:1px solid var(--border);border-radius:7px;color:var(--fg);padding:7px 11px;font-size:14px}
 select:focus,input:focus{outline:1px solid var(--accent)}
-button{background:var(--panel2);border:1px solid var(--border);color:var(--fg);border-radius:7px;padding:6px 12px;cursor:pointer;font-size:12px}
+button{background:var(--panel2);border:1px solid var(--border);color:var(--fg);border-radius:7px;padding:7px 13px;cursor:pointer;font-size:13.5px}
 button:hover{border-color:var(--accent)}
 button:disabled{opacity:.45;cursor:default}
 button.pri{background:var(--accent);color:#111;font-weight:600;border-color:var(--accent)}
 
 /* ---- tab bar + panes (shell) ---- */
 .tabs{display:flex;gap:6px;padding:4px 24px 0;border-bottom:1px solid var(--border)}
-.tabs button{background:transparent;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;padding:7px 16px;color:var(--dim);font-size:13px}
+.tabs button{background:transparent;border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;padding:8px 18px;color:var(--dim);font-size:14.5px}
 .tabs button.on{color:var(--fg);background:var(--panel);border-color:var(--border)}
 .tabpane{display:none;padding:14px 24px 30px}
 .tabpane.on{display:block}
@@ -48,36 +48,52 @@ button.pri{background:var(--accent);color:#111;font-weight:600;border-color:var(
 /* ---- shared building blocks used by every tab ---- */
 .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;overflow:hidden}
 .controls{display:flex;gap:8px;align-items:center;padding:10px 14px;flex-wrap:wrap}
-.hint{font-size:11px;color:var(--dim)}
-.pad{padding:16px;color:var(--dim);font-size:12.5px}
+.hint{font-size:12.5px;color:var(--dim)}
+.pad{padding:16px;color:var(--dim);font-size:14px}
 
 /* shared table base — tab tables extend this in tabs.css */
-table.tbl{width:100%;border-collapse:collapse;font-size:11.5px}
-table.tbl th{position:sticky;top:0;background:var(--panel2);color:var(--dim);text-align:right;padding:6px 8px;font-weight:600;white-space:nowrap;z-index:1}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+table.tbl th{position:sticky;top:0;background:var(--panel2);color:var(--dim);text-align:right;padding:7px 9px;font-weight:600;white-space:nowrap;z-index:1}
 table.tbl th:first-child,table.tbl td:first-child{text-align:left}
-table.tbl td{padding:4px 8px;border-top:1px solid var(--border);text-align:right;white-space:nowrap}
+table.tbl td{padding:5px 9px;border-top:1px solid var(--border);text-align:right;white-space:nowrap}
 table.tbl tr:hover td{background:var(--panel2)}
 
 /* ---- shared tooltip ---- */
-#tip{position:fixed;display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;pointer-events:none;z-index:30;max-width:430px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+#tip{position:fixed;display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;pointer-events:none;z-index:30;max-width:430px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
 #tip .t-name{color:var(--link);word-break:break-all;margin-bottom:4px}
 #tip table{border-collapse:collapse}
-#tip td{padding:1px 10px 1px 0;color:var(--dim)}
+#tip td{padding:2px 10px 2px 0;color:var(--dim)}
 #tip td.v{color:var(--fg);text-align:right}
 
 /* ---- error box (shared terminal error state; message from Result.error) ---- */
-.errbox{margin:10px 24px 0;padding:10px 14px;border:1px solid #6e3a3a;background:#2a171a;border-radius:8px;color:#f0a9a9;font-size:12.5px}
+.errbox{margin:10px 24px 0;padding:10px 14px;border:1px solid #6e3a3a;background:#2a171a;border-radius:8px;color:#f0a9a9;font-size:14px}
 
 /* ---- spinner / loading ---- */
-.spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:8px}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.loading{padding:26px 16px;color:var(--dim);font-size:12.5px}
+.loading{padding:26px 16px;color:var(--dim);font-size:14px}
 
-/* ---- jobs panel (fixed toast stack; rendered by ui/jobs.js) ---- */
-#jobs{position:fixed;right:16px;bottom:16px;z-index:40;max-width:420px}
-#jobs .jcard{position:relative;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:9px 12px;margin-top:8px;font-size:11.5px;box-shadow:0 8px 30px rgba(0,0,0,.5)}
-#jobs .jclose{position:absolute;top:4px;right:6px;background:none;border:none;color:var(--dim);font-size:14px;line-height:1;cursor:pointer;padding:2px 4px}
-#jobs .jclose:hover{color:var(--fg)}
-#jobs .jcard .jname{color:var(--link);word-break:break-all}
-#jobs .jcard .jstatus{color:var(--dim)}
-#jobs pre{max-height:120px;overflow:auto;font-size:10px;color:var(--dim);margin:6px 0 0;white-space:pre-wrap}
+/* ---- jobs panel (fixed toast stack; rendered by ui/jobs.js, which also
+   documents the class list). Dismissal is UI-only (the job keeps running). ---- */
+#jobs{position:fixed;right:16px;bottom:16px;z-index:40;width:min(440px,92vw)}
+.jobs-empty{color:var(--dim);font-size:12.5px;text-align:right;padding:4px 6px}
+.job-card{position:relative;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;margin-top:8px;font-size:13px;box-shadow:0 8px 30px rgba(0,0,0,.55)}
+.job-card.job-done{border-left-color:var(--c-agp)}
+.job-card.job-failed{border-left-color:#e5534b}
+.job-head{display:flex;gap:9px;align-items:baseline;padding-right:20px}
+.job-kind{flex:none;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 7px;border-radius:8px;border:1px solid var(--border);color:var(--dim)}
+.job-title{color:var(--link);word-break:break-all}
+.job-state{flex:none;margin-left:auto;color:var(--dim);font-size:12px;white-space:nowrap}
+.job-state.job-state-running{color:var(--accent)}
+.job-state.job-state-done{color:var(--c-agp)}
+.job-state.job-state-failed{color:#e5534b}
+.job-close{position:absolute;top:6px;right:8px;background:none;border:none;color:var(--dim);font-size:16px;line-height:1;cursor:pointer;padding:2px 5px}
+.job-close:hover{color:var(--fg)}
+.job-prog{display:flex;gap:10px;align-items:center;margin-top:7px}
+.job-prog-track{flex:1;background:rgba(255,255,255,.07);border-radius:3px;height:9px;overflow:hidden}
+.job-prog-bar{height:9px;background:var(--accent);border-radius:3px 0 0 3px;min-width:1px}
+.job-prog-label{color:var(--dim);font-size:11.5px;white-space:nowrap}
+.job-log{max-height:130px;overflow:auto;font-size:11px;color:var(--dim);margin:7px 0 0;white-space:pre-wrap}
+.job-log-full{margin-top:6px}
+.job-log-full>summary{cursor:pointer;color:var(--link);font-size:12px}
+.job-err{margin-top:7px;color:#f0a9a9;font-size:12.5px;word-break:break-word}

@@ -34,6 +34,9 @@ class DumpState(enum.Enum):
         ASSEMBLING  -- no usable indexes ----------> INDEXING   (local MAT bootstrap)
         INDEXING    -- bootstrap done --------------> READY
         any of DOWNLOADING/ASSEMBLING/INDEXING --error--> FAILED
+        any of DOWNLOADING/ASSEMBLING/INDEXING --process death--> (state persists;
+            store.recover_interrupted() at server startup resubmits the job,
+            or -> FAILED if unresumable)
         FAILED      -- start_download (resume) ----> DOWNLOADING
         READY/FAILED -- delete ---------------------> (gone; REMOTE if a source lists it)
 

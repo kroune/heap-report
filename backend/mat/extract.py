@@ -7,6 +7,19 @@ helpers that define the query shapes (suffix, subselect, sample_even, _par).
 Concurrency: the job registry's serial MAT queue bounds jobs; within one job
 _par() overlaps independent MAT JVMs up to MAT_JOBS (each can grow to
 -Xmx10g). A failed extraction raises — it is never recorded as a success.
+Cross-process, .matindex.lock serializes file mutation (compact/restore take
+it exclusive) against MAT reads (a run holds it SHARED for its whole
+lifetime) — without that, a compact racing a MAT run deletes the raw indexes
+mid-read, MAT falls back to parsing, and two parsing JVMs collide on
+daemon.lock.index ("Concurrent parsing error").
+
+Freshness: MAT reparses the whole dump when the .hprof's mtime is newer than
+daemon.index's — a pure mtime check. A (re-)assembled download always stamps
+the hprof with "now" while pre-built indexes keep their CI build time, so a
+freshly downloaded dump would reparse on its first query (40 min, and fatal
+under _par). _pin_hprof() therefore keeps the hprof mtime <= the index set's
+and clears stale parse debris (a crashed parse leaves daemon.lock.index,
+which fails every later parse with "Concurrent parsing error").
 """
 from __future__ import annotations
 
@@ -32,7 +45,7 @@ MAT_TIMEOUT = 7200            # subprocess timeout for one MAT query
 MAX_EDGE = 48
 EDGE_FULL_CAP = 1024          # supplementary complete-outbounds extraction for objects with >MAX_EDGE refs
 MAX_STRINGS = 400
-SAMPLES = 32
+SAMPLES = 8
 IDS_LIMIT = 1_000_000
 MAT_JOBS = int(os.environ.get("MAT_JOBS", "2"))   # concurrent MAT JVMs within one job (each can grow to -Xmx10g)
 ZSTD = os.environ.get("ZSTD", "zstd")
@@ -155,6 +168,45 @@ class MatRunner:
         finally:
             f.close()
 
+    def _pin_hprof(self, hprof, dump_dir, log):
+        """Keep the hprof mtime <= the oldest index mtime and clear stale
+        parse debris. MAT's staleness check is mtime-only: a re-assembled
+        hprof (download stamps it 'now') looks newer than the pre-built
+        indexes (CI build time) and MAT would reparse the whole dump — slow
+        alone, fatal when _par runs two JVMs (they collide on
+        daemon.lock.index). The index set is already validated against the
+        release manifest, so pinning is safe. Both mutations take
+        .matindex.lock EXCLUSIVE: no MAT run (a shared holder) is alive then,
+        so any daemon.lock.index / daemon.temp.* left behind is provably
+        stale. Fast path: nothing to do -> no lock, no serialization."""
+        base = os.path.splitext(os.path.basename(hprof))[0]
+
+        def survey():
+            raws = glob.glob(os.path.join(dump_dir, "*.index"))
+            oldest = min((os.stat(p).st_mtime_ns for p in raws), default=None)
+            debris = (glob.glob(os.path.join(dump_dir, f"{base}.lock.index*"))
+                      + glob.glob(os.path.join(dump_dir, f"{base}.temp.*")))
+            debris = [p for p in debris if os.path.exists(p)]
+            skewed = oldest is not None and os.stat(hprof).st_mtime_ns > oldest
+            return oldest, debris, skewed
+
+        oldest, debris, skewed = survey()
+        if not skewed and not debris:
+            return
+        f = open(os.path.join(dump_dir, ".matindex.lock"), "a")
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            oldest, debris, skewed = survey()   # recheck under the lock
+            if skewed:
+                os.utime(hprof, ns=(oldest, oldest))
+                log(f"  pinned {os.path.basename(hprof)} mtime to the index set "
+                    "(it looked newer -> MAT would have reparsed the whole dump)")
+            for p in debris:
+                os.remove(p)
+                log(f"  removed stale parse debris: {os.path.basename(p)}")
+        finally:
+            f.close()
+
     def run(self, job, hprof, outdir, sfx, command, keep_name, limit=2000000):
         """Run one MAT headless query; move the resulting CSV to outdir/keep_name.
         Resumable (existing dst short-circuits). Raises RuntimeError with the MAT
@@ -164,8 +216,28 @@ class MatRunner:
             return dst
         log = lambda m: self._jobs.log(job, m)
         mat = self.ensure_mat(log)
-        # a compacted dump (indexes stored as *.index.zst) is restored on demand
-        self.restore_indexes(os.path.dirname(os.path.abspath(hprof)), log)
+        dump_dir = os.path.dirname(os.path.abspath(hprof))
+        # Restore the compacted indexes (*.index.zst -> raw), then hold the index
+        # lock SHARED for the whole run: compact/restore (LOCK_EX, any process)
+        # must wait for MAT, not delete the indexes underneath it. A compact can
+        # slip between restore and the lock, so the raws are re-checked under
+        # the lock and the restore retried.
+        run_lock = None
+        for _ in range(3):
+            self.restore_indexes(dump_dir, log)
+            # BEFORE the shared run lock: the pin takes .matindex.lock
+            # EXCLUSIVE, which can never be granted while this same process
+            # holds it SHARED (flock is process-agnostic) — self-deadlock.
+            self._pin_hprof(hprof, dump_dir, log)
+            run_lock = open(os.path.join(dump_dir, ".matindex.lock"), "a")
+            fcntl.flock(run_lock, fcntl.LOCK_SH)
+            if all(os.path.exists(z[:-4])
+                   for z in glob.glob(os.path.join(dump_dir, "*.index.zst"))):
+                break
+            run_lock.close()
+        else:
+            raise RuntimeError(f"MAT indexes in {dump_dir} keep vanishing under a "
+                               "concurrent compact — giving up")
         # unique workspace per query: concurrent MAT instances can't share one
         # (Eclipse .lock); a shared workspace would collide across runs
         ws = f"{WS}-{os.getpid()}-{sfx}"
@@ -194,6 +266,7 @@ class MatRunner:
                 raise RuntimeError(f"MAT query {sfx} timed out after {MAT_TIMEOUT}s")
             t.join()
         finally:
+            run_lock.close()
             shutil.rmtree(ws, ignore_errors=True)   # always, success or failure
         base = os.path.splitext(os.path.basename(hprof))[0]
         # MAT writes the report zip next to the hprof, not into cwd.

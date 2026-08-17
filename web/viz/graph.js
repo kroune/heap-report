@@ -1,5 +1,5 @@
 /* Reference graph viz: class-level reference DAG over the union retained set,
-   fed by the anatomy-v2 payload (GET /api/dumps/{id}/anatomy?class=…&v=2&samples=…;
+   fed by the anatomy payload (GET /api/dumps/{id}/anatomy?class=…&samples=…;
    payload shape
    {samples, available, graph:{nodes:[[cls,n,shallow,retained]], links:[[s,t,field,n,bytes]]}}).
    Layout is split from rendering: computeLayout() is pure (no DOM, no fetch) and
@@ -199,11 +199,11 @@ export function computeLayout(graph, opts = {}) {
            emax, rmax, inL, outL };
 }
 
-/* Data step: fetch anatomy v2 (carries the class-level reference graph) and build
-   the viewModel. params = {top, samples, scale, objCount, cyc} — interactive
-   controls round-trip through ctx.refetch(params), which re-runs prepare. */
+/* Data step: fetch the anatomy payload (carries the class-level reference graph)
+   and build the viewModel. params = {top, samples, scale, objCount, cyc} —
+   interactive controls round-trip through ctx.refetch(params), which re-runs prepare. */
 export async function prepare(repo, dumpId, className, params = {}) {
-  const res = await repo.anatomy(dumpId, className, { version: 2, samples: params.samples ?? null });
+  const res = await repo.anatomy(dumpId, className, { samples: params.samples ?? null });
   if (!res.ok) {
     if (res.status === 404) return { kind, dumpId, className, notAnalyzed: true };
     return { kind, dumpId, className, error: res.error || "anatomy query failed" };
@@ -269,7 +269,29 @@ export function render(container, vm, ctx) {
       d.textContent = vm.error;
     } else {
       d.textContent = "No anatomy extracted for this class yet — the graph is built from the anatomy " +
-        "extraction. Run the analysis with anatomy enabled, then reopen the graph.";
+        "extraction.";
+      if (ctx.analyze) {
+        const b = document.createElement("button");
+        b.className = "viz-anbtn";
+        b.textContent = "Analyze this class";
+        const status = document.createElement("div");
+        status.className = "viz-anstatus";
+        b.addEventListener("click", () => {
+          b.disabled = true;
+          ctx.analyze((text, isErr) => {
+            status.textContent = text;
+            status.classList.toggle("err", !!isErr);
+            if (isErr) b.disabled = false;
+          });
+        });
+        d.appendChild(b);
+        d.appendChild(status);
+      } else {
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.textContent = "Run the analysis with anatomy enabled, then reopen the graph.";
+        d.appendChild(hint);
+      }
     }
     container.appendChild(d);
     return;
@@ -391,7 +413,7 @@ export function render(container, vm, ctx) {
   const labG = document.createElementNS(SVGNS, "g");
   svg.appendChild(labG);
   const mctx = document.createElement("canvas").getContext("2d");
-  mctx.font = "9.5px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";   // must match .glabel
+  mctx.font = "11px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";   // must match .glabel
   const wcache = new Map();
   const tw = s => { let w = wcache.get(s); if (w === undefined) { w = mctx.measureText(s).width; wcache.set(s, w); } return w; };
   const rankOrd = [...N.keys()].sort((a, b) => N[b].r - N[a].r);

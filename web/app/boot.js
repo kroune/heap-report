@@ -17,6 +17,7 @@ import { registerViz, initViz } from '../viz/common.js';
 import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
 import * as graph from '../viz/graph.js';
+import * as flow from '../viz/flow.js';
 
 const TABS = [
   ['classes', classesTab],
@@ -27,11 +28,12 @@ const TABS = [
 export function boot() {
   const payload = typeof window !== 'undefined' && window.__INLINE__ ? window.__INLINE__ : null;
   const repo = payload ? makeInlineRepo(payload) : datarepo;
-  initViz(repo);   // viz prepares receive this repo; they never know the mode
+  initViz(repo, {inline: !!payload});   // viz prepares receive this repo; they never know the mode
 
   registerViz(anatomy);
   registerViz(hierarchy);
   registerViz(graph);
+  registerViz(flow);
 
   restoreDump();            // #dump=<id>, written by setDump()
   wireTabs(repo, !!payload);
@@ -95,6 +97,7 @@ async function bootApi() {
   onDumpChange((id) => { if (id && sel.value !== id) sel.value = id; });
 
   let dumps = [];
+  const liveDl = new Set();   // dump ids with an active (queued/running) download job
   const refresh = async () => {
     const res = await listDumps();
     if (!res.ok) { shellError(`cannot load the dump list: ${res.error}`); return; }
@@ -112,17 +115,23 @@ async function bootApi() {
       if (first) setDump(first.id);
     }
     if (getDump()) sel.value = getDump();
-    syncDumpUi(dumps);
+    syncDumpUi(dumps, liveDl);
   };
 
   await refresh();
-  onDumpChange(() => syncDumpUi(dumps));
+  onDumpChange(() => syncDumpUi(dumps, liveDl));
 
   // a finished download changes states/sizes — refresh the list + badge,
   // but only when a job newly reaches a terminal state (they linger in the
   // jobs list, so key on job id to avoid refreshing every tick)
   const seenTerminal = new Set();
   pollJobs((jobs) => {
+    liveDl.clear();
+    for (const j of jobs) {
+      if (j.kind === 'download' && (j.state === 'queued' || j.state === 'running')) {
+        liveDl.add(j.dump);
+      }
+    }
     let fresh = false;
     for (const j of jobs) {
       if (j.kind === 'download' && (j.state === 'done' || j.state === 'failed')
@@ -132,6 +141,7 @@ async function bootApi() {
       }
     }
     if (fresh) refresh();
+    else syncDumpUi(dumps, liveDl);   // a download job may appear/vanish without a terminal transition
   });
 
   const btn = document.getElementById('dl-btn');
@@ -146,7 +156,7 @@ async function bootApi() {
   });
 }
 
-function syncDumpUi(dumps) {
+function syncDumpUi(dumps, liveDl) {
   const d = dumps.find((x) => x.id === getDump());
   const badge = document.getElementById('dump-state');
   const btn = document.getElementById('dl-btn');
@@ -160,7 +170,12 @@ function syncDumpUi(dumps) {
   badge.className = 'stbadge st-' + d.state;
   if (d.state === 'remote') { btn.hidden = false; btn.textContent = 'Download'; }
   else if (d.state === 'failed') { btn.hidden = false; btn.textContent = 'Retry download'; }
-  else btn.hidden = true;
+  else if ((d.state === 'downloading' || d.state === 'assembling') && !liveDl.has(d.id)) {
+    // busy state with no live job behind it (server restarted) — the POST is
+    // idempotent: it resumes .dl/ parts, or returns the active job if one exists
+    btn.hidden = false;
+    btn.textContent = 'Resume download';
+  } else btn.hidden = true;
 }
 
 function shellError(msg) {

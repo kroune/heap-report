@@ -1,7 +1,13 @@
 /* Classes tab — server-paged class table.
-   Filter/sort/page go through classes(id, {filter, sort, page}); per-row buttons
-   open viz popups via openViz(); Analyze queues a server job (the jobs panel
-   shows progress) and the table refreshes once the job finishes. */
+   Filter/sort/page go through classes(id, {filter, sort, page}); the row's
+   "viz ▸" button opens the viz popup (switch kinds inside the popup — see
+   viz/common.js); Analyze queues a server job (the jobs panel shows progress)
+   and the table refreshes once the job finishes.
+
+   Loading never hides the card (hiding it would steal focus from the filter
+   input mid-typing): the first load paints shimmer skeleton rows, later loads
+   dim the stale rows (.busy) until the new page arrives. Sort is bidirectional:
+   clicking the active column toggles its direction ('s' vs '-s'). */
 import {esc, fmtB, fmtN, catOf} from '../../data/http.js';
 import {listDumps, pollJobs} from '../../data/dumprepo.js';
 import * as ddr from '../../data/dumpdatarepo.js';
@@ -25,11 +31,13 @@ export async function dumpNotReady(id){
   return null;
 }
 
+/* sortable columns: key without direction; '-' prefix = descending.
+   Defaults: name ascends, numeric columns descend. */
 const COLS = [
-  ['name', 'class'], ['-c', 'objects'], ['-s', 'shallow'], ['-pi', 'per inst'],
+  ['name', 'class'], ['c', 'objects'], ['s', 'shallow'], ['pi', 'per inst'],
   ['r', 'retained'], [null, 'per inst'], [null, 'analysis'], [null, ''],
 ];
-const VIZ_KINDS = ['anatomy', 'hierarchy', 'graph'];
+const PAGE_COLS = 8;
 
 export function mount(container, repo, opts = {}){
   const R = repo || ddr;                 // INLINE mode passes makeInlineRepo()
@@ -72,6 +80,34 @@ export function mount(container, repo, opts = {}){
   }
   function setNote(text){ note.textContent = text; }
 
+  function headHtml(){
+    return '<tr>' + COLS.map(([s, l]) => {
+      if(!s) return `<th>${l}</th>`;
+      const on = st.sort === s || st.sort === '-' + s;
+      const arrow = on ? (st.sort.startsWith('-') ? ' ▾' : ' ▴') : '';
+      return `<th class="sortable${on ? ' on' : ''}" data-s="${s}">${l}${arrow}</th>`;
+    }).join('') + '</tr>';
+  }
+
+  /* loading state: shimmer skeleton when there's nothing to show yet,
+     dimmed stale rows otherwise — the card (and filter focus) never moves */
+  function setBusy(on){
+    scroll.classList.toggle('busy', on);
+    if(on && !st.rows.length){
+      const row = `<tr>${`<td><span class="skl"></span></td>`.repeat(PAGE_COLS)}</tr>`;
+      tbl.innerHTML = headHtml() + row.repeat(12);
+      count.textContent = '…';
+    }
+  }
+  function renderError(text){
+    tbl.innerHTML = headHtml() +
+      `<tr><td colspan="${PAGE_COLS}" class="pad err">${esc(text)}</td></tr>`;
+    count.textContent = '';
+    pageLbl.textContent = '';
+    prev.disabled = true;
+    next.disabled = true;
+  }
+
   /* ---- data ---- */
   async function load(){
     const my = ++st.seq;
@@ -90,14 +126,15 @@ export function mount(container, repo, opts = {}){
     const my = ++st.seq;
     const id = st.dump;
     if(!id){ showMsg('no dump selected — pick a dump in the selector above.'); return; }
-    showMsg('loading classes…');
+    hideMsg();
+    setBusy(true);
     const r = await R.classes(id, {filter: st.filter, sort: st.sort, page: st.page});
     if(my !== st.seq) return;
-    if(!r.ok){ showMsg(`${id}: ${r.error || 'failed to load classes'}`, true); return; }
+    setBusy(false);
+    if(!r.ok){ renderError(`${id}: ${r.error || 'failed to load classes'}`); return; }
     st.rows = r.data.rows || [];
     st.total = r.data.total || 0;
     st.pages = Math.max(1, r.data.pages || 1);
-    hideMsg();
     renderTable();
   }
 
@@ -115,27 +152,24 @@ export function mount(container, repo, opts = {}){
     // the class is analyzable but has no analysis artifacts yet.
     const anBtn = (!opts.inline && r.analyzable && !r.comp && !anat.length)
       ? `<button class="an-btn" data-an="${esc(disp)}">Analyze</button>` : '';
-    const viz = VIZ_KINDS.map(k =>
-      `<button class="vzbtn" data-viz="${k}" data-n="${esc(disp)}" title="open ${k} viz">${k}</button>`).join('');
+    const vizBtn = `<button class="vzbtn" data-viz="anatomy" data-n="${esc(disp)}" ` +
+      `title="open visualizations for this class (switch kinds inside the popup)">viz ▸</button>`;
     let h = `<tr>
       <td class="cname" data-n="${esc(disp)}"><span class="catdot ${cat}"></span><span title="${esc(pkg)}">${esc(name)}</span>${lam}</td>
       <td class="num">${fmtN(r.c || 0)}</td><td class="num">${fmtB(r.s || 0)}</td><td class="num">${fmtB(r.pi || 0)}</td>
       <td class="num">${r.r != null ? fmtB(r.r) : '—'}</td><td class="num">${r.r != null ? fmtB(r.r / Math.max(1, r.c || 1)) : '—'}</td>
       <td>${badges}</td>
-      <td class="acts">${viz}${anBtn}</td></tr>`;
-    if(r.lams) h += `<tr class="lamrow" data-lrow="${esc(disp)}"><td colspan="8">${
+      <td class="acts">${vizBtn}${anBtn}</td></tr>`;
+    if(r.lams) h += `<tr class="lamrow" data-lrow="${esc(disp)}"><td colspan="${PAGE_COLS}">${
       r.lams.map(l => `<div>${esc(String(l[0]))} — ${fmtN(l[1])} objs · ${fmtB(l[2])}</div>`).join('')}</td></tr>`;
     return h;
   }
 
   function renderTable(){
-    const head = '<tr>' + COLS.map(([s, l]) =>
-      s ? `<th class="sortable${st.sort === s ? ' on' : ''}" data-s="${s}">${l}</th>` : `<th>${l}</th>`
-    ).join('') + '</tr>';
     const body = st.total === 0
-      ? `<tr><td colspan="8" class="pad">no classes match the current filter.</td></tr>`
+      ? `<tr><td colspan="${PAGE_COLS}" class="pad">no classes match the current filter.</td></tr>`
       : st.rows.map(rowHtml).join('');
-    tbl.innerHTML = head + body;
+    tbl.innerHTML = headHtml() + body;
     count.textContent = `${fmtN(st.total)} classes`;
     pageLbl.textContent = `${st.page + 1}/${st.pages}`;
     prev.disabled = st.page <= 0;
@@ -192,7 +226,17 @@ export function mount(container, repo, opts = {}){
     const t = e.target;
     if(!t || !t.closest) return;
     const th = t.closest('th.sortable');
-    if(th){ st.sort = th.dataset.s; st.page = 0; loadPage(); return; }
+    if(th){
+      const key = th.dataset.s;
+      const active = st.sort === key || st.sort === '-' + key;
+      // repeat click on the active column toggles direction; a new column gets
+      // its default (name ascends, numeric columns descend)
+      st.sort = active ? (st.sort.startsWith('-') ? key : '-' + key)
+                       : (key === 'name' ? key : '-' + key);
+      st.page = 0;
+      loadPage();
+      return;
+    }
     const lam = t.closest('.lamexp');
     if(lam){
       const row = tbl.querySelector(`tr.lamrow[data-lrow="${CSS.escape(lam.dataset.l)}"]`);
@@ -209,6 +253,7 @@ export function mount(container, repo, opts = {}){
 
   onDumpChange(() => {
     st.filter = ''; filter.value = ''; st.sort = '-s'; st.page = 0;
+    st.rows = []; st.total = 0;
     load();
   });
   load();

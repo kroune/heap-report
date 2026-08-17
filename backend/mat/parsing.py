@@ -160,8 +160,8 @@ def _anat_srcs(data_dir, key, K):
 
 
 def _anat_src_load(data_dir, key, srcs, meta):
-    """Parse one anatomy extraction (nodes/fields/edges/strings). Shared by the v1
-    and v2 builders — the parse only runs on a payload-cache miss."""
+    """Parse one anatomy extraction (nodes/fields/edges/strings) into the src dict
+    the tree builder consumes — the parse only runs on a payload-cache miss."""
     nodes_p, fields_p, edges_p, efull_p, strings_p, side = srcs[0], srcs[1], srcs[2], srcs[3], srcs[4], srcs[5]
     nodes, addr2id = {}, {}
     for r in _read_csv(nodes_p)[1:]:
@@ -170,8 +170,8 @@ def _anat_src_load(data_dir, key, srcs, meta):
             addr = int(r[1], 16) if r[1].startswith("0x") else 0
             nodes[oid] = {"addr": addr, "cls": r[2], "used": int(r[3]), "ret": int(r[4])}
             addr2id[addr] = oid
-    # refs/prims keep the SKIP_FIELD flag instead of dropping the fields: v1 filters
-    # them out (historic behavior), v2 traverses them (this$0 etc. are real holders)
+    # refs/prims keep the SKIP_FIELD flag instead of dropping the fields: synthetic
+    # fields (this$0 etc.) are real holders and get traversed, flagged sk
     refs, prims = {}, {}
     if os.path.exists(fields_p):
         for r in _read_csv(fields_p)[1:]:
@@ -215,20 +215,17 @@ def _anat_src_load(data_dir, key, srcs, meta):
             "strings": strings, "ids": [int(x) for x in ids]}
 
 
-def _split_refs(src, v2):
-    """Field views of the parsed extraction. v1: skipped fields (__/this$…) are
-    dropped entirely and named refs are (name, tid) pairs. v2: skipped refs stay in
-    the adjacency with their flag (name, tid, sk); allrefs still excludes them."""
+def _split_refs(src):
+    """Field views of the parsed extraction. Skipped (synthetic) refs (__/this$…)
+    stay in the adjacency with their flag (name, tid, sk) — they are real holders;
+    allrefs still excludes them."""
     named, allrefs, prims = {}, {}, {}
     for oid, lst in src["refs"].items():
         for name, tgt, sk in lst:
             if not sk:
                 allrefs.setdefault(oid, []).append((name, tgt))
             if tgt in src["addr2id"]:
-                if v2:
-                    named.setdefault(oid, []).append((name, src["addr2id"][tgt], sk))
-                elif not sk:
-                    named.setdefault(oid, []).append((name, src["addr2id"][tgt]))
+                named.setdefault(oid, []).append((name, src["addr2id"][tgt], sk))
     for oid, lst in src["prims"].items():
         ps = [(n, v) for n, v, sk in lst if not sk]
         if ps:

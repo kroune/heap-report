@@ -39,6 +39,7 @@ def build_app(root: str, source_repo: str = SOURCE_REPO,
     store.indexer = engine.submit_bootstrap
     for src in (store, gh):
         src.init()
+    store.recover_interrupted()   # resubmit work orphaned by a previous process
     return core.App(store, engine, jobs, [store, gh])
 
 

@@ -14,8 +14,8 @@
  *             lams = [[name,c,s],...]|null           -> mapped to class rows below
  *   comps:   {className: compositionPayload}         only analyzed classes
  *                                                    -> composition().data
- *   anats:   {className: anatomyV1Payload}           only analyzed classes,
- *             default sample count                   -> anatomy(version 1).data
+ *   anats:   {className: anatomyPayload}             only analyzed classes,
+ *             default sample count                   -> anatomy().data
  * }
  *
  * Class rows are mapped to the server class-table shape
@@ -60,9 +60,9 @@ export function makeInlineRepo(payload) {
     return c ? {ok:true, data: c} : NOT_ANALYZED;
   };
 
-  /* only anatomy v1 at the default sample count is inlined */
-  const anatomy = async (id, className, {version = 1, samples = null} = {}) => {
-    const a = version === 1 ? payload.anats[className] : null;
+  /* anatomy at the default sample count is inlined */
+  const anatomy = async (id, className, {samples = null} = {}) => {
+    const a = samples == null ? payload.anats[className] : null;
     return a ? {ok:true, data: a} : NOT_ANALYZED;
   };
 

@@ -6,13 +6,21 @@
  * (last ~10 lines; full log in a <details>), error in red (.job-err).
  *
  * The DOM is rebuilt at most once per poll tick: each render builds a fresh
- * tree off-DOM and swaps it in with a single replaceChildren(). Expanded
- * full-log <details> survive rebuilds (their open state is kept in a per-mount
- * Set, not in the DOM).
+ * tree off-DOM and swaps it in with a single replaceChildren(). Rebuilds are
+ * invisible to the user:
+ *  - expanded full-log <details> survive (open state in a per-mount Set),
+ *  - scrollTop of every log <pre> survives (saved before the swap, restored
+ *    after the new tree is ATTACHED — scrollTop does not stick on detached
+ *    elements, keyed by job id + tail/full),
+ *  - jobs already done/failed on the FIRST poll are pre-dismissed: they
+ *    finished before this page loaded, re-showing them on every reload is
+ *    noise (jobs that finish while the page is open still appear),
+ *  - each card has a close button; dismissed job ids are kept in a per-mount
+ *    Set and skipped (UI-only — the job itself keeps running).
  *
  * All styling lives in the shell css (app.css, owner: shell) — classes used:
- *   jobs, jobs-empty, job-card, job-head, job-kind, job-kind-<kind>,
- *   job-title, job-state, job-state-<state>, job-prog, job-prog-track,
+ *   jobs-empty, job-card, job-done, job-failed, job-head, job-kind, job-title,
+ *   job-state, job-state-<state>, job-close, job-prog, job-prog-track,
  *   job-prog-bar, job-prog-label, job-log, job-log-full, job-err
  * The only inline style is the progress bar width (a dynamic layout value).
  */
@@ -21,15 +29,23 @@ import {pollJobs} from "../data/dumprepo.js";
 
 const LOG_TAIL = 10;
 
-function jobCard(job, openLogs, onToggleLog) {
+function logPre(jobId, which, lines) {
+  const pre = document.createElement("pre");
+  pre.className = "job-log";
+  pre.dataset.jlog = jobId + ":" + which;   // scroll-restoration key
+  pre.textContent = lines;
+  return pre;
+}
+
+function jobCard(job, ui) {
   const card = document.createElement("div");
-  card.className = "job-card";
+  card.className = "job-card job-" + job.state;
 
   const head = document.createElement("div");
   head.className = "job-head";
 
   const kind = document.createElement("span");
-  kind.className = "job-kind job-kind-" + job.kind;
+  kind.className = "job-kind";
   kind.textContent = job.kind;
   head.appendChild(kind);
 
@@ -44,6 +60,13 @@ function jobCard(job, openLogs, onToggleLog) {
   state.textContent = job.state;
   head.appendChild(state);
   card.appendChild(head);
+
+  const close = document.createElement("button");
+  close.className = "job-close";
+  close.textContent = "×";
+  close.title = "dismiss (the job keeps running)";
+  close.addEventListener("click", () => ui.dismiss(job.id));
+  card.appendChild(close);
 
   const p = job.progress;
   if (p && p.total > 0) {
@@ -73,24 +96,24 @@ function jobCard(job, openLogs, onToggleLog) {
 
   const log = Array.isArray(job.log) ? job.log : [];
   if (log.length) {
-    const tail = document.createElement("pre");
-    tail.className = "job-log";
-    tail.textContent = log.slice(-LOG_TAIL).join("\n");
-    card.appendChild(tail);
+    card.appendChild(logPre(job.id, "tail", log.slice(-LOG_TAIL).join("\n")));
     if (log.length > LOG_TAIL) {
       const det = document.createElement("details");
       det.className = "job-log-full";
-      if (openLogs.has(job.id)) {
+      if (ui.openLogs.has(job.id)) {
         det.open = true;
       }
-      det.addEventListener("toggle", () => onToggleLog(job.id, det.open));
+      det.addEventListener("toggle", () => {
+        if (det.open) {
+          ui.openLogs.add(job.id);
+        } else {
+          ui.openLogs.delete(job.id);
+        }
+      });
       const sum = document.createElement("summary");
       sum.textContent = `full log (${log.length} lines)`;
       det.appendChild(sum);
-      const full = document.createElement("pre");
-      full.className = "job-log";
-      full.textContent = log.join("\n");
-      det.appendChild(full);
+      det.appendChild(logPre(job.id, "full", log.join("\n")));
       card.appendChild(det);
     }
   }
@@ -98,28 +121,47 @@ function jobCard(job, openLogs, onToggleLog) {
 }
 
 export function mountJobs(container) {
-  const openLogs = new Set();   // job ids whose full-log <details> is expanded
+  let lastJobs = [];
+  let firstPoll = true;
+  const ui = {
+    openLogs: new Set(),   // job ids whose full-log <details> is expanded
+    dismissed: new Set(),  // job ids hidden via the close button
+    scrolls: new Map(),    // "id:tail"|"id:full" -> scrollTop, survives rebuilds
+    dismiss(id) { this.dismissed.add(id); render(lastJobs); },
+  };
 
   function render(jobs) {
+    lastJobs = jobs;
+    if (firstPoll) {
+      firstPoll = false;
+      // jobs that already finished before this page loaded: pre-dismiss —
+      // they are history, not news (running/queued ones still show)
+      for (const j of jobs || []) {
+        if (j.state === "done" || j.state === "failed") ui.dismissed.add(j.id);
+      }
+    }
+    // save log scroll positions before the swap
+    for (const pre of container.querySelectorAll(".job-log[data-jlog]")) {
+      if (pre.scrollTop) ui.scrolls.set(pre.dataset.jlog, pre.scrollTop);
+      else ui.scrolls.delete(pre.dataset.jlog);
+    }
+    const visible = (jobs || []).filter(j => !ui.dismissed.has(j.id));
     const root = document.createElement("div");
-    root.className = "jobs";
-    if (!jobs || !jobs.length) {
+    if (!visible.length) {
       const empty = document.createElement("div");
       empty.className = "jobs-empty";
       empty.textContent = "no jobs";
       root.appendChild(empty);
     } else {
-      for (const job of jobs) {
-        root.appendChild(jobCard(job, openLogs, (id, open) => {
-          if (open) {
-            openLogs.add(id);
-          } else {
-            openLogs.delete(id);
-          }
-        }));
-      }
+      for (const job of visible) root.appendChild(jobCard(job, ui));
     }
     container.replaceChildren(root);   // the single DOM mutation per poll tick
+    // restore log scroll positions AFTER attach (scrollTop doesn't stick on
+    // detached elements — setting it pre-attach clamps to 0)
+    for (const pre of container.querySelectorAll(".job-log[data-jlog]")) {
+      const st = ui.scrolls.get(pre.dataset.jlog);
+      if (st) pre.scrollTop = st;
+    }
   }
 
   return pollJobs(render);

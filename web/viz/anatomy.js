@@ -1,12 +1,7 @@
-/* viz/anatomy.js — anatomy viz, ONE module for both versions (replaces the old
- * treeHTML/tree2HTML copy-paste). prepare() fetches v1 and v2 (same extraction
- * backs both — v2 is the full-graph rebuild of the same CSVs), the UI switches
- * version via a segment. The row/tree renderer is parameterized on the version;
- * the deliberate payload differences are preserved:
- *   v1 nodes: {name, full, n, s, r, pres?, kids}  — no refs, no sk
- *   v2 nodes: + refs (only when refs > n, i.e. shared within the set), sk flag
- *             on synthetic fields, cause-grouped `untracked`, fullEdges/depth,
- *             and the class-level reference `graph` (teaser links the graph viz)
+/* viz/anatomy.js — anatomy viz: the full-graph reference tree of one class's
+ * union retained set over K sampled instances (complete outbounds, synthetic
+ * fields traversed and dimmed, ⇆ inbound-ref counts, cause-grouped untracked
+ * remainder, class-level reference graph teaser).
  *
  * viewModel (contract for the snapshot author + graph agent):
  * {
@@ -15,15 +10,13 @@
  * } OR {
  *   className, dumpId, analyzed: true,
  *   samplesParam,                          // samples= param this prepare used (null = server default)
- *   version,                               // 2 when v2 available, else 1 (initial view)
  *   objCount, shallow, retained,           // the class itself, from trees() leaves (0/0/null if not found)
  *   compTotalShallow,                      // composition().totalShallow, null when not analyzed for composition
- *   v1: {tree, samples, available, roots},
- *   v2: {tree, samples, available, roots, untracked, fullEdges, depth, graph} | null,
+ *   anat: {tree, samples, available, roots, untracked, fullEdges, depth, graph},
  * }
  */
 
-import { buildSeg, fmtB, fmtN, catOf, scaleFactor, orThrow } from './common.js';
+import { buildSeg, fmtB, fmtN, catOf, scaleFactor } from './common.js';
 
 export const kind = 'anatomy';
 
@@ -52,23 +45,22 @@ export function findClassStats(trees, className) {
   return out;
 }
 
-/* Row display model for one tree node. o = {v2, G, Mf, K, totRet, objCount}.
-   v1 ignores refs/sk entirely (load-bearing difference); the v1 flat
-   "(held via untracked/shared refs)" bucket and any "(external)" shared row
-   get a dimmed "—" retained cell in global mode (not meaningful per-instance). */
+/* Row display model for one tree node. o = {G, Mf, K, totRet, objCount}.
+   The "(shared — held by others too)" bucket gets a dimmed "—" retained cell in
+   global mode (not meaningful per-instance). "· N more" fold nodes carry their
+   overflow kids inside — plain expandables, no special-casing here. */
 export function buildRowModel(n, o) {
   const prim = n.full === '(field)';
   const shared = n.full === '(external)';
-  const untracked = !o.v2 && n.name === '(held via untracked/shared refs)';
-  const dimRet = o.G && (shared || untracked);
+  const dimRet = o.G && shared;
   const rv = n.r * o.Mf;
   const pct = 100 * rv / o.totRet;
   return {
-    cls: prim ? 'prim' : shared ? 'shared' : (o.v2 && n.sk ? 'sk' : ''),
+    cls: prim ? 'prim' : shared ? 'shared' : (n.sk ? 'sk' : ''),
     cat: catOf(n.full || ''),
     expandable: !!(n.kids && n.kids.length),
     pres: n.pres != null ? { in: n.pres, of: o.K } : null,
-    refs: o.v2 && n.refs != null ? n.refs : null,
+    refs: n.refs != null ? n.refs : null,
     count: o.G ? fmtN(n.n / o.K) : String(n.n),
     objects: o.G ? `≈ ${fmtN(n.n * o.Mf)}` : fmtN(n.n),
     shallow: o.G ? `≈ ${fmtB(n.s * o.Mf)}` : fmtB(n.s),
@@ -77,12 +69,12 @@ export function buildRowModel(n, o) {
     retained: dimRet ? '—' : o.G ? `≈ ${fmtB(rv)}` : fmtB(n.r),
     retPct: !dimRet && o.G && pct >= 0.05 ? `${pct.toFixed(0)}%` : '',
     retPctTitle: pct.toFixed(1),
-    skTitle: o.v2 && n.sk
-      ? `held via a synthetic field (${n.name.split(':')[0]}) — hidden in the v1 tree` : '',
+    skTitle: n.sk
+      ? `held via a synthetic field (${n.name.split(':')[0]})` : '',
   };
 }
 
-/* v2 untracked group header line. */
+/* Untracked group header line. */
 export function untrackedSummary(g, o) {
   return {
     name: g.tree.name,
@@ -96,29 +88,25 @@ export function untrackedSummary(g, o) {
 
 export async function prepare(repo, dumpId, className, params = {}) {
   const samples = params.samples != null ? params.samples : null;
-  const [r1, r2, rc, rt] = await Promise.all([
-    repo.anatomy(dumpId, className, { version: 1, samples }),
-    repo.anatomy(dumpId, className, { version: 2, samples }),
+  const [ra, rc, rt] = await Promise.all([
+    repo.anatomy(dumpId, className, { samples }),
     repo.composition(dumpId, className),
     repo.trees(dumpId),
   ]);
-  if (!r1.ok) {
-    if (r1.status === 404 && r1.data && r1.data.analyzed === false)
+  if (!ra.ok) {
+    if (ra.status === 404 && ra.data && ra.data.analyzed === false)
       return { className, dumpId, analyzed: false, samplesParam: samples };
-    throw new Error(r1.error || `anatomy request failed (HTTP ${r1.status})`);
+    throw new Error(ra.error || `anatomy request failed (HTTP ${ra.status})`);
   }
-  const v1 = r1.data;
-  const v2 = r2.ok ? r2.data : null;   // same extraction backs both; tolerate absence
   const comp = rc.ok ? rc.data : null;
   const st = rt.ok ? findClassStats(rt.data.trees, className) : null;
   return {
     className, dumpId, analyzed: true, samplesParam: samples,
-    version: v2 ? 2 : 1,
     objCount: st ? st.c : 0,
     shallow: st ? st.s : 0,
     retained: st ? st.r : null,
     compTotalShallow: comp ? comp.totalShallow : null,
-    v1, v2,
+    anat: ra.data,
   };
 }
 
@@ -205,35 +193,45 @@ export function render(container, vm, ctx) {
   if (!vm.analyzed) {
     const d = el('div', 'viz-empty');
     d.appendChild(el('div', '', 'No anatomy extracted for this class yet.'));
-    const hint = el('div', 'hint');
-    hint.appendChild(document.createTextNode('Run an analysis with anatomy enabled — '));
-    hint.appendChild(el('b', '', 'Analyze button in the classes tab'));
-    hint.appendChild(document.createTextNode('.'));
-    d.appendChild(document.createElement('br'));
-    d.appendChild(hint);
+    if (ctx.analyze) {
+      // server mode: analyze in place — no trip to the classes tab
+      const b = el('button', 'viz-anbtn', 'Analyze this class');
+      const status = el('div', 'viz-anstatus');
+      b.addEventListener('click', () => {
+        b.disabled = true;
+        ctx.analyze((text, isErr) => {
+          status.textContent = text;
+          status.classList.toggle('err', !!isErr);
+          if (isErr) b.disabled = false;
+        });
+      });
+      d.appendChild(b);
+      d.appendChild(status);
+    } else {
+      const hint = el('div', 'hint');
+      hint.appendChild(document.createTextNode('Run an analysis with anatomy enabled — '));
+      hint.appendChild(el('b', '', 'Analyze button in the classes tab'));
+      hint.appendChild(document.createTextNode('.'));
+      d.appendChild(document.createElement('br'));
+      d.appendChild(hint);
+    }
     container.appendChild(d);
     return;
   }
 
-  const view = { version: vm.v2 ? vm.version : 1, scale: 'global' };
+  const view = { scale: 'global' };
 
   const paint = () => {
     container.textContent = '';
-    const a = view.version === 2 ? vm.v2 : vm.v1;
+    const a = vm.anat;
     const K = a.samples;
     const G = view.scale === 'global';
     const Mf = scaleFactor(vm.objCount, K);
     const totRet = Math.max(1, vm.compTotalShallow != null ? vm.compTotalShallow : a.tree.r * Mf);
-    const o = { v2: view.version === 2, G, Mf, K, totRet, objCount: vm.objCount };
+    const o = { G, Mf, K, totRet, objCount: vm.objCount };
 
-    // toolbar: version segment (only when v2 exists) + scale + extraction picker
+    // toolbar: scale + extraction picker
     const tools = el('div', 'viz-tools');
-    if (vm.v2) {
-      tools.appendChild(buildSeg([
-        { value: 1, label: 'v1 reference tree' },
-        { value: 2, label: 'v2 full graph' },
-      ], view.version, v => { view.version = v; paint(); }));
-    }
     tools.appendChild(buildSeg([
       { value: 'sample', label: `${K} sample instances` },
       { value: 'global', label: `× ${fmtN(vm.objCount)} instances (estimated)` },
@@ -253,9 +251,9 @@ export function render(container, vm, ctx) {
     // header + tree
     const head = el('div', 'arow head');
     head.appendChild(el('div', '',
-      (o.v2 ? 'reference tree v2' : 'reference tree') +
-      (G ? ' — extrapolated to all instances' : '') +
-      ` (${o.v2 ? 'full graph over the ' : ''}union retained set of ${K} samples)`));
+      'reference tree (full graph over the ' +
+      `union retained set of ${K} samples)` +
+      (G ? ' — extrapolated to all instances' : '')));
     head.appendChild(el('div', 'num', 'objects'));
     head.appendChild(el('div', 'num', 'shallow'));
     head.appendChild(el('div', 'num', 'per instance'));
@@ -263,42 +261,39 @@ export function render(container, vm, ctx) {
     container.appendChild(head);
     container.appendChild(nodeEl(a.tree, o, 0));
 
-    if (o.v2) {
-      if (a.untracked && a.untracked.length) {
-        container.appendChild(el('h3', 'sec',
-          `Still unreachable (${a.untracked.length} group${a.untracked.length > 1 ? 's' : ''}) — with their structure, not flat`));
-        for (const g of a.untracked) {
-          const s = untrackedSummary(g, o);
-          const grp = el('div', 'ugrp');
-          grp.appendChild(el('b', '', s.name));
-          grp.appendChild(document.createTextNode(
-            ` — ${s.objects} objects · ${s.shallow} shallow · ${s.retained} retained`));
-          container.appendChild(grp);
-          const kids = el('div', 'anode open');
-          for (const k of g.tree.kids || []) kids.appendChild(nodeEl(k, o, 1));
-          container.appendChild(kids);
-        }
-      } else {
-        container.appendChild(el('div', 'ugrp',
-          'Every object in the retained set is reachable in the tree above — no untracked remainder.' +
-          (a.fullEdges ? '' : ' (Warning: no edgesfull extraction found — re-run the analysis, big arrays may still be hiding children.)')));
+    if (a.untracked && a.untracked.length) {
+      container.appendChild(el('h3', 'sec',
+        `Still unreachable (${a.untracked.length} group${a.untracked.length > 1 ? 's' : ''}) — with their structure, not flat`));
+      for (const g of a.untracked) {
+        const s = untrackedSummary(g, o);
+        const grp = el('div', 'ugrp');
+        grp.appendChild(el('b', '', s.name));
+        grp.appendChild(document.createTextNode(
+          ` — ${s.objects} objects · ${s.shallow} shallow · ${s.retained} retained`));
+        container.appendChild(grp);
+        const kids = el('div', 'anode open');
+        for (const k of g.tree.kids || []) kids.appendChild(nodeEl(k, o, 1));
+        container.appendChild(kids);
       }
-      // class-level graph teaser → the graph viz
-      if (a.graph && a.graph.nodes && a.graph.nodes.length) {
-        const t = el('div', 'viz-teaser');
-        t.appendChild(document.createTextNode(
-          `class-level reference graph: ${fmtN(a.graph.nodes.length)} classes · ${fmtN(a.graph.links.length)} connections `));
-        const b = el('button', '', 'open graph ▸');
-        b.addEventListener('click', () => ctx.onOpenViz('graph', vm.dumpId, vm.className));
-        t.appendChild(b);
-        container.appendChild(t);
-      }
+    } else {
+      container.appendChild(el('div', 'ugrp',
+        'Every object in the retained set is reachable in the tree above — no untracked remainder.' +
+        (a.fullEdges ? '' : ' (Warning: no edgesfull extraction found — re-run the analysis, big arrays may still be hiding children.)')));
+    }
+    // class-level graph teaser → the graph viz
+    if (a.graph && a.graph.nodes && a.graph.nodes.length) {
+      const t = el('div', 'viz-teaser');
+      t.appendChild(document.createTextNode(
+        `class-level reference graph: ${fmtN(a.graph.nodes.length)} classes · ${fmtN(a.graph.links.length)} connections `));
+      const b = el('button', '', 'open graph ▸');
+      b.addEventListener('click', () => ctx.onOpenViz('graph', vm.dumpId, vm.className));
+      t.appendChild(b);
+      container.appendChild(t);
     }
 
     const note = el('div', 'viz-note');
-    note.textContent = o.v2
-      ? `v2 over the full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it).`
-      : `×N = occurrences across the ${K} samples; "in k/K" = field non-null in k of the ${K} sampled instances (a field missing from some instances is normal — lazily created). "(shared)" = referenced but owned by someone else, so its bytes are not inside this class's retained set.`;
+    note.textContent =
+      `Full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it). "· N more" folds the smaller kids of one node — click ▸ to expand. ×N = occurrences across the ${K} samples; "in k/K" = field non-null in k of the ${K} sampled instances (a field missing from some instances is normal — lazily created). "(shared)" = referenced but owned by someone else, so its bytes are not inside this class's retained set.`;
     container.appendChild(note);
   };
 

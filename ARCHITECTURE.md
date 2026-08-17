@@ -54,7 +54,7 @@ The whole contract surface. Types and interfaces only:
 - `Indexer` — produce derived data (histogram + dominators + MAT indexes):
   - `RemoteIndexer` (fetch prebuilt from a source), `LocalIndexer` (run MAT)
 - `QueryEngine` — per-dump read queries (stats, trees, classes, composition,
-  anatomy v1/v2, compare); owns all payload caches, invalidated on state
+  anatomy, compare); owns all payload caches, invalidated on state
   transitions
 - `Job` — `{id, kind, dump, state: queued|running|done|failed, progress, log, error}`
   and `JobRegistry` (create, list, get). One job model for everything:
@@ -139,7 +139,7 @@ POST   /api/dumps/{id}/retry
 DELETE /api/dumps/{id}
 GET    /api/dumps/{id}/stats|trees|classes
 GET    /api/dumps/{id}/composition?class=…
-GET    /api/dumps/{id}/anatomy?class=…&v=1|2
+GET    /api/dumps/{id}/anatomy?class=…&samples=…
 GET    /api/compare?a=…&b=…
 GET    /api/jobs                       all jobs w/ state, progress, log tail
 ```
@@ -186,5 +186,5 @@ Hard requirements that remain:
 - No framework, no bundler, no new runtime deps.
 - No speculative parameters on core interfaces "for future sources" — the
   interface serves the two real impls (local, GitHub).
-- Shared logic is extracted, never copied (backend v1/v2 pairs, frontend viz).
+- Shared logic is extracted, never copied (backend payload builders, frontend viz).
 - Every async UI path renders an error state; nothing spins forever.

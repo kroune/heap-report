@@ -8,6 +8,7 @@ from backend.mat.parsing import (_merge_fams, _parse_dom, _parse_fields_dump,
                                  _parse_hist, cat_of, norm_lambda, split_pkg)
 from backend.mat.payloads import (HIST_MIN_SHALLOW, _anatomy_build,
                                   _anatomy_diff, _class_table_build,
+                                  _finish_agg, _flatten_anat, _new_agg,
                                   _trees_build, _waterfall)
 from backend.mat.extract import sample_even, subselect, suffix
 
@@ -97,8 +98,8 @@ class TestAnatomyAndCompare(unittest.TestCase):
         "ids": [1],
     }
 
-    def test_anatomy_v1(self):
-        out = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 14, 40)
+    def test_anatomy(self):
+        out = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 32, 40)
         self.assertEqual(out["roots"], 1)
         tree = out["tree"]
         self.assertEqual(tree["n"], 1)
@@ -106,19 +107,41 @@ class TestAnatomyAndCompare(unittest.TestCase):
         self.assertIn('name: "hello"', kids)
         self.assertEqual(kids['name: "hello"']["pres"], 1)   # non-null in 1/1 samples
         self.assertIn("count: 5", kids)
-        self.assertNotIn("refs", tree)   # v1 nodes never carry refs
+
+    def test_finish_agg_fold_keeps_kids(self):
+        root = _new_agg("root", "com.x.Root")
+        for i in range(5):   # r descending: k0=50 … k4=10
+            k = _new_agg(f"k{i}", "com.x.K")
+            k["n"], k["s"], k["r"] = 1, 10 * (5 - i), 10 * (5 - i)
+            root["kids"][f"k{i}"] = k
+        out = _finish_agg(root, 3)
+        self.assertEqual([k["name"] for k in out["kids"]],
+                         ["k0", "k1", "k2", "· 2 more"])
+        more = out["kids"][-1]
+        self.assertEqual(more["r"], 30)   # fold sums the overflow…
+        self.assertEqual([k["name"] for k in more["kids"]], ["k3", "k4"])   # …and keeps it
 
     def test_anatomy_diff(self):
-        a = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 14, 40)
+        a = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 32, 40)
         b_src = dict(self.SRC, nodes={**self.SRC["nodes"],
                                       1: {"addr": 0x100, "cls": "com.x.Holder",
                                           "used": 24, "ret": 300}})
-        b = _anatomy_build(b_src, "com.x.Holder", 1, [1], 14, 40)
+        b = _anatomy_build(b_src, "com.x.Holder", 1, [1], 32, 40)
         d = _anatomy_diff(a, b)
         self.assertIsNotNone(d)
         holder_rows = [r for r in d["rows"] if r[0].endswith("/Holder")]
         self.assertTrue(holder_rows)
         self.assertEqual(holder_rows[0][6], 200)   # Δ retained
+
+    def test_anatomy_diff_fold_transparent(self):
+        # max_kids=1 forces "· N more" folds; the diff must match the unfolded one
+        a = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 32, 1)
+        b = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 32, 40)
+        self.assertEqual(_anatomy_diff(a, b)["rows"], [])   # identical trees → no rows…
+        fa, fb = {}, {}
+        _flatten_anat(a["tree"], "", fa)
+        _flatten_anat(b["tree"], "", fb)
+        self.assertEqual(fa, fb)                      # …and identical flattening
 
     def test_waterfall_tails(self):
         rows = [[f"c{i}", 0, 0, 0, 0, 0, (i - 12) * 100] for i in range(25)]

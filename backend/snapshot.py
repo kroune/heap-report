@@ -46,7 +46,7 @@ web/data/inlinerepo.js (that module owns the shape):
              r = retained bytes|null, comp = 0/1, anat = [sampleCounts],
              lams = [[name,c,s],...]|null
     comps    {className: composition payload}        — analyzed classes only
-    anats    {className: anatomy-v1 payload}         — analyzed classes only
+    anats    {className: anatomy payload}            — analyzed classes only
 """
 from __future__ import annotations
 
@@ -116,7 +116,7 @@ def collect_payload(engine, dump_id):
             if c is not None:
                 comps[disp] = c
         if row.get("anat"):
-            a = engine.anatomy(dump_id, disp, version=1)   # inlinerepo inlines v1 only
+            a = engine.anatomy(dump_id, disp)
             if a is not None:
                 anats[disp] = a
     classes = [[r["disp"], r["c"], r["s"], r["r"], 1 if r["comp"] else 0,

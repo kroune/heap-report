@@ -149,8 +149,14 @@ export function mount(container, repo, opts = {}){
   /* ---- render ---- */
   function render(){
     if(!st.data) return;
+    /* Measure the svg itself: the pane is display:none while another tab is
+       active (clientWidth 0 → skip; the ResizeObserver refires when the pane
+       becomes visible again). The viewBox must match the CSS box exactly —
+       a stale width would letterbox the whole map into a small centered strip. */
+    const W = Math.round(svg.clientWidth);
+    if(!W) return;
+    const H = Math.round(svg.clientHeight) || 620;
     const root = treeRoot();
-    const W = container.clientWidth || 900, H = 620;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
     svg.innerHTML = '';
     const kids = (root && root.children) || [];
@@ -174,19 +180,19 @@ export function mount(container, repo, opts = {}){
       r.setAttribute('fill', shade(CAT_HEX[catOfNode(node)] || CAT_HEX.other, node.name || ''));
       r.setAttribute('rx', 2);
       g.appendChild(r);
-      if(b.w > 46 && b.h > 15){
+      if(b.w > 52 && b.h > 18){
         const t = document.createElementNS(NS, 'text');
-        t.setAttribute('x', b.x + 5); t.setAttribute('y', b.y + 14);
-        t.setAttribute('font-size', '11'); t.setAttribute('opacity', '.92');
-        const maxCh = Math.floor((b.w - 10) / 6.6);
+        t.setAttribute('x', b.x + 6); t.setAttribute('y', b.y + 17);
+        t.setAttribute('font-size', '13'); t.setAttribute('opacity', '.92');
+        const maxCh = Math.floor((b.w - 12) / 7.8);
         let label = String(node.name || '').split('.').pop();
         if(label.length > maxCh) label = label.slice(0, Math.max(1, maxCh - 1)) + '…';
         t.textContent = label;
         g.appendChild(t);
-        if(b.h > 30){
+        if(b.h > 36){
           const v = document.createElementNS(NS, 'text');
-          v.setAttribute('x', b.x + 5); v.setAttribute('y', b.y + 27);
-          v.setAttribute('font-size', '10'); v.setAttribute('opacity', '.65');
+          v.setAttribute('x', b.x + 6); v.setAttribute('y', b.y + 32);
+          v.setAttribute('font-size', '11.5'); v.setAttribute('opacity', '.65');
           v.textContent = st.metric === 'c' ? fmtN(nodeValue(node, 'c')) : fmtB(nodeValue(node, st.metric));
           g.appendChild(v);
         }
@@ -255,7 +261,9 @@ export function mount(container, repo, opts = {}){
   }
 
   /* ---- wiring ---- */
-  addEventListener('resize', () => { if(st.data) render(); });
+  /* ResizeObserver (not window resize): fires for window resizes AND for the
+     pane becoming visible again after another tab was active (0 → real size). */
+  new ResizeObserver(() => { if(st.data) render(); }).observe(svg);
   onDumpChange(load);
   load();
 }

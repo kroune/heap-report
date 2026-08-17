@@ -69,16 +69,30 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   re-untar (it is idempotent). Older idx releases lack `files` → presence
   fallback + tar exit status.
 - A dump is a state machine (`core.DumpState`); the store persists `state` in
-  meta.json. Crash mid-download/assembly just means resuming later — the state
-  machine + `.dl/` contents are the recovery. Queries are served only in READY
-  (`dir_of` also hands out INDEXING dirs to the bootstrap job only).
+  meta.json. Jobs are process-lifetime, so a crash leaves a zombie busy state:
+  `store.recover_interrupted()` runs at server startup (kernel only — never
+  from `init()`, snapshot/CI stores are source-less and must not touch state)
+  and resubmits DOWNLOADING/ASSEMBLING/INDEXING dumps (`.dl/` parts resume,
+  assembly is idempotent), falling back to FAILED when no source can resume —
+  the UI also shows "Resume download" for a busy state with no live job.
+  Queries are served only in READY (`dir_of` also hands out INDEXING dirs to
+  the bootstrap job only).
 - GitHub release assets cap at 2 GiB: dumps ship as `daemon.hprof.gz.part-*`,
   indexes as `indexes.tar.part-*` (individual `*.index.zst` can exceed 2 GiB,
   so they're tarred first). Part order comes from an explicit parsed index,
   never name sorting.
 - Index mtime convention: a raw `.index` whose mtime matches its `.zst` is
-  untouched and can be dropped. **Never** run `ParseHeapDump.sh` against a
-  compacted dump except through `backend/mat/` (`MatRunner` restores first).
+  untouched and can be dropped. MAT's "is the index stale?" check is also
+  mtime-only: an hprof newer than `daemon.index` triggers a full reparse.
+  Re-assembled downloads stamp the hprof with "now" while pre-built indexes
+  keep their CI build time, so `MatRunner._pin_hprof` pins the hprof mtime to
+  the oldest index mtime and clears stale parse debris (`daemon.lock.index`,
+  `daemon.temp.*`) before every run — without it, two `_par` JVMs reparse at
+  once and die on "Concurrent parsing error". **Never** run
+  `ParseHeapDump.sh` against a compacted dump except through `backend/mat/`
+  (`MatRunner` restores first). `.matindex.lock` (flock) serializes this
+  across processes: compact/restore/pin take it exclusive, every MAT run
+  holds it shared for its whole lifetime.
 - Autocompact (kernel timer) re-compresses indexes when the MAT queue is idle.
 - GitHub unauthenticated REST is rate-limited to 60 req/h/IP — the source
   caches listings for 60 s; `gh auth login` lifts it.

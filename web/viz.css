@@ -8,83 +8,88 @@
 .viz-back.open{display:block}
 .viz-panel{position:relative;margin:2.5vh auto;width:min(1560px,96vw);height:94vh;background:var(--panel);border:1px solid var(--border);border-radius:12px;box-shadow:0 18px 60px rgba(0,0,0,.6);display:flex;flex-direction:column;overflow:hidden}
 .viz-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:15px 20px 11px;border-bottom:1px solid var(--border)}
-.viz-title{font-size:14.5px;font-weight:700;word-break:break-all;color:var(--link)}
-.viz-sub{font-size:12px;color:var(--dim);margin-top:4px}
-.viz-close{font-size:16px;line-height:1;padding:2px 9px}
+.viz-title{font-size:16px;font-weight:700;word-break:break-all;color:var(--link)}
+.viz-sub{font-size:13px;color:var(--dim);margin-top:4px}
+.viz-nav{margin:8px 0 0}
+.viz-close{font-size:17px;line-height:1;padding:3px 10px}
 .viz-body{flex:1;overflow-y:auto;padding:12px 20px}
 
 /* explicit states — every async path ends in one of these, never a silent spinner */
-.viz-loading{padding:26px 16px;color:var(--dim);font-size:12.5px}
-.viz-spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:vizspin .8s linear infinite;vertical-align:-2px;margin-right:8px}
+.viz-loading{padding:26px 16px;color:var(--dim);font-size:14px}
+.viz-spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:vizspin .8s linear infinite;vertical-align:-2px;margin-right:8px}
 @keyframes vizspin{to{transform:rotate(360deg)}}
-.viz-err{margin:16px;padding:10px 14px;background:#2a1512;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:12.5px;word-break:break-word}
-.viz-empty{padding:26px 16px;font-size:12.5px}
-.viz-note{padding:10px 0 4px;font-size:11px;color:var(--dim)}
-.viz-teaser{margin:16px 0 4px;font-size:12px;color:var(--dim)}
-.viz-teaser button{margin-left:8px;font-size:11px;padding:3px 10px}
+.viz-err{margin:16px;padding:10px 14px;background:#2a1512;border:1px solid var(--accent);border-radius:8px;color:var(--accent);font-size:14px;word-break:break-word}
+.viz-empty{padding:26px 16px;font-size:14px}
+.viz-anbtn{margin:10px 0 2px;font-size:13px}
+.viz-anstatus{font-size:12.5px;color:var(--dim);margin-top:6px}
+.viz-anstatus.err{color:var(--accent)}
+.viz-note{padding:10px 0 4px;font-size:12.5px;color:var(--dim)}
+.viz-teaser{margin:16px 0 4px;font-size:13px;color:var(--dim)}
+.viz-teaser button{margin-left:8px;font-size:12px;padding:3px 10px}
 .viz-tools{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:4px}
 .viz-extract{display:inline-flex;align-items:baseline;gap:8px}
 .viz-extract .anatseg{margin:0}
 
 /* ---------- segmented control (one builder: viz/common.js buildSeg) ---------- */
 .anatseg{display:flex;gap:0;margin:2px 0 10px;border:1px solid var(--border);border-radius:7px;overflow:hidden;width:max-content}
-.anatseg button{background:var(--panel2);border:0;color:var(--dim);padding:4px 12px;cursor:pointer;font-size:11px;border-radius:0}
+.anatseg button{background:var(--panel2);border:0;color:var(--dim);padding:5px 13px;cursor:pointer;font-size:12.5px;border-radius:0}
 .anatseg button.on{background:var(--accent);color:#111;font-weight:600}
 
 /* ---------- composition rows (.crow — used by composition renderers) ---------- */
-.crow{display:grid;grid-template-columns:minmax(240px,1.7fr) 170px 90px 90px 52px 92px;gap:10px;align-items:center;padding:4px 0;font-size:12px}
+.crow{display:grid;grid-template-columns:minmax(240px,1.7fr) 170px 90px 90px 52px 92px;gap:10px;align-items:center;padding:5px 0;font-size:13.5px}
 .crow .nm{word-break:break-word;line-height:1.3}
-.crow .nm .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.crow .nm .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px}
 .crow .track{background:rgba(255,255,255,.07);border-radius:3px;height:10px;overflow:hidden}
 .crow .bar{height:10px;border-radius:3px 0 0 3px;min-width:1px}
 .crow .num{text-align:right}
 .crow .pct{text-align:right;color:var(--dim)}
-.crow.head{color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+.crow.head{color:var(--dim);font-weight:600;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:6px;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
 .crow.other .nm{color:var(--dim);font-style:italic}
 
 /* ---------- anatomy tree ---------- */
 .anode{display:none;border-left:1px solid rgba(255,255,255,.06);margin-left:7px;padding-left:10px}
 .anode.open{display:block}
-.arow{display:grid;grid-template-columns:minmax(240px,1.7fr) 80px 90px 96px 130px;gap:10px;align-items:baseline;padding:2.5px 0;font-size:12px}
+.arow{display:grid;grid-template-columns:minmax(240px,1.7fr) 116px 90px 96px 130px;gap:10px;align-items:baseline;padding:3px 0;font-size:13.5px}
 .arow .nm{word-break:break-word;line-height:1.3}
-.arow .num{text-align:right;color:#c4ccd9}
+.arow .num{text-align:right;color:#c4ccd9;white-space:nowrap}
 .arow .num.dim{color:var(--dim)}
 .arow .per{color:var(--dim)}
-.arow.head{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:5px}
-.arow .pct{color:var(--dim);font-size:10px}
-.arow.prim .nm{color:var(--dim);font-size:11.5px}
+.arow.head{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);padding-bottom:6px;margin-bottom:5px}
+.arow .pct{color:var(--dim);font-size:11px}
+.arow.prim .nm{color:var(--dim);font-size:13px}
 .arow.shared .nm{font-style:italic;color:var(--dim)}
 .arow.sk .nm{color:var(--dim)}
-.tgl{display:inline-block;width:16px;cursor:pointer;color:var(--link);user-select:none;text-align:center}
+.tgl{display:inline-block;width:17px;cursor:pointer;color:var(--link);user-select:none;text-align:center}
 .tgl.leaf{color:transparent;cursor:default}
-.adot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:1px}
+.adot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;vertical-align:1px}
 .cat-gradle{background:#e8743b}
 .cat-agp{background:#3ba272}
 .cat-kotlin{background:#9b7ede}
 .cat-jdk{background:#4a90d9}
 .cat-other{background:#7d8590}
-.acnt{color:var(--dim);font-size:11px}
-.pres{color:#d9a13b;font-size:10.5px;margin-left:6px;white-space:nowrap}
-.refs{color:#9b7ede;font-size:10px;margin-left:6px;white-space:nowrap;cursor:help}
-.ugrp{margin:14px 0 4px;padding:6px 10px;background:#131820;border:1px solid var(--border);border-radius:7px;font-size:12px;color:var(--dim)}
+.acnt{color:var(--dim);font-size:12px}
+.pres{color:#d9a13b;font-size:11.5px;margin-left:6px;white-space:nowrap}
+.refs{color:#9b7ede;font-size:11px;margin-left:6px;white-space:nowrap;cursor:help}
+.ugrp{margin:14px 0 4px;padding:7px 11px;background:#131820;border:1px solid var(--border);border-radius:7px;font-size:13.5px;color:var(--dim)}
 .ugrp b{color:var(--fg)}
-h3.sec{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:22px 0 6px}
+h3.sec{font-size:14.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin:22px 0 6px}
 
 /* ---------- retained hierarchy (icicle) ---------- */
 .hier{display:block;width:100%}
 .hier g{cursor:pointer}
 .hier rect{stroke:var(--bg);stroke-width:.5}
+.hier rect.more{fill:#3d434f;stroke-dasharray:3 2}
 .hier text{pointer-events:none}
-.hier-label{font-size:10.5px;fill:#fff;opacity:.95}
-.hier-val{font-size:10px;fill:#fff;opacity:.75;text-anchor:end}
-.hiercrumbs{padding:8px 0 2px;font-size:12px;color:var(--dim);min-height:26px}
+.hier-label{font-size:12px;fill:#fff;opacity:.95}
+.hier-val{font-size:11px;fill:#fff;opacity:.75;text-anchor:end}
+.hiercrumbs{padding:8px 0 2px;font-size:13px;color:var(--dim);min-height:27px}
 .hiercrumbs a{color:var(--link);cursor:pointer;text-decoration:none}
 .hiercrumbs a:hover{text-decoration:underline}
 
 /* ---------- tooltip (position:fixed; coordinates set from JS) ---------- */
-.viz-tip{position:fixed;display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;pointer-events:none;z-index:30;max-width:430px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
+.viz-tip{position:fixed;display:none;background:#0a0d12;border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:13px;pointer-events:none;z-index:30;max-width:430px;box-shadow:0 6px 24px rgba(0,0,0,.5)}
 .viz-tip .t-name{color:var(--link);word-break:break-all;margin-bottom:4px}
 .viz-tip table{border-collapse:collapse}
-.viz-tip td{padding:1px 10px 1px 0;color:var(--dim)}
+.viz-tip td{padding:2px 10px 2px 0;color:var(--dim)}
 .viz-tip td.v{color:var(--fg);text-align:right}
 .viz-tip .t-hint{color:var(--accent);margin-top:4px}

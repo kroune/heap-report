@@ -5,25 +5,38 @@
  *    popup host (backdrop + panel + close), loading state, error state.
  *    A viz module is {kind, prepare(repo, dumpId, className, params), render}.
  *    prepare does ALL fetching and returns a viewModel; render is dumb.
+ *  - the popup kind switcher: a segment in the header listing every registered
+ *    kind — switching visualizations never means leaving the popup and hunting
+ *    for another entry point. New viz modules appear here automatically via
+ *    registerViz. Kind switches reset params (re-prepare from scratch).
  *  - ctx.refetch(params): re-runs the current viz's prepare with merged params
  *    and re-renders in place — the pinned path for interactive re-slicing that
- *    needs a fetch (e.g. the anatomy sample-count picker).
+ *    needs a fetch (e.g. the anatomy sample-count picker). Refetches of the
+ *    same kind+class keep the body's scroll position.
+ *  - ctx.analyze(onStatus): null in INLINE mode; otherwise queues server-side
+ *    analysis for the popup's class, reports job progress through
+ *    onStatus(text, isErr) and reopens the current viz when the job finishes.
+ *    This is what makes "not analyzed yet" a working state instead of a dead
+ *    end that sends you to the classes tab.
  *  - the shared helpers (catColor/shortClass/scaleFactor/buildSeg) — ONE
  *    implementation each; esc/fmtB/fmtN/catOf are delegated from data/http.js.
  *
- * Repo indirection: boot() calls initViz(repo) once with the active repo — the
- * real dumpdatarepo module in API mode, makeInlineRepo(payload) in snapshot
- * mode. openViz passes it to prepare; viz modules never know which mode they
- * run in. No globals: the repo is module-local state set once at boot.
+ * Repo indirection: boot() calls initViz(repo, {inline}) once with the active
+ * repo — the real dumpdatarepo module in API mode, makeInlineRepo(payload) in
+ * snapshot mode. openViz passes it to prepare; viz modules never know which
+ * mode they run in. No globals: the repo is module-local state set once at boot.
  */
 
 import { trees, anatomy, composition } from '../data/dumpdatarepo.js';
 import * as fmt from '../data/http.js';
+import { pollJobs } from '../data/dumprepo.js';
 
 let activeRepo = null;   // set once by boot() via initViz
+let inlineMode = false;  // snapshot: analyze affordances are server-only
 
-export function initViz(repo) {   // called by boot before any viz can open
+export function initViz(repo, opts = {}) {   // called by boot before any viz can open
   activeRepo = repo;
+  inlineMode = !!opts.inline;
 }
 
 function currentRepo() {
@@ -83,7 +96,7 @@ export function buildSeg(options, current, onPick) {
 
 /* ============================== popup host ============================== */
 
-let host = null;   // {back, title, sub, body} — built lazily on first openViz
+let host = null;   // {back, title, sub, nav, body} — built lazily on first openViz
 
 function ensureHost() {
   if (host) return host;
@@ -98,8 +111,11 @@ function ensureHost() {
   title.className = 'viz-title';
   const sub = document.createElement('div');
   sub.className = 'viz-sub';
+  const nav = document.createElement('div');
+  nav.className = 'viz-nav';
   tw.appendChild(title);
   tw.appendChild(sub);
+  tw.appendChild(nav);
   const x = document.createElement('button');
   x.className = 'viz-close';
   x.textContent = '×';
@@ -117,7 +133,7 @@ function ensureHost() {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && back.classList.contains('open')) closeViz();
   });
-  host = { back, title, sub, body };
+  host = { back, title, sub, nav, body };
   return host;
 }
 
@@ -147,12 +163,56 @@ export function registerViz(module) {   // called by boot for each viz module
 }
 
 let seq = 0;   // race token: only the latest open/refetch may paint
+let last = null;   // {kind, dumpId, className} of the last painted viz
+
+/* The kind switcher in the popup header: one button per registered viz.
+   Every entry point (classes row, treemap leaf, another viz) lands here, so
+   switching visualizations is always one click — no trip back to a tab. */
+function paintNav(h, kind, dumpId, className) {
+  h.nav.textContent = '';
+  if (!className || VIZ.size < 2) return;
+  h.nav.appendChild(buildSeg(
+    [...VIZ.keys()].map(k => ({ value: k, label: k })),
+    kind,
+    k => { if (k !== kind) openViz(k, dumpId, className); }));
+}
+
+/* ctx.analyze implementation: queue the analysis job, report progress via
+   onStatus, reopen the same viz (same params) when the job finishes. */
+function makeAnalyze(kind, dumpId, className, params) {
+  return (onStatus) => {
+    currentRepo().analyze(dumpId, className).then(r => {
+      if (!r.ok) { onStatus(`analyze failed: ${r.error || 'unknown error'}`, true); return; }
+      const job = r.data;
+      if (!job || job.id == null || job.state === 'done') {
+        openViz(kind, dumpId, className, params);
+        return;
+      }
+      onStatus(`analysis ${job.state} — waiting for the job to finish…`);
+      const stop = pollJobs(jobs => {
+        const j = (jobs || []).find(x => x.id === job.id);
+        if (!j) return;
+        if (j.state === 'done') { stop(); openViz(kind, dumpId, className, params); }
+        else if (j.state === 'failed') {
+          stop();
+          onStatus(`analysis failed: ${j.error || 'see the jobs panel'}`, true);
+        } else onStatus(`analysis ${j.state}…`);
+      });
+    });
+  };
+}
 
 export async function openViz(kind, dumpId, className, params = {}) {
   const h = ensureHost();
   const my = ++seq;
+  /* a refetch of the same target keeps the scroll position; a new target
+     (other kind/class) starts at the top */
+  const sameTarget = last && last.kind === kind && last.dumpId === dumpId
+    && last.className === className;
+  const keepScroll = sameTarget ? h.body.scrollTop : 0;
   h.title.textContent = className || kind;
   h.sub.textContent = className ? `${kind} · ${dumpId}` : dumpId;
+  paintNav(h, kind, dumpId, className);
   showState(h, 'viz-loading', `loading ${kind}…`, true);
   h.back.classList.add('open');
   const mod = VIZ.get(kind);
@@ -169,11 +229,15 @@ export async function openViz(kind, dumpId, className, params = {}) {
     return;
   }
   if (my !== seq) return;
+  last = { kind, dumpId, className };
   h.body.textContent = '';
   mod.render(h.body, vm, {
     esc, fmtB, fmtN, catColor, catOf, shortClass,
     onOpenViz: openViz,
     /* the pinned re-slice path: merge params, re-run prepare, re-render here */
     refetch: extra => openViz(kind, dumpId, className, { ...params, ...extra }),
+    /* server-only affordance: null in INLINE (snapshot) mode */
+    analyze: inlineMode ? null : makeAnalyze(kind, dumpId, className, params),
   });
+  if (keepScroll) h.body.scrollTop = keepScroll;
 }

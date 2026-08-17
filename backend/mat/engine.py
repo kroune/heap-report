@@ -26,7 +26,7 @@ from .. import core
 from .parsing import (_analysis_index_build, _anat_src_load, _anat_srcs,
                       _merge_fams, _parse_dom, _parse_hist, _read_csv,
                       _rs_totals_build)
-from .payloads import (PROXIES, _anat2_build, _anatomy_build, _anatomy_diff,
+from .payloads import (PROXIES, _anatomy_build, _anatomy_diff,
                        _class_table_build, _composition_build, _stats_build,
                        _trees_build, _waterfall)
 from .extract import (EDGE_FULL_CAP, IDS_LIMIT, MAT_JOBS, MAX_EDGE,
@@ -154,7 +154,8 @@ class MatQueryEngine:
         rev = sort.startswith("-")
         key = keymap.get(sort.lstrip("-"), keymap["s"])
         if sort.lstrip("-") == "r":   # unanalyzed (r=None) always last
-            rows.sort(key=lambda r: (r["r"] is None, -(r["r"] or 0)))
+            sign = -1 if rev else 1
+            rows.sort(key=lambda r: (r["r"] is None, sign * (r["r"] or 0)))
         else:
             rows.sort(key=key, reverse=rev)
         page = max(0, page)
@@ -186,9 +187,8 @@ class MatQueryEngine:
         return self._cached((dump_id, "anatsrc", key, K), self._fp(dump_id, srcs),
                             lambda: _anat_src_load(data, key, srcs, self._meta(dump_id)))
 
-    def anatomy(self, dump_id, cls, version=1, samples=None):
-        """version 1 = aggregated named-reference tree, 2 = full-graph
-        reference tree. None = not analyzed."""
+    def anatomy(self, dump_id, cls, samples=None):
+        """Full-graph reference tree for one analyzed class. None = not analyzed."""
         data = self._data_dir(dump_id)
         st = self._analysis_index(dump_id).get(cls)
         if not st or not st["anat"]:
@@ -198,14 +198,12 @@ class MatQueryEngine:
         K = samples if samples in avail else avail[-1]
         if not _anat_srcs(data, key, K):
             return None
-        build, max_depth, max_kids = (_anat2_build, 32, 40) if version == 2 \
-            else (_anatomy_build, 14, 40)
 
         def load():
             src = self._anat_src(dump_id, key, K)
-            return None if src is None else build(src, cls, K, avail, max_depth, max_kids)
+            return None if src is None else _anatomy_build(src, cls, K, avail, 32, 40)
 
-        return self._cached((dump_id, "anat", version, key, K),
+        return self._cached((dump_id, "anat", key, K),
                             self._fp(dump_id, _anat_srcs(data, key, K)), load)
 
     def compare(self, a, b):
