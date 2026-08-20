@@ -30,7 +30,11 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
 - `backend/mat/` — the MAT package. `engine.py` — `MatQueryEngine`: read
   queries (payload caches it owns) + on-demand MAT analysis jobs + local
   bootstrap (`submit_bootstrap`). `extract.py` — `MatRunner`: every MAT
-  subprocess; restores compacted indexes before any MAT run. `parsing.py` —
+  subprocess; restores compacted indexes before any MAT run. `run()` returns
+  None for a legitimately empty OQL result (MAT reports those as a text page
+  with no CSV outputter, rc=0 — the report text is the only way to tell them
+  from real query errors, which raise with that text attached); parsing treats
+  the absent supplementary CSV as "no data". `parsing.py` —
   extract files (CSV/sidecars) → structures. `payloads.py` — structures →
   JSON payloads, pure.
 - `backend/jobs.py` — `InMemoryJobRegistry`: serial queue for INDEX/ANALYZE/

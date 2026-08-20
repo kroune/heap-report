@@ -351,7 +351,11 @@ class MatQueryEngine:
         # nodes / edges / fields scan the same retained set independently — run
         # concurrently. edgesfull captures complete outbounds for objects with
         # >MAX_EDGE refs (the plain edges query truncates at MAX_EDGE, which
-        # silently orphans big-array children).
+        # silently orphans big-array children). Any of these queries may
+        # legitimately return EMPTY (no sampled object with >MAX_EDGE refs, no
+        # IInstance fields for array classes, ...): MatRunner.run then writes
+        # no CSV and returns None, and parsing._anat_src_load treats the absent
+        # file as "no data" — only nodes is mandatory (checked below).
         _par([
             lambda: self._runner.run(job, hprof, anat, suffix("n2", f"{key}_s{K}"),
                     f'oql "SELECT o.@objectId, toHex(o.@objectAddress), classof(o).@name, o.@usedHeapSize, o.@retainedHeapSize FROM OBJECTS ({sub}) o"',
@@ -373,6 +377,8 @@ class MatQueryEngine:
         if not os.path.exists(strings_dst):
             addrs = [r[1] for r in _read_csv(nodes_p)[1:]
                      if len(r) >= 5 and r[2] == "java.lang.String"][:MAX_STRINGS]
+            # guarded: no String children -> the query would be a wasted MAT run
+            # (an empty result writes no CSV; missing strings.csv is tolerated)
             if addrs:
                 self._runner.run(job, hprof, anat, suffix("s2", f"{key}_s{K}"),
                         f'oql "SELECT toHex(o.@objectAddress), toString(o) FROM OBJECTS {",".join(addrs)} o"',

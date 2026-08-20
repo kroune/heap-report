@@ -16,8 +16,8 @@ import json, os, re, shutil, subprocess, threading, time, urllib.error, urllib.r
 from . import core
 
 API = "https://api.github.com"
-RUN_RE = re.compile(r"^run-\d+(-(base|candidate))?$")
-IDX_RE = re.compile(r"^idx-(.+)$")
+RUN_RE = re.compile(r"^run-([A-Za-z]+-)*\d+(-(base|candidate))?$")
+IDX_RE = re.compile(r"^idx-(.+)$")  # unchanged — already covers new tags
 TTL = int(os.environ.get("HEAP_REPORT_REMOTE_TTL", "60"))  # anonymous REST: 60 req/h
 
 

@@ -28,6 +28,7 @@ import glob
 import hashlib
 import importlib.util
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -103,6 +104,21 @@ def _par(fns):
     a success."""
     with ThreadPoolExecutor(max_workers=max(1, min(MAT_JOBS, len(fns)))) as ex:
         return list(ex.map(lambda f: f(), fns))
+
+
+def _report_text(d):
+    """Stripped text of an extracted MAT report dir — where MAT states why a
+    query yielded no CSV page: 'did not yield any result' for an empty result
+    (OQLTextResult has no csv outputter), 'Problem reported: ...' for a real
+    query error. Both arrive with rc=0, so this text is the only way to tell
+    a legitimately empty extraction from a failure."""
+    out = []
+    pages = sorted(glob.glob(os.path.join(d, "pages", "*.html")))
+    for p in [os.path.join(d, "index.html")] + pages:
+        if os.path.exists(p):
+            with open(p, errors="replace") as f:
+                out.append(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", f.read())))
+    return " ".join(out)
 
 
 def _decompress_one(zst):
@@ -209,8 +225,12 @@ class MatRunner:
 
     def run(self, job, hprof, outdir, sfx, command, keep_name, limit=2000000):
         """Run one MAT headless query; move the resulting CSV to outdir/keep_name.
-        Resumable (existing dst short-circuits). Raises RuntimeError with the MAT
-        output tail on any failure — never returns None for a failed extraction."""
+        Resumable (existing dst short-circuits). Returns None when the query
+        legitimately yielded an EMPTY result — MAT reports those as a text page
+        (OQLTextResult) with no CSV outputter, so no CSV exists to move; the
+        consumers in parsing.py treat the missing file as "no data". Raises
+        RuntimeError with the report text and the MAT output tail on any real
+        failure — a failed extraction is never recorded as a success."""
         dst = os.path.join(outdir, keep_name)
         if os.path.exists(dst):
             return dst
@@ -285,8 +305,17 @@ class MatRunner:
             if os.path.exists(z):
                 os.remove(z)
         if not csvs:
+            # No CSV page: read WHY from the report text before deleting it —
+            # an empty result is not a failure, anything else is (OQL error,
+            # unsupported command, ...), and the text is the only difference.
+            msg = _report_text(tmp)
             shutil.rmtree(tmp, ignore_errors=True)
-            raise RuntimeError(f"MAT query {sfx} produced no CSV")
+            if "did not yield any result" in msg:
+                log(f"  MAT {keep_name}: empty result — no CSV written")
+                return None
+            raise RuntimeError(f"MAT query {sfx} produced no CSV "
+                               f"(rc={proc.returncode}): {msg[:300]}\n"
+                               + "\n".join(list(tail)[-20:]))
         if len(csvs) > 1:
             log(f"WARNING: {sfx} produced {len(csvs)} CSV pages; keeping "
                 f"{os.path.basename(csvs[0])} — result may be truncated")
