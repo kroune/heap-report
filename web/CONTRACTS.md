@@ -6,8 +6,8 @@ Talks ONLY to the backend API (`backend/http.py`, see ARCHITECTURE.md).
 ## Module map (each file has exactly one owner)
 
 ```
-web/index.html          shell page: dump selector, tab bar, containers, boot call   (shell)
-web/app.css             shell + shared styles                                        (shell)
+web/index.html          shell page: picker button, tab bar, containers, boot call  (shell)
+web/app.css             shell + shared styles (incl. dump picker)                  (shell)
 web/tabs.css            styles for the three tabs                                   (tabs)
 web/viz.css             styles for viz popups                                       (viz)
 web/graph.css           styles for the graph viz                                    (viz-graph)
@@ -18,6 +18,7 @@ web/data/inlinerepo.js  same interface as dumpdatarepo over a snapshot payload  
 web/app/state.js        current-dump selection — the only app-level mutable state   (shell)
 web/app/boot.js         boot(): wires state, tabs, jobs; exported, called by index  (shell)
 web/ui/jobs.js          job status component                                        (jobs)
+web/ui/dumppicker.js    dump picker overlay (search/tag filter/sort, row actions)  (shell)
 web/ui/tabs/classes.js  classes tab                                                 (tabs)
 web/ui/tabs/treemap.js  treemap tab                                                 (tabs)
 web/ui/tabs/compare.js  compare tab                                                 (tabs)
@@ -64,12 +65,18 @@ apiDel(path)               // 204 -> {ok:true, data:null}
 listDumps()                -> Result<[DumpInfo]>   // GET /api/dumps (merged)
 startDownload(id)          -> Result<Job>          // POST /api/dumps/{id}/download
 retryDownload(id)          -> Result<Job>          // POST .../retry
+cancelDownload(id)         -> Result<{id, cancelled}> // POST .../cancel
 deleteDump(id)             -> Result<null>         // DELETE /api/dumps/{id}
+setTags(id, tags)          -> Result<{id, tags}>   // POST /api/dumps/{id}/tags
 pollJobs(onJobs, ms=2500)  -> stopFn               // polls GET /api/jobs; onJobs([Job])
 // DumpInfo = {id, state:'remote'|'downloading'|'assembling'|'indexing'|'ready'|'failed',
 //             source, size, error, progress:{done,total}|null, meta}
+//   meta.tags = user tags ([] when none; set via setTags, persisted
+//   server-side in dumps/.tags.json); meta.title/created_at for remote dumps
 // Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed',
-//        progress:{done,total}|null, log:[str], error}
+//        progress:{done,total} | {done,total,stage:'download'|'assemble',
+//        speed,eta,asm:{done,total},parts:[{n,have,size,done}]} | null,
+//        log:[str], error}
 
 // data/dumpdatarepo.js — per-dump queries; cache keyed by dump id lives HERE
 // and only here (switching dumps can never serve stale data: the key IS the id).
@@ -98,6 +105,15 @@ onDumpChange(fn)     -> unsubscribe
 // app/boot.js
 boot()               // reads config: API mode (default) or INLINE mode when
                      // window.__INLINE__ is set (snapshot); wires everything
+
+// ui/dumppicker.js — the dump selector (API mode only): a full-screen overlay
+// opened from the header #dumpsel-btn. boot pushes the list via update()
+// and owns the header label + state badge; the picker owns search, tag
+// filtering (derived id tokens + persisted user tags), sorting and the
+// per-row lifecycle actions (Download/Retry/Resume/Fetch or build data,
+// Delete), calling setTags/startDownload/deleteDump itself and
+// opts.onRefresh() afterwards.
+mountDumpPicker({onSelect, onRefresh}) -> {open, close, update, isOpen}
 ```
 
 Tab modules export `mount(container, repo, opts)` (`repo` = the dumpdatarepo
@@ -105,6 +121,12 @@ implementation — HTTP or inline; `opts.inline` gates server-only affordances)
 and react to `onDumpChange`. They show
 explicit states for: no dump selected, dump not ready (`state` message),
 loading, error (from Result — never a silent spinner), and data.
+
+Overview tabs (classes/treemap/compare) are NOT gated on `state === 'ready'`:
+the backend serves data-only queries from any busy state once the tiny data
+bundle is unpacked (`409` until then — render the message). Only failed and
+remote dumps are blocked client-side. Analysis affordances (analyze buttons,
+viz of analysis results) still require `ready`.
 
 ## Jobs component (`ui/jobs.js`)
 
@@ -118,7 +140,7 @@ Every card has a close button — dismissal is UI-only (the job keeps running).
 
 ```js
 // each viz module:
-export const kind = 'anatomy' | 'hierarchy' | 'graph'
+export const kind = 'anatomy' | 'hierarchy' | 'graph' | 'flow'
 export async function prepare(repo, dumpId, className) -> viewModel
 //   ^ pure data step: fetches via the passed dumpdatarepo, computes everything
 export function render(container, viewModel, ctx) -> void

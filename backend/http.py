@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import traceback
+from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -34,7 +35,11 @@ def _ctype(path):
 
 
 def _progress(p):
-    return {"done": p[0], "total": p[1]} if p else None
+    if p is None:
+        return None
+    if isinstance(p, dict):
+        return p
+    return {"done": p[0], "total": p[1]}   # legacy (done, total) tuple
 
 
 def _job_json(j: core.Job) -> dict:
@@ -174,7 +179,13 @@ class _Handler(BaseHTTPRequestHandler):
             for src in app.sources:
                 for d in src.list():
                     merged.setdefault(d.id, d)  # store first: local state wins
-            return self._json(200, [_dump_json(d) for d in merged.values()])
+            tags = app.store.user_tags()
+            dumps = list(merged.values())
+            if tags:
+                # copy, never mutate: sources cache their DumpInfo objects
+                dumps = [replace(d, meta={**d.meta, "tags": tags.get(d.id, [])})
+                         for d in dumps]
+            return self._json(200, [_dump_json(d) for d in dumps])
 
         if parts == ["compare"] and method == "GET":
             a = qs.get("a", [""])[0]
@@ -201,6 +212,19 @@ class _Handler(BaseHTTPRequestHandler):
 
             if action in ("download", "retry") and method == "POST":
                 return self._json(200, _job_json(app.store.start_download(dump_id)))
+            if action == "cancel" and method == "POST":
+                app.store.cancel(dump_id)
+                return self._json(200, {"id": dump_id, "cancelled": True})
+            if action == "compact-hold" and method == "POST":
+                until = app.store.hold_compact(
+                    dump_id, self._body().get("seconds"))
+                return self._json(200, {"id": dump_id, "held_until": until})
+            if action == "compact-hold" and method == "DELETE":
+                released = app.store.release_compact(dump_id)
+                return self._json(200, {"id": dump_id, "released": released})
+            if action == "tags" and method == "POST":
+                tags = app.store.set_tags(dump_id, self._body().get("tags", []))
+                return self._json(200, {"id": dump_id, "tags": tags})
             if action is None and method == "DELETE":
                 app.store.delete(dump_id)
                 self.send_response(204)

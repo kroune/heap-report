@@ -23,8 +23,6 @@ def bootstrap(hprof: str, name: str, outdir: str) -> None:
     jobs = jobs_mod.InMemoryJobRegistry()
     store = localstore.FsDumpStore(root, jobs, [])
     engine = mat.MatQueryEngine(store, jobs)
-    store.update_meta(dump_id, lambda m: m.update(state="indexing",
-                                                  dump=os.path.basename(hprof)))
     job = engine.submit_bootstrap(dump_id)
     while True:
         j = jobs.get(job.id)

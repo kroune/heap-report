@@ -4,12 +4,17 @@ Pins the failure semantics that the real MAT only reveals at runtime:
 an empty OQL result (MAT text page "did not yield any result", no CSV page)
 returns None; a real query error raises with the report text; a missing
 report zip raises with the process tail. MAT exits rc=0 in ALL of these
-cases, so the report content — not the exit code — is the contract."""
+cases, so the report content — not the exit code — is the contract.
+
+Plus restore_indexes' corruption contract: a .zst that fails decompression
+is deleted and reported as CorruptIndexError (needs the real zstd binary)."""
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 
-from backend.mat.extract import MatRunner
+from backend.mat.extract import CorruptIndexError, MatRunner
 
 STUB = r"""#!/usr/bin/env python3
 import os, sys, zipfile
@@ -91,6 +96,39 @@ class TestMatRunnerRun(unittest.TestCase):
         self.assertEqual(self._run("nozip"), dst)   # MAT never invoked
         with open(dst) as f:
             self.assertEqual(f.read(), "cached\n")
+
+
+@unittest.skipUnless(shutil.which("zstd"), "needs the zstd binary")
+class TestRestoreCorruptZst(unittest.TestCase):
+    """restore_indexes against a corrupt compacted index (truncated download,
+    disk rot): the file is deleted — it can never become valid — and reported
+    as CorruptIndexError so the caller re-acquires the set instead of letting
+    MAT run against a partial one."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.runner = MatRunner(_Jobs())
+
+    def test_corrupt_zst_deleted_and_reported(self):
+        d = self.tmp.name
+        with open(os.path.join(d, "payload"), "wb") as f:
+            f.write(b"hello-index")
+        subprocess.run(["zstd", "-q", "-f", "-o",
+                        os.path.join(d, "daemon.a2s.index.zst"),
+                        os.path.join(d, "payload")], check=True)
+        os.remove(os.path.join(d, "payload"))
+        with open(os.path.join(d, "daemon.domOut.index.zst"), "wb") as f:
+            f.write(b"not-a-zstd-frame")   # e.g. a truncated download tail
+        with open(os.path.join(d, "daemon.a2s.index.tmp999"), "wb") as f:
+            f.write(b"debris of a killed restore")
+        with self.assertRaises(CorruptIndexError) as ctx:
+            self.runner.restore_indexes(d, lambda m: None)
+        self.assertIn("domOut", str(ctx.exception))
+        self.assertFalse(os.path.exists(os.path.join(d, "daemon.domOut.index.zst")))
+        with open(os.path.join(d, "daemon.a2s.index"), "rb") as f:
+            self.assertEqual(f.read(), b"hello-index")   # valid sibling restored
+        self.assertFalse(os.path.exists(os.path.join(d, "daemon.a2s.index.tmp999")))
 
 
 if __name__ == "__main__":

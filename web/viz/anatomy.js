@@ -288,6 +288,9 @@ export function render(container, vm, ctx) {
       const b = el('button', '', 'open graph ▸');
       b.addEventListener('click', () => ctx.onOpenViz('graph', vm.dumpId, vm.className));
       t.appendChild(b);
+      const bf = el('button', '', 'open flow ▸');
+      bf.addEventListener('click', () => ctx.onOpenViz('flow', vm.dumpId, vm.className));
+      t.appendChild(bf);
       container.appendChild(t);
     }
 

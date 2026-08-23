@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="MemoryAnalyzer-1.17.0.20260601-linux.gtk.x86_64">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/.tools/MemoryAnalyzer-1.17.0.20260601-linux.gtk.x86_64.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>

@@ -3,6 +3,9 @@ name: build-indexes
 # Builds Eclipse MAT index files for a heap dump published as a `run-*` release in the
 # benchmark repo (default: kroune/feature-module-3000) and publishes them here as an
 # `idx-<tag>` release (zstd-compressed *.index in a split tar + manifest.json).
+# The release is created EARLY with just the tiny data.tar.gz (instant overview in the
+# local UI); the heavy index parts are uploaded in parallel once compressed — the UI's
+# index poller picks them up whenever they appear.
 # The local UI (python3 -m backend.kernel) discovers these and downloads them on demand,
 # so nobody ever runs the ~40 min MAT parse on their laptop.
 #
@@ -86,9 +89,9 @@ jobs:
           mkdir -p work && cd work
           gh release view "$TAG" -R "$SOURCE_REPO" --json name,assets --jq '.assets[].name' > assets.txt
           if grep -q '^daemon\.hprof\.gz\.part-' assets.txt; then
-            grep '^daemon\.hprof\.gz\.part-' assets.txt | sort | while read -r a; do
-              gh release download "$TAG" -R "$SOURCE_REPO" -p "$a" --clobber
-            done
+            # parts are independent assets — fetch them in parallel
+            grep '^daemon\.hprof\.gz\.part-' assets.txt \
+              | xargs -P4 -n1 -I{} gh release download "$TAG" -R "$SOURCE_REPO" -p {} --clobber
             cat daemon.hprof.gz.part-* | gzip -dc > daemon.hprof
           elif grep -q '^daemon\.hprof\.gz$' assets.txt; then
             gh release download "$TAG" -R "$SOURCE_REPO" -p daemon.hprof.gz --clobber
@@ -134,22 +137,39 @@ jobs:
           EOF
           ls -lh work/data/
 
-      - name: Compress indexes (zstd)
-        run: python3 -c "from backend.ci import compact; compact('work')"
-
-      - name: Publish idx release
+      # The release is created HERE, right after the data extracts, with just the
+      # tiny data.tar.gz: the heap-report UI picks it up immediately (overview
+      # viz works while the heavy indexes are still being compressed/uploaded —
+      # its poller fetches the index parts once they appear below).
+      - name: Publish data bundle (early overview)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           cd work
           tar -czf data.tar.gz data
+          title=$(gh release view "$TAG" -R "$SOURCE_REPO" --json name --jq .name)
+          echo "title=$title" >> "$GITHUB_ENV"
+          gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
+          gh release create "idx-$TAG" -R '${{ github.repository }}' \
+            --title "MAT indexes — $SOURCE_REPO $TAG" \
+            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). \`data.tar.gz\` = histogram + dominators (instant overview); \`indexes.tar.part-*\` = compacted MAT indexes for per-class analysis (may still be uploading — the heap-report UI picks them up automatically). Downloaded automatically by the heap-report UI. $title" \
+            data.tar.gz
+
+      - name: Compress indexes (zstd)
+        run: python3 -c "from backend.ci import compact; compact('work')"
+
+      - name: Publish index parts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd work
           tar -cf indexes.tar ./*.index.zst ./*.threads INDEXES-COMPACTED.txt
           split -b 1900m indexes.tar indexes.tar.part-
           rm indexes.tar
           tar_bytes=$(du -cb indexes.tar.part-* | tail -1 | cut -f1)
           data_bytes=$(stat -c%s data.tar.gz)
-          title=$(gh release view "$TAG" -R "$SOURCE_REPO" --json name --jq .name)
           gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
           xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //')
           # per-member sizes of the index tar — heap-report validates the
@@ -170,11 +190,9 @@ jobs:
             "files": $files_json
           }
           EOF
-          gh release delete "idx-$TAG" --yes -R '${{ github.repository }}' 2>/dev/null || true
-          gh release create "idx-$TAG" -R '${{ github.repository }}' \
-            --title "MAT indexes — $SOURCE_REPO $TAG" \
-            --notes "Pre-built Eclipse MAT indexes for the daemon heap dump of [\`$TAG\`](${{ github.server_url }}/$SOURCE_REPO/releases/tag/$TAG). \`data.tar.gz\` = histogram + dominators (instant overview); \`indexes.tar.part-*\` = compacted MAT indexes for per-class analysis. Downloaded automatically by the heap-report UI. $title" \
-            data.tar.gz indexes.tar.part-* manifest.json
+          # independent assets — upload in parallel onto the existing release
+          ls indexes.tar.part-* manifest.json \
+            | xargs -P4 -n1 gh release upload "idx-$TAG" -R '${{ github.repository }}' --clobber
           {
             echo "## MAT indexes published"
             echo

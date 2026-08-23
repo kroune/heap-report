@@ -9,10 +9,13 @@ local bootstrap (LocalIndexer role).
     payload cache + the separately cached CSV parse cover the re-parse cost.
   - A failed extraction raises -> the ANALYZE job is FAILED with the real error
     and meta.json is never updated for data that does not exist.
+  - Overview queries (trees/classes/compare) only need the tiny data bundle,
+    so they are served from any busy state once it is unpacked (_data_early);
+    analysis-level queries stay READY-only (_data_dir).
 
-All dump-dir paths come from store.dir_of (READY-only); all meta.json writes go
-through store.update_meta (single writer). Every MAT subprocess goes through
-extract.MatRunner.
+All dump-dir paths come from store.dir_of (state gating lives here); all
+meta.json writes go through store.update_meta (single writer). Every MAT
+subprocess goes through extract.MatRunner.
 """
 from __future__ import annotations
 
@@ -22,7 +25,8 @@ import os
 import re
 import threading
 
-from .. import core
+from .. import core, machine
+from ..localstore import drop_index_set, raws_zsts
 from .parsing import (_analysis_index_build, _anat_src_load, _anat_srcs,
                       _merge_fams, _parse_dom, _parse_hist, _read_csv,
                       _rs_totals_build)
@@ -30,16 +34,17 @@ from .payloads import (PROXIES, _anatomy_build, _anatomy_diff,
                        _class_table_build, _composition_build, _stats_build,
                        _trees_build, _waterfall)
 from .extract import (EDGE_FULL_CAP, IDS_LIMIT, MAT_JOBS, MAX_EDGE,
-                      MAX_STRINGS, SAMPLES, MatRunner, _par, sample_even,
-                      subselect, suffix)
+                      MAX_STRINGS, SAMPLES, CorruptIndexError, MatRunner, _par,
+                      sample_even, subselect, suffix)
 
 PAGE = 200                    # classes() page size
 
 
 class MatQueryEngine:
     """core.QueryEngine over the local dump store, plus the local MAT bootstrap
-    (LocalIndexer role). All dump-dir paths come from store.dir_of (READY-only);
-    all meta.json writes go through store.update_meta (single writer)."""
+    (LocalIndexer role). All dump-dir paths come from store.dir_of (state
+    gating lives in _data_dir/_data_early); all meta.json writes go through
+    store.update_meta (single writer)."""
 
     def __init__(self, store: core.LocalDumpStore, jobs: core.JobRegistry):
         self._store = store
@@ -51,13 +56,29 @@ class MatQueryEngine:
     # ---------------------------------------------------------- plumbing
 
     def _data_dir(self, dump_id):
-        """Query-side entry: READY only (dir_of also hands out INDEXING dirs to
-        the store-sanctioned bootstrap job — that path never goes through here)."""
+        """Analysis-level entry: READY only (dir_of hands out the dir in any
+        state — gating lives here)."""
         info = self._store.get(dump_id)
         if info.state is not core.DumpState.READY:
             raise core.ApiError("bad_state",
                                 f"dump {dump_id} is {info.state.value}, queries need ready", 409)
         return os.path.join(self._store.dir_of(dump_id), "data")
+
+    def _data_early(self, dump_id):
+        """Overview entry (trees/classes/compare): the tiny data bundle is
+        enough, so these are served the moment it is unpacked — while the
+        heavy hprof/index download or local indexing continues."""
+        info = self._store.get(dump_id)
+        if info.state in (core.DumpState.REMOTE, core.DumpState.FAILED):
+            raise core.ApiError("bad_state",
+                                f"dump {dump_id} is {info.state.value}", 409)
+        data = os.path.join(self._store.dir_of(dump_id), "data")
+        if not (os.path.exists(os.path.join(data, "histogram.csv"))
+                and os.path.exists(os.path.join(data, "dominator_by_class.csv"))):
+            raise core.ApiError(
+                "bad_state", f"dump {dump_id} has no data bundle yet "
+                f"({info.state.value}) — the overview appears once it lands", 409)
+        return data
 
     def _meta(self, dump_id):
         return self._store.read_meta(dump_id)
@@ -100,23 +121,23 @@ class MatQueryEngine:
     # ---------------------------------------------------------- cached raw loaders
 
     def _load_hist(self, dump_id):
-        p = os.path.join(self._data_dir(dump_id), "histogram.csv")
+        p = os.path.join(self._data_early(dump_id), "histogram.csv")
         return self._cached((dump_id, "hist"), self._fp(dump_id, [p]),
                             lambda: _parse_hist(p))
 
     def _load_dom(self, dump_id):
-        p = os.path.join(self._data_dir(dump_id), "dominator_by_class.csv")
+        p = os.path.join(self._data_early(dump_id), "dominator_by_class.csv")
         return self._cached((dump_id, "dom"), self._fp(dump_id, [p]),
                             lambda: _parse_dom(p))
 
     def _analysis_index(self, dump_id):
-        data = self._data_dir(dump_id)
+        data = self._data_early(dump_id)
         mp = os.path.join(data, "meta.json")
         return self._cached((dump_id, "anaidx"), self._fp(dump_id, [mp]),
                             lambda: _analysis_index_build(data, self._meta(dump_id)))
 
     def _rs_totals(self, dump_id):
-        data = self._data_dir(dump_id)
+        data = self._data_early(dump_id)
         mp = os.path.join(data, "meta.json")
         return self._cached((dump_id, "rstot"), self._fp(dump_id, [mp]),
                             lambda: _rs_totals_build(data, self._meta(dump_id),
@@ -125,7 +146,7 @@ class MatQueryEngine:
     # ---------------------------------------------------------- queries
 
     def trees(self, dump_id):
-        data = self._data_dir(dump_id)
+        data = self._data_early(dump_id)
         paths = [os.path.join(data, n) for n in
                  ("histogram.csv", "dominator_by_class.csv", "meta.json")]
         return self._cached(
@@ -135,7 +156,7 @@ class MatQueryEngine:
                      "trees": _trees_build(self._load_hist(dump_id), self._load_dom(dump_id))})
 
     def _class_table(self, dump_id):
-        data = self._data_dir(dump_id)
+        data = self._data_early(dump_id)
         paths = [os.path.join(data, n) for n in ("histogram.csv", "meta.json")]
         return self._cached((dump_id, "classtable"), self._fp(dump_id, paths),
                             lambda: _class_table_build(self._load_hist(dump_id),
@@ -208,8 +229,10 @@ class MatQueryEngine:
 
     def compare(self, a, b):
         """Not payload-cached at this level: it assembles cheap merges over the
-        per-dump caches, which carry freshness."""
-        da, db = self._data_dir(a), self._data_dir(b)
+        per-dump caches, which carry freshness. Overview sections work off the
+        data bundle alone (busy dumps allowed); retained/anatomy diffs need
+        per-class analysis, so they only cover READY dumps."""
+        da, db = self._data_early(a), self._data_early(b)
         A, B = _merge_fams(self._load_hist(a), 2), _merge_fams(self._load_hist(b), 2)
         rows = []
         for k in set(A) | set(B):
@@ -241,12 +264,16 @@ class MatQueryEngine:
         analyzed = {"old": sorted(f for f, st in ia.items() if st["comp"]),
                     "new": sorted(f for f, st in ib.items() if st["comp"])}
         # anatomy diffs for classes with an extraction in both dumps
+        # (anatomy payloads stay READY-only — skip while either dump is busy)
         anats = {}
-        for full in sorted(set(ia) & set(ib)):
-            if ia[full]["anat"] and ib[full]["anat"]:
-                d = _anatomy_diff(self.anatomy(a, full), self.anatomy(b, full))
-                if d:
-                    anats[full] = d
+        both_ready = all(self._store.get(x).state is core.DumpState.READY
+                         for x in (a, b))
+        if both_ready:
+            for full in sorted(set(ia) & set(ib)):
+                if ia[full]["anat"] and ib[full]["anat"]:
+                    d = _anatomy_diff(self.anatomy(a, full), self.anatomy(b, full))
+                    if d:
+                        anats[full] = d
         return {
             "old": _stats_build(self._load_hist(a), self._load_dom(a), self._meta(a), ia),
             "new": _stats_build(self._load_hist(b), self._load_dom(b), self._meta(b), ib),
@@ -287,22 +314,55 @@ class MatQueryEngine:
     def analyze(self, dump_id, cls, samples=SAMPLES, with_anatomy=True):
         """Queue on-demand per-class MAT analysis. The class is
         validated against the histogram first; a failed extraction surfaces as a
-        FAILED job with the real error and is never recorded in meta.json."""
+        FAILED job with the real error and is never recorded in meta.json.
+
+        Analysis needs the MAT index set, which READY dumps may not have yet.
+        Index acquisition is the machine's job (store.request_indexes): the
+        remote prebuilt set when some source has published it by now, else a
+        local MAT parse — decided in ONE place (machine.decide), re-evaluated
+        on every reconcile. This job just waits for the component to reach
+        DONE. A corrupt compacted index (the restore deleted it) drops the
+        untrusted set, hands the component back to the machine
+        (note_indexes_corrupt) and waits again — remote re-download when
+        published, local parse otherwise, no user round-trip."""
         try:
             samples = max(1, min(1024, int(samples)))
         except (TypeError, ValueError):
             samples = SAMPLES
+        info = self._store.get(dump_id)
+        if info.state is not core.DumpState.READY:
+            raise core.ApiError("bad_state",
+                                f"dump {dump_id} is {info.state.value} — analysis needs "
+                                "ready (the overview works during the download)", 409)
         known = {name for name, _, _ in self._load_hist(dump_id)}
         if cls not in known:
             raise core.ApiError("not_found", f"class not in histogram: {cls}", 404)
         hprof = self._hprof(dump_id)
         if not hprof:
             raise core.ApiError("bad_state", "hprof not found in the dump dir", 400)
+        self._store.request_indexes(dump_id)   # sticky: acquisition starts now,
+        # overlaps the queue wait, and a mid-analysis corruption re-drives it
 
         def fn(job):
-            self._analyze_class(job, dump_id, hprof, cls, samples, with_anatomy)
+            if not self._has_indexes(dump_id):
+                self._store.await_indexes(dump_id, job)
+            try:
+                self._analyze_class(job, dump_id, hprof, cls, samples, with_anatomy)
+            except CorruptIndexError as e:
+                self._jobs.log(job, f"  {e}")
+                drop_index_set(self._store.dir_of(dump_id),
+                               lambda m: self._jobs.log(job, m))
+                self._store.note_indexes_corrupt(dump_id)
+                self._store.await_indexes(dump_id, job)
+                # the set is whole again — retry once; a second corruption
+                # fails the job for real
+                self._analyze_class(job, dump_id, hprof, cls, samples, with_anatomy)
 
         return self._jobs.submit(core.JobKind.ANALYZE, dump_id, cls, fn)
+
+    def _has_indexes(self, dump_id):
+        raws, zsts = raws_zsts(self._store.dir_of(dump_id))
+        return bool(raws or zsts)
 
     def _analyze_class(self, job, dump_id, hprof, cls, samples, with_anatomy):
         """Retained-set composition + (optionally) reference-tree anatomy for one
@@ -396,61 +456,102 @@ class MatQueryEngine:
 
     # ---------------------------------------------------------- bootstrap (LocalIndexer)
 
+    def parse_inline(self, dump_id, job):
+        """The local MAT index parse, run INLINE in the caller's thread.
+        await_indexes calls this on the serial MAT worker itself — queueing
+        the parse as an INDEX job behind the waiting analyze job on the same
+        single-threaded queue would deadlock. The store marks the parse live
+        (rt.inline_indexes) so a late remote publication can still preempt it
+        via the abort flag. Outcome is CAS-reported to the machine."""
+        try:
+            dump_dir = self._store.dir_of(dump_id)
+            data = os.path.join(dump_dir, "data")
+            hprof = self._hprof(dump_id)
+            if not hprof:
+                raise RuntimeError("no .hprof in the dump dir")
+            self._jobs.log(job, f"local MAT parse of {hprof} (no published "
+                                "indexes) — one-off, tens of minutes")
+            # the first MAT query triggers the full parse; a histogram run is
+            # that trigger, written under a throwaway name because the data
+            # bundle's histogram.csv already exists and MatRunner.run
+            # short-circuits on existing files
+            p = self._runner.run(job, hprof, data, "parseidx", "histogram",
+                                 "parse_trigger.csv",
+                                 abort=self._store.abort_event(dump_id))
+            if p and os.path.exists(p):
+                os.remove(p)   # duplicates the data bundle's histogram.csv
+            raws, _ = raws_zsts(dump_dir)
+            if not raws:
+                raise RuntimeError("MAT parse produced no index files")
+            self._store.update_meta(dump_id, lambda m: m.update(indexes="local"))
+            self._store.machine_transition(dump_id, "indexes", None,
+                                           machine.Comp(machine.DONE))
+            self.invalidate(dump_id)
+        except core.Aborted:
+            raise   # cancel/preempt already owns the state
+        except Exception as e:   # noqa: BLE001 - the component's ERROR
+            self._store.machine_transition(
+                dump_id, "indexes", machine.IN_PROGRESS,
+                machine.Comp(machine.ERROR, error=str(e)))
+            raise
+        finally:
+            self._store.kick(dump_id)
+
     def submit_bootstrap(self, dump_id):
-        """Submit an INDEX job running the local MAT bootstrap (histogram +
-        dominators). On success the dump flips to "ready", on failure to "failed"
-        with the error — both via store.update_meta. The kernel wires this to the
-        store's INDEXING transition."""
+        """INDEX job: the local MAT bootstrap (histogram + dominators — the
+        local-build stage of the machine's data component; the parse it
+        triggers also produces the index set). Outcome is CAS-reported to
+        the machine: success -> data DONE (+ indexes DONE when not already
+        handled), failure -> data ERROR. Also called directly by CI
+        (backend/ci.py) — the transitions are no-ops without a machine."""
 
         def fn(job):
             try:
                 self._bootstrap(job, dump_id)
-            except Exception as e:   # noqa: BLE001 - record, then let the job FAIL
-                def fail(m, err=str(e)):
-                    m["state"] = core.DumpState.FAILED.value
-                    m["error"] = err
-
-                try:
-                    self._store.update_meta(dump_id, fail)
-                except Exception as me:   # noqa: BLE001 - don't mask the real error
-                    self._jobs.log(job, f"WARNING: could not record failure in meta: {me}")
+            except core.Aborted:
                 raise
-
-            def ok(m):
-                m["state"] = core.DumpState.READY.value
-                m["error"] = None
-
-            self._store.update_meta(dump_id, ok)
+            except Exception as e:   # noqa: BLE001 - the component's ERROR
+                self._store.machine_transition(
+                    dump_id, "data", machine.IN_PROGRESS,
+                    machine.Comp(machine.ERROR, error=str(e)))
+                raise
+            else:
+                self._store.machine_transition(dump_id, "data", None,
+                                               machine.Comp(machine.DONE))
+                self._store.machine_transition(dump_id, "indexes", (machine.NEW,),
+                                               machine.Comp(machine.DONE))
+            finally:
+                self._store.kick(dump_id)
 
         return self._jobs.submit(core.JobKind.INDEX, dump_id, "bootstrap", fn)
 
     def _bootstrap(self, job, dump_id):
-        """Global extracts for one dump -> <dump>/data/. Resumable.
-
-        NOTE (integration): the dump is INDEXING, not READY, while this runs, so
-        store.dir_of must hand out the dir to the INDEX job here — READY-only
-        enforcement applies to the query methods above."""
+        """Global extracts for one dump -> <dump>/data/. Resumable. Runs while
+        the data component is still missing (dir_of hands out the dir in any
+        state; the query-side gates live in _data_dir/_data_early)."""
         dump_dir = self._store.dir_of(dump_id)
         data = os.path.join(dump_dir, "data")
         os.makedirs(data, exist_ok=True)
         hprof = self._hprof(dump_id)
         if not hprof:
             raise RuntimeError("no .hprof in the dump dir")
+        abort = self._store.abort_event(dump_id)
         log = lambda m: self._jobs.log(job, m)
         log(f"analyzing {hprof} -> {dump_dir} (mat-jobs={MAT_JOBS})")
 
         # the histogram runs first and alone: when the MAT indexes are missing the
         # first query triggers the full hprof parse, and concurrent parsers would
         # clobber each other's index files
-        self._runner.run(job, hprof, data, "histogram", "histogram", "histogram.csv")
+        self._runner.run(job, hprof, data, "histogram", "histogram", "histogram.csv",
+                         abort=abort)
         log("  histogram done (parse complete)")
 
         # dominator groupings are independent — run in parallel
         _par([
             lambda: self._runner.run(job, hprof, data, "domclass", "dominator_tree -groupBy BY_CLASS",
-                                     "dominator_by_class.csv"),
+                                     "dominator_by_class.csv", abort=abort),
             lambda: self._runner.run(job, hprof, data, "dompkg", "dominator_tree -groupBy BY_PACKAGE",
-                                     "dominator_by_package.csv"),
+                                     "dominator_by_package.csv", abort=abort),
         ])
 
         # module count = DefaultScriptHandler instances (fallback 3010)

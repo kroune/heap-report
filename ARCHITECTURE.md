@@ -28,8 +28,11 @@ ownership, not local mistakes:
    another repo) = new impl, zero changes elsewhere.
 2. **Single writer.** Only `LocalDumpStore` mutates a dump's directory —
    meta.json, parts, indexes. Queries read. This replaces all ad-hoc locking.
-3. **A dump is a state machine**, including failure states. Nothing derives
-   state from file existence except the store's recovery path, in one place.
+3. **A dump is a hierarchy of state machines.** One machine per dump with
+   three component sub-machines (`dump`/`data`/`indexes`), each
+   `NEW → DOWNLOADING|PARSING → DONE`, plus terminal `ERROR` (needs the user)
+   and `CANCELLED` (user abort). The flat `DumpState` the HTTP/frontend
+   contract speaks is a pure PROJECTION of the machine, never stored.
 4. **Frontend: repositories own all server interaction and all caches.** UI
    components are dumb. The experimental visualizations are isolated from the
    stable tabs.
@@ -44,15 +47,22 @@ ownership, not local mistakes:
 The whole contract surface. Types and interfaces only:
 
 - `DumpId`, `DumpInfo` (name, size, state, source, error?, progress?)
-- `DumpState` — see state machine below
+- `DumpState` — the flat projection the HTTP/frontend contract speaks (see
+  state machine below); derived from the machine, never persisted
 - `DumpSource` — read-only discovery:
-  - `init()` — lifecycle hook: build caches, recover state
+  - `init()` — lifecycle hook: build caches
   - `list() -> list[DumpInfo]`
-- `LocalDumpStore(DumpSource)` — the one writable source:
-  - `start_download(id) -> Job`, `delete(id)`, `compact(id)`
-  - `get(id) -> DumpHandle` (path + state, for the query engine)
-- `Indexer` — produce derived data (histogram + dominators + MAT indexes):
-  - `RemoteIndexer` (fetch prebuilt from a source), `LocalIndexer` (run MAT)
+- `LocalDumpStore(DumpSource)` — the one writable source, and the owner of
+  the per-dump machines:
+  - user actions: `start_download(id) -> Job` (download / retry / resume —
+    idempotent), `cancel(id)`, `delete(id)`, `compact(id)`
+  - the control plane: `reconcile(id)` / `reconcile_all()` — observe disk
+    truth, query remotes when needed, run the pure `machine.decide()`,
+    persist, execute actions as jobs
+  - engine hooks: `request_indexes(id)`, `await_indexes(id, job)`,
+    `note_indexes_corrupt(id)`
+  - `get(id) -> DumpInfo`, `dir_of(id)` (any state; gating is the engine's),
+    `read_meta`/`update_meta`, `set_tags`/`user_tags`
 - `QueryEngine` — per-dump read queries (stats, trees, classes, composition,
   anatomy, compare); owns all payload caches, invalidated on state
   transitions
@@ -61,19 +71,50 @@ The whole contract surface. Types and interfaces only:
   downloads, indexing, analysis.
 - Uniform error type mapped to `{error, code}` at the HTTP boundary.
 
-### `impl/localstore`
+### `impl/machine` (`backend/machine/`)
 
-Filesystem-backed store. Owns:
+The per-dump state machines, pure and I/O-free: `types.py` (the states —
+`Comp`/`Machine`/`Obs`/`RemoteView` — plus (de)serialization), `decide.py`
+(the transition function: one reconcile pass over the three component
+sub-machines, plus `validate()` which gates DONE on artifacts), `project.py`
+(the flat DumpState projection). The store feeds observations in, persists
+the mutated machine, and executes the returned actions as jobs. Rules:
 
-- **Explicit state, persisted by the store** (single writer). On-disk layout
-  is normalized once by `migrate.py`; `init()` then just reads state — there
-  is no legacy-adoption or forensic recovery code in the store.
-- Download assembly (cat parts | gzip -dc / tar -x), with:
-  - `manifest.json`-based completeness check for index tars (fixes the
-    partial-untar-poisons-resume bug)
+- **In-progress states are untrusted**: re-entering one re-validates the
+  on-disk artifacts (parts size-checked, partials resumed, staging rebuilt)
+  and restarts the stage from there.
+- **DONE is earned by artifacts**, not by the record: `validate()` demotes
+  DONE states whose artifacts vanished, promotes components whose final
+  artifacts are on disk (also how a meta-less dump dir adopts a machine).
+- **Remote availability is an input** (`RemoteView`), never a state; an
+  upstream failure means "unknown" — idle and re-query next tick, never a
+  fake empty result.
+- **Jobs are execution vehicles**, never state: liveness comes from the job
+  registry at each pass; stage outcomes are CAS-applied (`machine_transition`
+  with expected states) so a cancel/preempt that already moved the state wins.
+- **Retries live at the work site** (per-part in transfer, whole-stage
+  bounded attempts in stages) — `ERROR` is only for what those can't fix.
+
+### `impl/localstore` (`backend/localstore/`)
+
+Filesystem-backed store, a package: `files.py` (on-disk artifact predicates
++ drop helpers, no state), `compact.py` (zstd compaction, mtime convention),
+`transfer.py` (download + assembly machinery: parallel part fetch with Range
+resume, streaming `PartPipe`, staged untar + manifest validation),
+`stages.py` (one executor per component acquisition), `store.py`
+(`FsDumpStore`: meta/tags, machine persistence, the reconcile loop, CAS
+transitions, user actions).
+
+- **Explicit machine, persisted by the store** (single writer) in
+  meta.json's `machine` field. A dir without it adopts one inferred from
+  observation — in-progress states are untrusted anyway, so inference only
+  needs `wanted` and the DONE promotions.
+- Download assembly (parts | gzip -dc / tar -x), with:
+  - manifest-based completeness check for index tars, re-validated on every
+    entry (fixes the partial-untar-poisons-resume bug)
   - subprocess timeouts and error propagation that never masks the cause
-    (fixes the `_assemble` `UnboundLocalError`/hang)
-- `delete`, `compact` (negotiates with state machine: not while querying)
+- `delete` cancels in-flight stages first (abort flag) and waits for them
+  to exit, then removes the dir
 - All meta.json writes (single-writer rule), flock for cross-process safety
 
 ### `impl/github`
@@ -111,24 +152,52 @@ map result/error. Every endpoint returns either the payload or
 
 ## Dump state machine
 
+One machine per dump, three component sub-machines — `dump` (the hprof),
+`data` (the overview bundle), `indexes` (the MAT index set) — each:
+
 ```
-        (remote only)          ┌─────────────┐
-            ─ ─ ─ ─ ─ ─ ─ ─ ─▶ │  DOWNLOADING │◀── resume (keeps .dl parts)
-                               └──────┬──────┘
-                                      ▼
-                                ASSEMBLING ──fail──▶ FAILED(reason) ──retry──▶ DOWNLOADING
-                                      ▼
-        indexes absent → INDEXING (LocalIndexer fallback)
-                                      ▼
-                                   READY ──▶ (compact, delete allowed)
+NEW ──▶ DOWNLOADING ──▶ DONE         (remote acquisition)
+NEW ──▶ PARSING     ──▶ DONE         (local MAT build: bootstrap for data,
+                                      index parse for indexes)
+DOWNLOADING/PARSING ──▶ ERROR        work-site retries exhausted; only an
+                                     explicit retry (start_download) leaves it
+DOWNLOADING/PARSING ──▶ CANCELLED    user abort; same re-entry rules as ERROR
 ```
 
-- `READY` requires: hprof present + meta.json valid + index completeness per
-  manifest (or recorded local bootstrap).
-- Transitions are job-driven and go through the store; queries are only
-  served in `READY`.
-- A crash mid-download leaves `.dl/` parts on disk; the next `start_download`
-  resumes them (that is normal operation, not "recovery").
+The machine decides, per component, in one place (`machine.decide`):
+
+- `dump` — remote-only (the hprof has no local build); a confirmed-absent
+  run release is a real ERROR, anything else idles until a later tick.
+- `data` — remote download when published (unprompted; CI ships the bundle
+  minutes after the hprof), else the local MAT bootstrap, but ONLY on an
+  explicit user action — nothing local starts unprompted.
+- `indexes` — remote download when published (unprompted), else a local MAT
+  parse on an explicit analysis request (`want_indexes`). A late remote
+  publication preempts a running local parse (minutes vs tens of minutes).
+  Local parse runs INLINE in the analyzing thread: the analyze job holds the
+  serial MAT worker, so queueing the parse behind it would deadlock.
+
+What the HTTP/frontend contract sees is the pure projection
+(`machine.project`): dump ERROR/CANCELLED → FAILED; dump not done →
+DOWNLOADING (ASSEMBLING once all parts are complete in `.dl/`); dump + data
+done → READY (an indexes ERROR stays READY — the analysis surface reports
+it); dump done + data missing → INDEXING; dump done + data ERROR → FAILED.
+
+- `READY` requires: hprof present + data bundle (histogram + dominators).
+  The MAT index set is NOT required: it is acquired lazily (remote download
+  once published, or a local parse driven by the first analysis) without
+  ever leaving `READY`.
+- Event sources (user actions, kernel timers, stage completion, startup)
+  never do work themselves — they adjust the machine (`wanted`, resets,
+  `want_indexes`) and kick `reconcile()`. Passes are serialized per dump;
+  the latest event always gets its evaluation (dirty flag).
+- A crash mid-stage leaves `.dl/` parts on disk; startup `reconcile_all()`
+  (kernel only — snapshot/CI stores are source-less and never reconcile)
+  re-enters the in-progress stages, which re-validate and resume. That is
+  normal operation, not "recovery".
+- Analysis-level queries are served only in `READY`; overview queries
+  (trees/classes/compare) are served in any busy state once the data bundle
+  is unpacked.
 
 ## HTTP API (contract — implement this first)
 
@@ -136,6 +205,7 @@ map result/error. Every endpoint returns either the payload or
 GET    /api/dumps                      merged view: local states + remote sources
 POST   /api/dumps/{id}/download        → Job (idempotent: resumes)
 POST   /api/dumps/{id}/retry
+POST   /api/dumps/{id}/cancel          abort in-flight stages (kept parts resume)
 DELETE /api/dumps/{id}
 GET    /api/dumps/{id}/stats|trees|classes
 GET    /api/dumps/{id}/composition?class=…
@@ -170,8 +240,9 @@ endpoint, always JSON.
 
 ## Compatibility: one-time migration, not a permanent burden
 
-The store contains **no** legacy-adoption code. Format changes are handled by
-a one-time throwaway migration script, never permanent compat layers.
+The store contains **no** legacy-format compat code. Meta-less dirs adopt a
+machine from artifact observation (that is the machine's design, not a compat
+layer); anything beyond that is a one-time throwaway migration script.
 
 Hard requirements that remain:
 

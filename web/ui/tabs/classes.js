@@ -20,12 +20,15 @@ export function catCls(id){
   return 'c-' + (CAT_IDS[id] ? id : 'other');
 }
 
-/* null when the dump can be queried, otherwise {msg, err} describing why not. */
+/* null when the dump can be queried, otherwise {msg, err} describing why not.
+   Busy states (downloading/assembling/indexing) are NOT blocked here: the
+   overview works off the tiny data bundle, which lands seconds into the
+   download — the API itself answers 409 until it is unpacked. */
 export async function dumpNotReady(id){
   const r = await listDumps();
   if(!r.ok) return {msg: 'failed to list dumps: ' + (r.error || 'unknown error'), err: true};
   const info = (r.data || []).find(d => d.id === id);
-  if(info && info.state !== 'ready')
+  if(info && (info.state === 'failed' || info.state === 'remote'))
     return {msg: `dump "${id}" is ${info.state}` + (info.error ? ` — ${info.error}` : '') + '.',
             err: info.state === 'failed'};
   return null;
@@ -131,7 +134,14 @@ export function mount(container, repo, opts = {}){
     const r = await R.classes(id, {filter: st.filter, sort: st.sort, page: st.page});
     if(my !== st.seq) return;
     setBusy(false);
-    if(!r.ok){ renderError(`${id}: ${r.error || 'failed to load classes'}`); return; }
+    if(!r.ok){
+      renderError(`${id}: ${r.error || 'failed to load classes'}`);
+      // busy dump, data bundle not unpacked yet — retry until it lands (the
+      // retry re-checks dumpNotReady, so failed/remote dumps terminate here)
+      if(r.status === 409 && !opts.inline)
+        setTimeout(() => { if(st.seq === my && st.dump === getDump()) load(); }, 4000);
+      return;
+    }
     st.rows = r.data.rows || [];
     st.total = r.data.total || 0;
     st.pages = Math.max(1, r.data.pages || 1);

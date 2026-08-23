@@ -5,7 +5,8 @@
  *                 body is spread in; data carries the parsed body (e.g. the
  *                 404 {analyzed:false} of composition/anatomy)
  *   network fail: {ok:false, status:0, code:'network', error}
- * Shared helpers: esc (escapes & < > " '), fmtB (bytes), fmtN (number grouping).
+ * Shared helpers: esc (escapes & < > " '), fmtB (bytes), fmtN (number
+ * grouping), fmtDur (seconds -> compact duration).
  */
 
 export const esc = s => String(s)
@@ -21,6 +22,15 @@ export const fmtB = v => {
 
 /* number grouping: 1234567 -> "1,234,567" */
 export const fmtN = v => Number(v).toLocaleString("en-US");
+
+/* seconds -> compact duration: 42s / 6m 30s / 1h 5m */
+export const fmtDur = v => {
+  const s = Math.max(0, Math.round(v));
+  if (s < 60) return s + "s";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+};
 
 /* class -> category; mirrors backend cat_of (mat.py) exactly. */
 export const catOf = n =>

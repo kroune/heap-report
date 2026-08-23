@@ -122,7 +122,14 @@ export function mount(container, repo, opts = {}){
     if(nr){ showMsg(nr.msg, nr.err); return; }
     const r = await R.trees(id);
     if(my !== st.seq) return;
-    if(!r.ok){ showMsg(`${id}: ${r.error || 'failed to load trees'}`, true); return; }
+    if(!r.ok){
+      showMsg(`${id}: ${r.error || 'failed to load trees'}`, true);
+      // busy dump, data bundle not unpacked yet — retry until it lands (the
+      // retry re-checks dumpNotReady, so failed/remote dumps terminate here)
+      if(r.status === 409 && !opts.inline)
+        setTimeout(() => { if(st.seq === my && st.dump === getDump()) load(); }, 4000);
+      return;
+    }
     st.stats = r.data.stats || {};
     st.data = r.data.trees || null;
     hideMsg();

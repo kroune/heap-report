@@ -2,8 +2,10 @@
  *
  * mountJobs(container): self-contained. Subscribes via pollJobs() from
  * data/dumprepo.js and renders every job kind uniformly: kind badge, dump id,
- * detail, state, progress bar (progress.done/total bytes via fmtB), log tail
- * (last ~10 lines; full log in a <details>), error in red (.job-err).
+ * detail, state, progress bar (progress.done/total bytes via fmtB; download
+ * jobs also get stage, speed/eta via fmtDur, unpacked-bytes and a per-part
+ * line), log tail (last ~10 lines; full log in a <details>), error in red
+ * (.job-err).
  *
  * The DOM is rebuilt at most once per poll tick: each render builds a fresh
  * tree off-DOM and swaps it in with a single replaceChildren(). Rebuilds are
@@ -24,7 +26,7 @@
  *   job-prog-bar, job-prog-label, job-log, job-log-full, job-err
  * The only inline style is the progress bar width (a dynamic layout value).
  */
-import {fmtB} from "../data/http.js";
+import {fmtB, fmtDur} from "../data/http.js";
 import {pollJobs} from "../data/dumprepo.js";
 
 const LOG_TAIL = 10;
@@ -82,8 +84,26 @@ function jobCard(job, ui) {
     wrap.appendChild(track);
     const label = document.createElement("span");
     label.className = "job-prog-label";
-    label.textContent = `${fmtB(p.done)} / ${fmtB(p.total)} (${pct.toFixed(0)}%)`;
+    let text = p.stage === "assemble"
+      ? `assembling — ${fmtB(p.done)} / ${fmtB(p.total)} unpacked (${pct.toFixed(0)}%)`
+      : `${fmtB(p.done)} / ${fmtB(p.total)} (${pct.toFixed(0)}%)`;
+    if (p.speed) text += ` · ${fmtB(Math.round(p.speed))}/s`;
+    if (p.eta != null) text += ` · eta ${fmtDur(p.eta)}`;
+    if (p.stage === "download" && p.asm && p.asm.total > 0)
+      text += ` · ${fmtB(p.asm.done)} unpacked`;
+    label.textContent = text;
     wrap.appendChild(label);
+    if (Array.isArray(p.parts) && p.parts.length) {
+      const isDone = x => x.done || (x.size != null && x.have >= x.size);
+      const done = p.parts.filter(isDone).length;
+      const act = p.parts.filter(x => !isDone(x) && x.have > 0)
+        .map(x => `${x.n} ${x.size ? Math.floor(100 * x.have / x.size) + "%" : fmtB(x.have)}`);
+      const sub = document.createElement("span");
+      sub.className = "job-prog-label";
+      sub.textContent = `parts ${done}/${p.parts.length}` +
+        (act.length ? ` · active: ${act.join(", ")}` : "");
+      wrap.appendChild(sub);
+    }
     card.appendChild(wrap);
   }
 

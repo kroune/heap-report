@@ -26,28 +26,28 @@ DumpId = str
 
 
 class DumpState(enum.Enum):
-    """Lifecycle of a dump. Allowed transitions (all driven by the store):
+    """The legacy flat state the HTTP/frontend contract speaks. It is a pure
+    PROJECTION (machine.project) of the hierarchical per-dump machine
+    (backend/machine): three component sub-machines — dump (hprof), data
+    (overview bundle), indexes (MAT index set) — each NEW / in-progress
+    (DOWNLOADING or local-PARSING) / DONE / ERROR / CANCELLED. The machine is
+    persisted in meta.json and reconciled from disk truth; this flat enum is
+    never the source of anything.
 
-        REMOTE      -- start_download --> DOWNLOADING
-        DOWNLOADING -- parts complete --> ASSEMBLING
-        ASSEMBLING  -- indexes complete (manifest) --> READY
-        ASSEMBLING  -- no usable indexes ----------> INDEXING   (local MAT bootstrap)
-        INDEXING    -- bootstrap done --------------> READY
-        any of DOWNLOADING/ASSEMBLING/INDEXING --error--> FAILED
-        any of DOWNLOADING/ASSEMBLING/INDEXING --process death--> (state persists;
-            store.recover_interrupted() at server startup resubmits the job,
-            or -> FAILED if unresumable)
-        FAILED      -- start_download (resume) ----> DOWNLOADING
-        READY/FAILED -- delete ---------------------> (gone; REMOTE if a source lists it)
+        dump error/cancelled  -> FAILED (retry resumes it)
+        dump in flight        -> DOWNLOADING / ASSEMBLING (parts tail in gzip)
+        dump done, data open  -> INDEXING
+        dump done, data done  -> READY (MAT indexes are OPTIONAL and lazy —
+            an indexes ERROR never drags a usable dump below READY)
 
-    READY is kept during compact() (the store serializes compact vs queries).
-    Only READY dumps serve queries.
+    Overview queries (trees/classes/compare) are served from any busy state
+    once the data bundle is unpacked; analysis-level queries stay READY-only.
     """
 
     REMOTE = "remote"            # known to a source, not present locally
     DOWNLOADING = "downloading"  # parts landing in .dl/ (resumable)
     ASSEMBLING = "assembling"    # streaming parts through gzip/tar
-    INDEXING = "indexing"        # local MAT bootstrap fallback
+    INDEXING = "indexing"        # hprof present, data missing (fill/bootstrap pending)
     READY = "ready"
     FAILED = "failed"
 
@@ -87,7 +87,8 @@ class Job:
     dump_id: Optional[DumpId]
     detail: str = ""                             # e.g. class name for ANALYZE
     state: JobState = JobState.QUEUED
-    progress: Optional[tuple[int, int]] = None   # (done, total), units kind-specific
+    progress: Optional[dict] = None            # {"done","total"}, units kind-specific;
+                                               # downloads add stage/speed/eta/parts/asm
     log: list = field(default_factory=list)      # tail only, capped by the registry
     error: Optional[str] = None
 
@@ -163,30 +164,87 @@ class RemoteDumpSource(DumpSource, Protocol):
 
 class LocalDumpStore(DumpSource, Protocol):
     """The one writable source. Owns every mutation of a dump's directory —
-    meta.json, parts, indexes (single-writer rule). Queries only read."""
+    meta.json, parts, indexes (single-writer rule). Queries only read.
+
+    Lifecycle is driven by the per-dump state machine (backend/machine):
+    reconcile() observes disk + remote availability and executes the next
+    stage; every event source (user action, timer, stage completion,
+    startup) just kicks reconcile()."""
 
     def get(self, dump_id: DumpId) -> DumpInfo:
         """Raises ApiError('not_found', ...) for unknown ids."""
         ...
 
     def start_download(self, dump_id: DumpId) -> Job:
-        """Idempotent: returns the active job if one exists, resumes kept
-        .dl/ parts otherwise. Resolves which registered RemoteDumpSource has
-        the dump. Validates the index tar against DownloadPlan.manifest
-        BEFORE marking READY (never trust the mere presence of .zst files)."""
+        """The explicit user action: mark the dump wanted, reset ERROR /
+        CANCELLED components, allow local MAT builds this pass, reconcile
+        synchronously and return the first stage job. Idempotent — kept .dl/
+        parts resume. Raises ApiError('bad_state') when everything is done,
+        ApiError('not_found') when no remote source has anything for it."""
         ...
 
-    def delete(self, dump_id: DumpId) -> None: ...
+    def cancel(self, dump_id: DumpId) -> None:
+        """User abort: every in-progress component -> CANCELLED, the running
+        stage jobs abort cooperatively and kept parts stay resumable."""
+        ...
+
+    def reconcile(self, dump_id: DumpId, allow_local: bool = False) -> list:
+        """Run reconcile passes until quiescent (dirty-flag loop); returns
+        the jobs submitted this call. allow_local permits local MAT builds
+        (explicit user actions only — timers pass False)."""
+        ...
+
+    def reconcile_all(self) -> None:
+        """Server startup (kernel only — never from init(), snapshot/CI
+        stores are source-less and must not touch state): adopt every local
+        dump dir into its machine and reconcile. Crashed in-progress stages
+        re-enter and re-validate their artifacts; ERROR/CANCELLED stay put
+        (user input)."""
+        ...
+
+    def request_indexes(self, dump_id: DumpId) -> None:
+        """Engine hook: an analysis wants the MAT indexes. Sticky — the
+        machine acquires them (remote download when published, else a local
+        parse) and keeps driving across restarts."""
+        ...
+
+    def await_indexes(self, dump_id: DumpId, job: Job) -> None:
+        """Block until the indexes component reaches DONE; raise with the
+        component error on ERROR, core.Aborted on CANCELLED."""
+        ...
+
+    def note_indexes_corrupt(self, dump_id: DumpId) -> None:
+        """Engine hook: a compacted index failed decompression and the set
+        was dropped. The indexes component goes back to NEW and is
+        re-acquired (remote when published, else local parse)."""
+        ...
+
+    def delete(self, dump_id: DumpId) -> None:
+        """Cancel any in-flight stages, wait for them to exit, remove the
+        dump dir."""
+        ...
 
     def compact(self, dump_id: DumpId) -> Job:
         """(Re)compress MAT indexes per LAYOUT.md's mtime convention."""
         ...
 
+    def hold_compact(self, dump_id: DumpId, seconds: float = None) -> float:
+        """Suppress autocompact for this dump for `seconds` (bounded);
+        returns the hold's expiry (wall-clock unix ts). Process-lifetime —
+        a restart drops holds. Re-locking extends."""
+        ...
+
+    def release_compact(self, dump_id: DumpId) -> bool:
+        """Drop the compact hold early (idempotent); True when a live hold
+        existed."""
+        ...
+
     def dir_of(self, dump_id: DumpId) -> str:
-        """Absolute path of the dump dir; allowed in READY and INDEXING (the
-        store-sanctioned bootstrap job works during INDEXING). READ QUERIES
-        must additionally enforce READY themselves (MatQueryEngine._data_dir
-        does). Raises ApiError('bad_state', ...) otherwise."""
+        """Absolute path of the dump dir, in ANY state of an existing dump
+        (raises ApiError('not_found') for unknown ids). State gating is the
+        caller's job: MatQueryEngine._data_dir enforces READY for
+        analysis-level queries, _data_early allows busy states once the data
+        bundle is unpacked, the bootstrap works during INDEXING."""
         ...
 
     def read_meta(self, dump_id: DumpId) -> dict:
@@ -200,15 +258,28 @@ class LocalDumpStore(DumpSource, Protocol):
         meta."""
         ...
 
+    def set_tags(self, dump_id: DumpId, tags: list) -> list:
+        """Replace the user-assigned tags of a dump — any well-formed id,
+        local or remote. Validated/normalized by the impl; returns the stored
+        list ([] clears). Persisted OUTSIDE meta.json (a remote dump has no
+        local dir, so update_meta cannot hold them)."""
+        ...
+
+    def user_tags(self) -> dict:
+        """{dump_id: [tag, …]} for every tagged dump."""
+        ...
+
 
 # ---------------------------------------------------------------- queries
 
 
 class QueryEngine(Protocol):
-    """Read queries over READY dumps, plus on-demand MAT analysis jobs.
-    Owns all payload caches; invalidates them when a dump's data changes.
-    Returned dicts are JSON-serializable payloads (the HTTP layer passes them
-    through)."""
+    """Read queries over local dumps, plus on-demand MAT analysis jobs.
+    Overview queries (trees/classes/compare) work off the data bundle alone
+    and are served in any busy state once it is unpacked; analysis-level
+    queries (composition/anatomy/analyze) require READY. Owns all payload
+    caches; invalidates them when a dump's data changes. Returned dicts are
+    JSON-serializable payloads (the HTTP layer passes them through)."""
 
     def trees(self, dump_id: DumpId) -> dict:
         """{"stats": …, "trees": …} — the overview tab."""
@@ -251,6 +322,14 @@ class ApiError(Exception):
         super().__init__(message)
         self.code = code
         self.status = status
+
+
+class Aborted(Exception):
+    """Cooperative cancellation: a stage noticed its dump's abort flag and
+    exited (user cancel, parse preemption, delete). Python threads cannot be
+    killed — stages poll the flag at chunk/2s boundaries. The state
+    transition already happened (CANCELLED, or preemption's DOWNLOADING);
+    an Aborted stage must NOT touch the machine, just fail its job."""
 
 
 # ---------------------------------------------------------------- wiring

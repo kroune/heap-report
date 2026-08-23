@@ -10,6 +10,10 @@
      back-refs) are broken DFS-style from the root and drawn dashed, routed right.
    - a class referenced by several others appears ONCE — edges converge (this is
      the difference from the tree-shaped anatomy viz).
+   - the min-retained filter hides small classes but never severs chains: edges
+     are contracted past hidden top-N-window nodes (A→B→C with B hidden becomes a
+     dotted A→C "via" edge carrying the hidden class names for the tooltip). Via
+     edges don't count as capture back-refs for the nesting rule below.
    - nested-circle rule: a $-nested class (inner class, $$Lambda) with a REAL
      back-edge to its outer (this$0, arg$1, an owner field) is drawn as a small
      circle inside the outer's circle — the capture edge is implied by
@@ -98,26 +102,70 @@ export function computeFlowLayout(graph, opts = {}) {
   const root = opts.root ?? null;
   const pinSet = new Set(opts.pins || []);
 
-  // ---- top-N classes by retained, above the min-retained filter (root always kept) ----
+  // ---- top-N classes by retained, above the min-retained filter (root always kept).
+  //      The min-retained filter hides small classes WITHOUT severing the reference
+  //      chains through them: edges are contracted past hidden nodes of the top-N
+  //      window (A→B→C with B hidden becomes a dotted A→C "via" edge), so a big
+  //      class stays attached to its surviving holders instead of being dropped
+  //      as unreachable. ----
   const minR = opts.minR || 0;
-  const keepIdx = [...g.nodes.keys()]
-    .filter(i => g.nodes[i][3] >= minR || g.nodes[i][0] === root)
-    .sort((i, j) => g.nodes[j][3] - g.nodes[i][3]).slice(0, topN);
+  const byR = [...g.nodes.keys()].sort((i, j) => g.nodes[j][3] - g.nodes[i][3]);
+  const keepIdx = byR.filter(i => g.nodes[i][3] >= minR || g.nodes[i][0] === root).slice(0, topN);
   const keep = new Set(keepIdx);
+  const win = new Set(byR.slice(0, topN));   // contraction tunnels stay inside the top-N window
+  keepIdx.forEach(i => win.add(i));          // (a small root may sit outside the raw window)
   const remap = new Map(keepIdx.map((oi, i) => [oi, i]));
   const N = keepIdx.map(oi => ({ oi, cls: g.nodes[oi][0], n: g.nodes[oi][1], s: g.nodes[oi][2], r: g.nodes[oi][3] }));
-  const inL = N.map(() => []), outL = N.map(() => []);   // field-level refs (click detail)
+  const adj = new Map();   // window-wide original adjacency for the contraction walks
+  for (const l of g.links) {
+    if (!win.has(l[0]) || !win.has(l[1])) continue;
+    let a = adj.get(l[0]);
+    if (!a) adj.set(l[0], a = []);
+    a.push({ t: l[1], f: l[2], n: l[3], b: l[4] });
+  }
+  const inL = N.map(() => []), outL = N.map(() => []);   // field-level refs (click detail): direct only
   const pmap = new Map();
+  const pairOf = (s, t) => {
+    const k = s + "|" + t;
+    let p = pmap.get(k);
+    if (!p) { p = { s, t, b: 0, n: 0, via: new Set() }; pmap.set(k, p); }
+    return p;
+  };
+  // direct refs between drawn classes, in payload order (field-level detail feeds too)
   for (const l of g.links) {
     if (!keep.has(l[0]) || !keep.has(l[1])) continue;
     const s = remap.get(l[0]), t = remap.get(l[1]);
     const e = { s, t, f: l[2], n: l[3], b: l[4] };
     inL[t].push(e); outL[s].push(e);
     if (s === t) continue;
-    const k = s + "|" + t;
-    let p = pmap.get(k);
-    if (!p) { p = { s, t, b: 0, n: 0 }; pmap.set(k, p); }
+    const p = pairOf(s, t);
     p.b += l[4]; p.n += l[3];
+  }
+  // contracted "via" edges: DFS from each drawn class through hidden window nodes
+  // to the next drawn ones (skipped entirely when the filter hides nothing)
+  if (win.size > keep.size) {
+    for (const u of keepIdx) {
+      const s = remap.get(u);
+      const seen = new Set([u]);   // one visit per hidden node per source: cycle-safe
+      const stack = [];
+      for (const a of adj.get(u) || []) if (!keep.has(a.t)) stack.push({ x: a.t, path: [] });
+      while (stack.length) {
+        const cur = stack.pop();
+        if (seen.has(cur.x)) continue;
+        seen.add(cur.x);
+        const via = [...cur.path, g.nodes[cur.x][0]];
+        for (const a of adj.get(cur.x) || []) {
+          if (keep.has(a.t)) {   // terminal hop onto a drawn class: one via edge per field link
+            if (a.t === u) continue;             // contracted back to the source: not drawable
+            const p = pairOf(s, remap.get(a.t));
+            p.b += a.b; p.n += a.n;
+            via.forEach(c => p.via.add(c));
+          } else if (!seen.has(a.t)) {
+            stack.push({ x: a.t, path: via });   // keep tunneling
+          }
+        }
+      }
+    }
   }
   const D = [...pmap.values()];   // directed class pairs (fields summed, self-loops excluded)
   const rootIdx = root != null ? N.findIndex(nd => nd.cls === root) : -1;
@@ -127,7 +175,7 @@ export function computeFlowLayout(graph, opts = {}) {
   //      canvas below; the detail panel still lists them. ----
   const present = new Set(N.map(nd => nd.cls));
   const idxOf = new Map(N.map((nd, u) => [nd.cls, u]));
-  const hasPair = new Set(D.map(e => e.s + "|" + e.t));
+  const hasPair = new Set(D.filter(e => !e.via.size).map(e => e.s + "|" + e.t));   // a contracted "via" edge is no capture back-ref
   const nestIn = N.map(() => -1);
   N.forEach((nd, u) => {
     if (u === rootIdx) return;
@@ -151,8 +199,9 @@ export function computeFlowLayout(graph, opts = {}) {
     if (rs === rt) continue;   // contained (capture edge or host<->inner): implied, not drawn
     const k = rs + "|" + rt;
     let a = lmap.get(k);
-    if (!a) { a = { s: rs, t: rt, b: 0, n: 0, os: e.s, ot: e.t, maxb: -1 }; lmap.set(k, a); L.push(a); }
+    if (!a) { a = { s: rs, t: rt, b: 0, n: 0, os: e.s, ot: e.t, maxb: -1, via: new Set() }; lmap.set(k, a); L.push(a); }
     a.b += e.b; a.n += e.n;
+    e.via.forEach(c => a.via.add(c));
     if (e.b > a.maxb) { a.maxb = e.b; a.os = e.s; a.ot = e.t; }
   }
   const lIn = N.map(() => []), lOut = N.map(() => []);
@@ -208,11 +257,14 @@ export function computeFlowLayout(graph, opts = {}) {
       seenPair.add(pk);
       const o = L[ri], aB = back.has(ei), bB = back.has(ri);
       const fwd = (aB && !bB) ? o : (bB && !aB) ? e : (e.b >= o.b ? e : o);
+      const vs = new Set([...e.via, ...o.via]);
       R.push({ s: fwd.s, t: fwd.t, bi: true, b: Math.max(e.b, o.b), n: e.n + o.n,
                os: e.os, ot: e.ot, on: e.n, ob: e.b, ros: o.os, rot: o.ot, rn: o.n, rb: o.b,
+               via: vs.size ? [...vs] : null,
                cyc: aB && bB });
     } else {
-      R.push({ s: e.s, t: e.t, bi: false, b: e.b, n: e.n, os: e.os, ot: e.ot, cyc: back.has(ei) });
+      R.push({ s: e.s, t: e.t, bi: false, b: e.b, n: e.n, os: e.os, ot: e.ot,
+               via: e.via.size ? [...e.via] : null, cyc: back.has(ei) });
     }
   }
 
@@ -317,7 +369,7 @@ export function computeFlowLayout(graph, opts = {}) {
   const ew = e => 0.7 + 3.3 * Math.sqrt(e.b / emax);
   const edges = R.map((e, ri) => {
     const colS = colU.has(e.s), colT = colU.has(e.t);
-    const out = { s: e.s, t: e.t, bi: e.bi, b: e.b, n: e.n, cyc: !!e.cyc,
+    const out = { s: e.s, t: e.t, bi: e.bi, b: e.b, n: e.n, cyc: !!e.cyc, via: e.via || null,
                   os: e.os, ot: e.ot, w: +ew(e).toFixed(2), d: null, aS: false, aT: false };
     if (e.bi) { out.ros = e.ros; out.rot = e.rot; out.on = e.on; out.ob = e.ob; out.rn = e.rn; out.rb = e.rb; }
     if ((colS && colT) || (colS && !e.bi)) return out;   // column-internal / column outbound: not drawn
@@ -415,17 +467,19 @@ export async function prepare(repo, dumpId, className, params = {}) {
   layout.edges.forEach(e => {
     if (e.d === null) return;
     const nm = u => shortClass(nodes[u].cls);
+    const viaNote = e.via ? `\nvia filtered-out classes: ${e.via.slice(0, 3).map(c => shortClass(c)).join(", ")}` +
+      (e.via.length > 3 ? ` +${e.via.length - 3} more` : "") : "";
     if (e.bi) {
       e.tip = `${nm(e.os)} → ${nm(e.ot)}: ×${fmtN(e.on)}, ${fmtB(e.ob)}\n` +
-              `${nm(e.ros)} → ${nm(e.rot)}: ×${fmtN(e.rn)}, ${fmtB(e.rb)}`;
+              `${nm(e.ros)} → ${nm(e.rot)}: ×${fmtN(e.rn)}, ${fmtB(e.rb)}` + viaNote;
     } else {
       e.tip = `${nm(e.os)} → ${nm(e.ot)}: ×${fmtN(e.n)}, ${fmtB(e.b)}` +
-              (e.cyc ? "\nclass-level cycle edge (points up)" : "");
+              (e.cyc ? "\nclass-level cycle edge (points up)" : "") + viaNote;
     }
   });
 
   return { kind, dumpId, className, samples: a.samples, available: a.available || [],
-           objCount, scale, factor, cyc: params.cyc !== false,
+           objCount, scale, factor, cyc: params.cyc !== false, pinsOpen: !!params.pinsOpen,
            top, maxNodes, pins, minR, setBytes: layout.setBytes, layout, labels, details };
 }
 
@@ -472,33 +526,45 @@ export function render(container, vm, ctx) {
 
   const layout = vm.layout, N = layout.nodes, E = layout.edges;
   let scale = vm.scale, cycOn = vm.cyc, shown = -1, nb = new Set();   // nb = the selected node's neighbors (their labels stay bright)
+  let pinsOpen = vm.pinsOpen;   // the pin editor fold survives refetch via the params below
   const G = () => scale === "global";
   const fxB = v => G() ? "≈ " + ctx.fmtB(v * vm.factor) : ctx.fmtB(v);
   const fxN = v => G() ? "≈ " + ctx.fmtN(v * vm.factor) : ctx.fmtN(v);
   const refetch = patch =>
-    ctx.refetch({ top: vm.top, samples: vm.samples, scale, objCount: vm.objCount, cyc: cycOn, pins: vm.pins, minR: vm.minR, ...patch });
+    ctx.refetch({ top: vm.top, samples: vm.samples, scale, objCount: vm.objCount, cyc: cycOn, pins: vm.pins, minR: vm.minR, pinsOpen, ...patch });
   const softWrap = s => s.replace(/\$/g, "$\u200b").replace(/([a-z])([A-Z])/g, "$1\u200b$2");
   const setPins = np => { savePins(np); refetch({ pins: np }); };
 
-  // ---- control bar ----
+  // ---- toolbar: labeled groups on the left, pins/help toggles on the right ----
   const col = document.createElement("div"); col.className = "gcol";
-  const bar = document.createElement("div"); bar.className = "gtopbar";
+  const bar = document.createElement("div"); bar.className = "fbar";
   col.appendChild(bar);
+  const mkGroup = label => {
+    const g = document.createElement("div"); g.className = "fgroup";
+    const s = document.createElement("span"); s.className = "flab"; s.textContent = label;
+    g.appendChild(s); bar.appendChild(g);
+    return g;
+  };
+
+  const gScale = mkGroup("numbers");
   const seg = document.createElement("div"); seg.className = "anatseg";
   const bSample = document.createElement("button");
-  bSample.textContent = `${vm.samples} sample instances`;
+  bSample.textContent = `${vm.samples} samples`;
+  bSample.title = "numbers from the sampled instances, as extracted";
   const bGlobal = document.createElement("button");
-  bGlobal.textContent = vm.objCount ? `× ${ctx.fmtN(vm.objCount)} instances (estimated)` : "global (count unknown)";
+  bGlobal.textContent = vm.objCount ? `× ${ctx.fmtN(vm.objCount)} est.` : "global (count unknown)";
+  bGlobal.title = vm.objCount
+    ? `per-instance averages extrapolated to all ${ctx.fmtN(vm.objCount)} instances of the class`
+    : "instance count unknown — only the sample view is available";
   bGlobal.disabled = !vm.objCount;
   const syncSeg = () => { bSample.classList.toggle("on", !G()); bGlobal.classList.toggle("on", G()); };
   bSample.onclick = () => { scale = "sample"; syncSeg(); refreshSide(); };
   bGlobal.onclick = () => { if (vm.objCount) { scale = "global"; syncSeg(); refreshSide(); } };
   syncSeg();
   seg.appendChild(bSample); seg.appendChild(bGlobal);
-  bar.appendChild(seg);
+  gScale.appendChild(seg);
   if (vm.available.length > 1) {
-    const hint = document.createElement("span"); hint.className = "hint"; hint.textContent = "samples";
-    bar.appendChild(hint);
+    const gK = mkGroup("samples");
     const kseg = document.createElement("div"); kseg.className = "anatseg";
     for (const k of vm.available) {
       const b = document.createElement("button");
@@ -507,21 +573,23 @@ export function render(container, vm, ctx) {
       b.onclick = () => refetch({ samples: k });
       kseg.appendChild(b);
     }
-    bar.appendChild(kseg);
+    gK.appendChild(kseg);
   }
-  const hintTop = document.createElement("span"); hintTop.className = "hint"; hintTop.textContent = "top";
+  const gTop = mkGroup("top");
   const rng = document.createElement("input");
   rng.type = "range"; rng.className = "gtop";
   rng.min = Math.min(MIN_TOP, vm.maxNodes); rng.max = vm.maxNodes; rng.value = vm.top;
-  const rngV = document.createElement("span"); rngV.className = "hint"; rngV.textContent = vm.top;
+  rng.title = "keep only the N biggest classes by retained bytes";
+  const rngV = document.createElement("span"); rngV.className = "fval"; rngV.textContent = vm.top;
   rng.oninput = () => { rngV.textContent = rng.value; };
   rng.onchange = () => refetch({ top: +rng.value });
-  const hintMin = document.createElement("span"); hintMin.className = "hint"; hintMin.textContent = "min retained";
+  gTop.appendChild(rng); gTop.appendChild(rngV);
+  const gMin = mkGroup("min retained");
   const minIn = document.createElement("input");
   minIn.className = "gpinin gminr"; minIn.placeholder = "off (e.g. 5m)"; minIn.spellcheck = false;
   minIn.value = vm.minR ? ctx.fmtB(vm.minR) : "";
   minIn.title = "hide classes with less retained heap than this (k/m/g suffixes)";
-  const minSt = document.createElement("span"); minSt.className = "hint";
+  const minSt = document.createElement("span"); minSt.className = "ferr";
   const applyMin = () => {
     const v = minIn.value.trim();
     if (!v) { if (vm.minR) refetch({ minR: 0 }); return; }
@@ -531,20 +599,22 @@ export function render(container, vm, ctx) {
   };
   minIn.addEventListener("change", applyMin);
   minIn.addEventListener("keydown", e => { if (e.key === "Enter") applyMin(); });
-  const hint = document.createElement("span"); hint.className = "hint";
-  hint.textContent = "scroll = pan · ctrl/shift+scroll = zoom (+/− keys, 0 = fit) · edges point down from the " +
-    "inspected class · faint dashed = class-level cycle edge, points up (⟲ toggles) · small circles inside a " +
-    "node = nested classes holding a back-ref to it · right column = pinned common classes · " +
-    "zoom in for more labels · click = detail + highlight + pin/unpin · double-click = open class";
-  bar.appendChild(hintTop); bar.appendChild(rng); bar.appendChild(rngV);
-  bar.appendChild(hintMin); bar.appendChild(minIn); bar.appendChild(minSt);
-  bar.appendChild(hint);
+  minIn.addEventListener("input", () => { minSt.textContent = ""; });
+  gMin.appendChild(minIn); gMin.appendChild(minSt);
+  const spacer = document.createElement("span"); spacer.className = "fspacer";
+  bar.appendChild(spacer);
+  const pinTgl = document.createElement("button");
+  pinTgl.className = "fbtn";
+  pinTgl.title = "show/hide the pinned-classes editor (pins live in the right column)";
+  const helpBtn = document.createElement("button");
+  helpBtn.className = "fbtn"; helpBtn.textContent = "?"; helpBtn.title = "how to read this graph";
+  bar.appendChild(pinTgl); bar.appendChild(helpBtn);
 
-  // ---- pin editor: chips for every pinned class + free-form add ----
-  const pinbar = document.createElement("div"); pinbar.className = "gpinbar";
+  // ---- pin editor: chips for every pinned class + free-form add (folded away) ----
+  const pinbar = document.createElement("div"); pinbar.className = "gpinbar fpins";
   const present = new Set(N.filter(nd => !nd.dropped).map(nd => nd.cls));
-  const pinLab = document.createElement("span"); pinLab.className = "hint";
-  pinLab.textContent = "pinned:";
+  const pinLab = document.createElement("span"); pinLab.className = "flab";
+  pinLab.textContent = "pinned — drawn in the right column, outside the top-down layout:";
   pinbar.appendChild(pinLab);
   for (const p of vm.pins) {
     const chip = document.createElement("span");
@@ -562,7 +632,7 @@ export function render(container, vm, ctx) {
   pinIn.spellcheck = false;
   const pinAdd = document.createElement("button");
   pinAdd.className = "gpinadd"; pinAdd.textContent = "add";
-  const pinStatus = document.createElement("span"); pinStatus.className = "hint";
+  const pinStatus = document.createElement("span"); pinStatus.className = "ferr";
   const addPin = () => {
     const v = pinIn.value.trim();
     if (!v) return;
@@ -571,12 +641,20 @@ export function render(container, vm, ctx) {
   };
   pinAdd.addEventListener("click", addPin);
   pinIn.addEventListener("keydown", e => { if (e.key === "Enter") addPin(); });
+  pinIn.addEventListener("input", () => { pinStatus.textContent = ""; });
   const pinReset = document.createElement("button");
   pinReset.className = "gpinadd"; pinReset.textContent = "reset";
   pinReset.title = "back to the default pin set";
   pinReset.addEventListener("click", () => setPins([...DEFAULT_PINS]));
   pinbar.appendChild(pinIn); pinbar.appendChild(pinAdd); pinbar.appendChild(pinReset);
   pinbar.appendChild(pinStatus);
+  const syncPinsUi = () => {
+    pinTgl.textContent = `pinned · ${vm.pins.length}`;
+    pinTgl.classList.toggle("on", pinsOpen);
+    pinbar.hidden = !pinsOpen;
+  };
+  pinTgl.onclick = () => { pinsOpen = !pinsOpen; syncPinsUi(); };
+  syncPinsUi();
   col.appendChild(pinbar);
 
   // ---- canvas + side panel ----
@@ -586,6 +664,26 @@ export function render(container, vm, ctx) {
   const tools = document.createElement("div"); tools.className = "gtools";
   const side = document.createElement("div"); side.className = "gside";
   cwrap.appendChild(svg); cwrap.appendChild(tools);
+  // help overlay: the how-to-read guide, toggled by the ? button in the toolbar
+  const help = document.createElement("div");
+  help.className = "fhelp"; help.hidden = true;
+  help.innerHTML = `<b>Controls</b><br>
+    drag or scroll = pan · ctrl/shift+scroll = zoom · <b>+</b>/<b>−</b> zoom · <b>0</b> fit<br>
+    click a node = detail + edge highlight · double-click = open the class anatomy<br><br>
+    <b>How to read it</b><br>
+    The inspected class sits on top; each layer is what the layers above hold; edges only point
+    down — a class held by several others appears once, with edges converging into it.
+    <b>Node size = the class's TOTAL retained bytes in the whole retained set</b> — a child can be
+    bigger than its parent: held by many others (shared). Purple ring = shared (≥3 holder classes).
+    ⇄ = two-way class-level reference (drawn downward, arrowheads both ends); ↻ arc =
+    self-reference. A small circle inside a node = a nested class (inner class, lambda) whose
+    instances hold a back-reference to the outer one — the capture edge is implied by containment,
+    not drawn. The right column = pinned common classes; edges to them route right and they break
+    the top-down rule by design. Faint dashed edges are class-level cycle edges (they point up) —
+    hide them with ⟲. Dotted edges are contracted: the reference runs through classes hidden by
+    the filters (hover to see which). Zoom in to reveal more labels.`;
+  cwrap.appendChild(help);
+  helpBtn.onclick = () => { help.hidden = !help.hidden; helpBtn.classList.toggle("on", !help.hidden); };
   wrap.appendChild(cwrap); wrap.appendChild(side);
   col.appendChild(wrap);
   container.appendChild(col);
@@ -614,9 +712,11 @@ export function render(container, vm, ctx) {
     if (e.aT) el.setAttribute("marker-end", `url(#${id})`); else el.removeAttribute("marker-end");
     if (e.aS) el.setAttribute("marker-start", `url(#${id})`); else el.removeAttribute("marker-start");
   };
+  const edgeCls = (e, hl) =>   // hl = "", "dim", "in", "out", "bi"
+    "gedge" + (hl ? " " + hl : "") + (e.cyc ? " cyc" : "") + (e.via ? " via" : "");
   const edgeEls = E.map(e => {
     if (e.d === null) return null;
-    const el = mk("path", { d: e.d, "class": "gedge" + (e.cyc ? " cyc" : ""),
+    const el = mk("path", { d: e.d, "class": edgeCls(e),
                             "stroke-width": (e.cyc ? 1 : e.w).toFixed(2) });
     setMarkers(el, e, "arr");
     const ti = document.createElementNS(SVGNS, "title");
@@ -677,8 +777,9 @@ export function render(container, vm, ctx) {
     labRAF = 0;
     labG.textContent = "";
     const placed = [];
-    // the selected node labels first and bright, its neighbors normal, the rest dimmed
-    const ord = shown >= 0 && N[shown].nestedIn === -1 && !N[shown].dropped
+    // the selected node labels first and bright (a selected NESTED node labels
+    // itself too — normally nested circles stay unlabeled), its neighbors normal
+    const ord = shown >= 0 && !N[shown].dropped
       ? [shown, ...rankOrd.filter(u => u !== shown)] : rankOrd;
     for (const u of ord) {
       const nd = N[u];
@@ -747,13 +848,21 @@ export function render(container, vm, ctx) {
   };
   const onKey = e => {
     if (!svg.isConnected) { window.removeEventListener("keydown", onKey); return; }
+    const t = e.target;   // typing 0/+/- into the min-retained or pin input must not zoom
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     if (e.key === "+" || e.key === "=") zoomAt(W() / 2, H() / 2, 1.25);
     else if (e.key === "-" || e.key === "_") zoomAt(W() / 2, H() / 2, 0.8);
     else if (e.key === "0") fit();
   };
+  // labels live in screen space — a window resize invalidates their placement
+  const onResize = () => {
+    if (!svg.isConnected) { window.removeEventListener("resize", onResize); return; }
+    queueLabels();
+  };
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
   window.addEventListener("keydown", onKey);
+  window.addEventListener("resize", onResize);
   const tBtn = (txt, title, cls, fn) => {
     const b = document.createElement("button");
     b.textContent = txt; b.title = title;
@@ -783,21 +892,13 @@ export function render(container, vm, ctx) {
     `${layout.cycleCount ? ` · ${layout.cycleCount} cycle edges` : ""}` +
     `${layout.dropCount ? ` · <b>${layout.dropCount} not shown</b> — not reachable downward from the root (their holders are cut by the top filter or sit outside the retained set)` : ""}` +
     `${vm.minR ? ` · filter: ≥ ${ctx.esc(ctx.fmtB(vm.minR))} retained` : ""}` +
-    `${G() ? ` · numbers extrapolated per-instance × ${ctx.esc(ctx.fmtN(vm.objCount))}` : ""}.<br><br>
-    <b>Read it:</b> the inspected class sits on top; each layer is what the layers above hold; edges only
-    point down — a class held by several others appears once, with edges converging into it.
-    <b>Node size = the class's TOTAL retained bytes in the whole retained set</b> — a child can be bigger
-    than its parent: held by many others (shared). Purple ring = shared (≥3 holder classes).
-    ⇄ = two-way class-level reference (drawn downward, arrowheads both ends); ↻ arc = self-reference.
-    A small circle inside a node = a nested class (inner class, lambda) whose instances hold a back-reference
-    to the outer one — the capture edge is implied by containment, not drawn.
-    Right column = pinned common classes; edges to them route right and they break the top-down rule by
-    design. Faint dashed = class-level cycle edge (points up) — hide it with ⟲.<br><br>
-    Click a node for its holder/held breakdown and to pin/unpin it.</div>`;
+    `${G() ? ` · numbers extrapolated per-instance × ${ctx.esc(ctx.fmtN(vm.objCount))}` : ""}.</div>` +
+    `<div class="fnote">Click a node for its holder/held breakdown and to pin/unpin it. ` +
+    `The <b>?</b> button in the toolbar explains how to read this graph.</div>`;
   const resetEdges = () => edgeEls.forEach((el, ri) => {
     if (!el) return;
     const e = E[ri];
-    el.setAttribute("class", "gedge" + (e.cyc ? " cyc" : ""));
+    el.setAttribute("class", edgeCls(e));
     el.setAttribute("stroke-width", (e.cyc ? 1 : e.w).toFixed(2));
     setMarkers(el, e, "arr");
   });
@@ -837,14 +938,14 @@ export function render(container, vm, ctx) {
       const isS = e.s === u || e.os === u || (e.bi && e.ros === u);
       const isT = e.t === u || e.ot === u || (e.bi && e.rot === u);
       if (!isS && !isT) {
-        el.setAttribute("class", "gedge dim" + (e.cyc ? " cyc" : ""));
+        el.setAttribute("class", edgeCls(e, "dim"));
         el.setAttribute("stroke-width", (e.cyc ? 1 : e.w).toFixed(2));
         setMarkers(el, e, "arr");
         return;
       }
       nb.add(e.s); nb.add(e.t);
       const ek = e.bi ? "bi" : (isT ? "in" : "out");
-      el.setAttribute("class", "gedge " + ek + (e.cyc ? " cyc" : ""));
+      el.setAttribute("class", edgeCls(e, ek));
       el.setAttribute("stroke-width", (1.2 + 3.3 * Math.sqrt(e.b / layout.emax)).toFixed(2));
       setMarkers(el, e, "arr-" + ek);
     });

@@ -1,18 +1,19 @@
 // app/boot.js — boot(): the single entry point, called by index.html.
-// Wires the dump selector + state badge, tab switching (lazy mounts), the
-// jobs panel and the viz registry. Two modes:
+// Wires the dump picker (ui/dumppicker.js) + state badge, tab switching
+// (lazy mounts), the jobs panel and the viz registry. Two modes:
 //   API    (default) — talks to the backend via data/dumprepo + data/dumpdatarepo
 //   INLINE (window.__INLINE__ set — a static snapshot) — same tab/viz UI over
 //            makeInlineRepo(payload); server-only UI (.api-only) is hidden.
 
 import { getDump, setDump, onDumpChange, restoreDump } from './state.js';
-import { listDumps, startDownload, retryDownload, pollJobs } from '../data/dumprepo.js';
+import { listDumps, pollJobs } from '../data/dumprepo.js';
 import * as datarepo from '../data/dumpdatarepo.js';
 import { makeInlineRepo } from '../data/inlinerepo.js';
 import * as classesTab from '../ui/tabs/classes.js';
 import * as treemapTab from '../ui/tabs/treemap.js';
 import * as compareTab from '../ui/tabs/compare.js';
 import { mountJobs } from '../ui/jobs.js';
+import { mountDumpPicker } from '../ui/dumppicker.js';
 import { registerViz, initViz } from '../viz/common.js';
 import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
@@ -77,49 +78,49 @@ function wireTabs(repo, inline) {
 
 function bootInline(payload) {
   const name = payload.name || 'snapshot';
-  const sel = document.getElementById('dumpsel');
-  const opt = document.createElement('option');
-  opt.value = name;
-  opt.textContent = name;
-  sel.replaceChildren(opt);
-  sel.disabled = true;
+  const btn = document.getElementById('dumpsel-btn');
+  btn.textContent = name;
+  btn.disabled = true;
   const badge = document.getElementById('dump-state');
   badge.textContent = 'snapshot';
   badge.className = 'stbadge st-ready';
   setDump(name);
 }
 
-/* ---- API mode: selector from listDumps(), state badge, download/retry ---- */
+/* ---- API mode: header button opens the dump picker (ui/dumppicker.js),
+   which owns selection, tag filtering/editing and the per-dump lifecycle
+   actions; boot owns the list itself and the state badge ---- */
 
 async function bootApi() {
-  const sel = document.getElementById('dumpsel');
-  sel.addEventListener('change', () => setDump(sel.value));
-  onDumpChange((id) => { if (id && sel.value !== id) sel.value = id; });
-
+  const selBtn = document.getElementById('dumpsel-btn');
   let dumps = [];
   const liveDl = new Set();   // dump ids with an active (queued/running) download job
+
   const refresh = async () => {
     const res = await listDumps();
     if (!res.ok) { shellError(`cannot load the dump list: ${res.error}`); return; }
     dumps = res.data;
     const cur = getDump();
-    sel.replaceChildren(...dumps.map((d) => {
-      const opt = document.createElement('option');
-      opt.value = d.id;
-      opt.textContent = d.state === 'ready' ? d.id : `${d.id} (${d.state})`;
-      return opt;
-    }));
-    // hash-restored/current id wins; otherwise prefer the first ready dump
+    // hash-restored/current id wins; otherwise prefer the first ready dump,
+    // then any local dump (a busy one's overview may already work)
     if (!cur || !dumps.some((d) => d.id === cur)) {
-      const first = dumps.find((d) => d.state === 'ready') || dumps[0];
+      const first = dumps.find((d) => d.state === 'ready')
+        || dumps.find((d) => d.state !== 'remote' && d.state !== 'failed')
+        || dumps[0];
       if (first) setDump(first.id);
     }
-    if (getDump()) sel.value = getDump();
-    syncDumpUi(dumps, liveDl);
+    syncHeader(dumps);
+    picker.update(dumps, liveDl);
   };
 
+  const picker = mountDumpPicker({
+    onSelect: (id) => setDump(id),
+    onRefresh: () => refresh(),
+  });
+  selBtn.addEventListener('click', () => picker.open());
+
   await refresh();
-  onDumpChange(() => syncDumpUi(dumps, liveDl));
+  onDumpChange(() => { syncHeader(dumps); picker.update(dumps, liveDl); });
 
   // a finished download changes states/sizes — refresh the list + badge,
   // but only when a job newly reaches a terminal state (they linger in the
@@ -141,41 +142,18 @@ async function bootApi() {
       }
     }
     if (fresh) refresh();
-    else syncDumpUi(dumps, liveDl);   // a download job may appear/vanish without a terminal transition
-  });
-
-  const btn = document.getElementById('dl-btn');
-  btn.addEventListener('click', async () => {
-    const d = dumps.find((x) => x.id === getDump());
-    if (!d) return;
-    btn.disabled = true;
-    const r = d.state === 'failed' ? await retryDownload(d.id) : await startDownload(d.id);
-    btn.disabled = false;
-    if (!r.ok) shellError(r.error);
-    else refresh();
+    else picker.update(dumps, liveDl);   // a download job may appear/vanish without a terminal transition
   });
 }
 
-function syncDumpUi(dumps, liveDl) {
-  const d = dumps.find((x) => x.id === getDump());
+function syncHeader(dumps) {
+  const btn = document.getElementById('dumpsel-btn');
   const badge = document.getElementById('dump-state');
-  const btn = document.getElementById('dl-btn');
-  if (!d) {
-    badge.textContent = '';
-    badge.className = 'stbadge';
-    btn.hidden = true;
-    return;
-  }
-  badge.textContent = d.state;
-  badge.className = 'stbadge st-' + d.state;
-  if (d.state === 'remote') { btn.hidden = false; btn.textContent = 'Download'; }
-  else if (d.state === 'failed') { btn.hidden = false; btn.textContent = 'Retry download'; }
-  else if ((d.state === 'downloading' || d.state === 'assembling') && !liveDl.has(d.id)) {
-    // busy state with no live job behind it (server restarted) — the POST is
-    // idempotent: it resumes .dl/ parts, or returns the active job if one exists
-    btn.hidden = false;
-    btn.textContent = 'Resume download';
-  } else btn.hidden = true;
+  const id = getDump();
+  const d = id ? dumps.find((x) => x.id === id) : null;
+  btn.textContent = id ? id + ' ▾' : 'Select dump ▾';
+  badge.textContent = d ? d.state : '';
+  badge.className = 'stbadge' + (d ? ' st-' + d.state : '');
 }
 
 function shellError(msg) {

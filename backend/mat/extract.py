@@ -32,9 +32,12 @@ import re
 import shutil
 import subprocess
 import threading
+import time
 import zipfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+
+from .. import core
 
 _HERE = os.path.dirname(os.path.abspath(__file__))          # backend/mat/
 _REPO = os.path.dirname(os.path.dirname(_HERE))             # repo root
@@ -123,20 +126,36 @@ def _report_text(d):
 
 def _decompress_one(zst):
     """zstd -d one compacted index; restored raw mtime := zst mtime (the convention
-    that lets re-compact drop untouched raws for free)."""
+    that lets re-compact drop untouched raws for free). A corrupt archive
+    (truncated download, disk rot) is DELETED — it can never become valid, and
+    keeping it would break every later restore identically — and reported as
+    CorruptIndexError: the set is then incomplete and must be re-acquired."""
     raw = zst[:-4]
     tmp = f"{raw}.tmp{os.getpid()}"
     try:
         r = subprocess.run(["nice", "-n", "10", ZSTD, "-d", "-T4", "-q", "-f",
                             "-o", tmp, "--", zst], capture_output=True, text=True)
         if r.returncode != 0:
-            raise RuntimeError(f"zstd -d {zst} failed:\n{r.stderr[-500:]}")
+            os.remove(zst)
+            raise CorruptIndexError(
+                f"corrupt compacted index deleted: {zst}\n"
+                f"zstd -d said: {r.stderr[-500:].strip()}\n"
+                "the index set is incomplete now — it must be re-fetched "
+                "(or rebuilt locally) before MAT can run")
         os.replace(tmp, raw)
         ns = os.stat(zst).st_mtime_ns
         os.utime(raw, ns=(ns, ns))
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+class CorruptIndexError(RuntimeError):
+    """A compacted index (*.index.zst) failed decompression. The file has
+    already been deleted; the remaining set is partial and MAT must never run
+    against it (a missing root index makes MAT reparse the whole dump). The
+    caller (engine.analyze) re-acquires the set — remote re-download or local
+    parse — instead of proceeding."""
 
 
 # ---------------------------------------------------------------- the runner
@@ -165,7 +184,8 @@ class MatRunner:
     def restore_indexes(self, dump_dir, log):
         """zstd -d every *.index.zst whose raw file is missing — MAT must never
         run against a compacted dump unrestored. No-op fast path when nothing
-        is missing."""
+        is missing. A corrupt archive is deleted and reported as
+        CorruptIndexError: the partial set must be re-acquired before MAT runs."""
         todo = [z for z in sorted(glob.glob(os.path.join(dump_dir, "*.index.zst")))
                 if not os.path.exists(z[:-4])]
         if not todo:
@@ -176,6 +196,8 @@ class MatRunner:
             todo = [z for z in todo if not os.path.exists(z[:-4])]   # recheck under lock
             if not todo:
                 return
+            for stale in glob.glob(os.path.join(dump_dir, "*.index.tmp*")):
+                os.remove(stale)   # debris of a killed restore — provably dead under the EX lock
             total = sum(os.path.getsize(z) for z in todo)
             log(f"  restoring {len(todo)} compacted MAT index files "
                 f"({total / 1e9:.1f} GB compressed) ...")
@@ -223,14 +245,18 @@ class MatRunner:
         finally:
             f.close()
 
-    def run(self, job, hprof, outdir, sfx, command, keep_name, limit=2000000):
+    def run(self, job, hprof, outdir, sfx, command, keep_name, limit=2000000,
+            abort=None):
         """Run one MAT headless query; move the resulting CSV to outdir/keep_name.
         Resumable (existing dst short-circuits). Returns None when the query
         legitimately yielded an EMPTY result — MAT reports those as a text page
         (OQLTextResult) with no CSV outputter, so no CSV exists to move; the
         consumers in parsing.py treat the missing file as "no data". Raises
         RuntimeError with the report text and the MAT output tail on any real
-        failure — a failed extraction is never recorded as a success."""
+        failure — a failed extraction is never recorded as a success.
+        `abort` (threading.Event, the dump's cooperative-cancel flag) kills
+        the JVM and raises core.Aborted — Python threads can't be cancelled,
+        so the flag is polled while the subprocess runs."""
         dst = os.path.join(outdir, keep_name)
         if os.path.exists(dst):
             return dst
@@ -278,12 +304,20 @@ class MatRunner:
 
             t = threading.Thread(target=drain, daemon=True)
             t.start()
-            try:
-                proc.wait(timeout=MAT_TIMEOUT)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
-                raise RuntimeError(f"MAT query {sfx} timed out after {MAT_TIMEOUT}s")
+            deadline = time.monotonic() + MAT_TIMEOUT
+            while True:
+                if abort is not None and abort.is_set():
+                    proc.kill()
+                    proc.wait()
+                    raise core.Aborted(f"MAT query {sfx} aborted")
+                try:
+                    proc.wait(timeout=2)
+                    break
+                except subprocess.TimeoutExpired:
+                    if time.monotonic() > deadline:
+                        proc.kill()
+                        proc.wait()
+                        raise RuntimeError(f"MAT query {sfx} timed out after {MAT_TIMEOUT}s")
             t.join()
         finally:
             run_lock.close()

@@ -4,8 +4,11 @@
                             [--source-repo owner/name] [--index-repo owner/name]
 
 Construction order is pinned: jobs -> github source -> store -> engine, then
-init() on every source (store first). Also owns the autocompact timer: while
-no INDEX/ANALYZE/COMPACT job is active, re-compress compactable dumps.
+init() on every source (store first), then store.reconcile_all() to adopt
+dumps orphaned by a previous process. Also owns two timers — autocompact
+and the index/data poll — which are both just periodic reconcile kicks: the
+machine decides what each dump needs (late-published data/indexes, a
+compact while the MAT queue is idle, nothing at all).
 """
 from __future__ import annotations
 
@@ -26,8 +29,7 @@ SOURCE_REPO = os.environ.get("HEAP_REPORT_SOURCE_REPO", "kroune/feature-module-3
 INDEX_REPO = os.environ.get("HEAP_REPORT_INDEX_REPO", "kroune/heap-report")
 
 AUTOCOMPACT_INTERVAL = int(os.environ.get("HEAP_REPORT_AUTOCOMPACT_INTERVAL", "60"))
-_MAT_KINDS = (core.JobKind.INDEX, core.JobKind.ANALYZE, core.JobKind.COMPACT)
-_ACTIVE = (core.JobState.QUEUED, core.JobState.RUNNING)
+IDX_POLL_INTERVAL = int(os.environ.get("HEAP_REPORT_IDX_POLL", "300"))
 
 
 def build_app(root: str, source_repo: str = SOURCE_REPO,
@@ -37,29 +39,32 @@ def build_app(root: str, source_repo: str = SOURCE_REPO,
     store = localstore.FsDumpStore(root, jobs, [gh])
     engine = mat.MatQueryEngine(store, jobs)
     store.indexer = engine.submit_bootstrap
+    store.parser_inline = engine.parse_inline
     for src in (store, gh):
         src.init()
-    store.recover_interrupted()   # resubmit work orphaned by a previous process
+    store.reconcile_all()   # resume work orphaned by a previous process
     return core.App(store, engine, jobs, [store, gh])
 
 
-def _autocompact_loop(app: core.App) -> None:
-    """Every AUTOCOMPACT_INTERVAL seconds, compact idle dumps — but never
-    while the serial MAT queue has active work."""
-    while True:
-        time.sleep(AUTOCOMPACT_INTERVAL)
+def _reconcile_tick(app: core.App) -> None:
+    """Kick every local dump's machine. Timers never do work themselves —
+    the machine figures out the next step: fill data/indexes from a
+    late-published release, compact an idle dump, resume an interrupted
+    stage, or nothing."""
+    for info in app.store.list():
         try:
-            busy = any(j.kind in _MAT_KINDS and j.state in _ACTIVE
-                       for j in app.jobs.list(limit=1000))
-            if busy:
-                continue
-            for d in app.store.list_compactable():
-                try:
-                    app.store.compact(d)
-                except Exception:
-                    log.exception("autocompact failed for %s", d)
+            app.store.reconcile(info.id)
         except Exception:
-            log.exception("autocompact tick failed")
+            log.exception("reconcile tick failed for %s", info.id)
+
+
+def _timer_loop(app: core.App, interval: int, name: str) -> None:
+    while True:
+        time.sleep(interval)
+        try:
+            _reconcile_tick(app)
+        except Exception:
+            log.exception("%s tick failed", name)
 
 
 def main(argv=None) -> None:
@@ -76,9 +81,10 @@ def main(argv=None) -> None:
                         format="%(asctime)s %(name)s %(message)s")
     app = build_app(args.dumps, source_repo=args.source_repo,
                     index_repo=args.index_repo)
-    t = threading.Thread(target=_autocompact_loop, args=(app,),
-                         name="autocompact", daemon=True)
-    t.start()
+    threading.Thread(target=_timer_loop, args=(app, AUTOCOMPACT_INTERVAL, "autocompact"),
+                     name="autocompact", daemon=True).start()
+    threading.Thread(target=_timer_loop, args=(app, IDX_POLL_INTERVAL, "index-poll"),
+                     name="index-poll", daemon=True).start()
     http.serve(app, args.port)
 
 

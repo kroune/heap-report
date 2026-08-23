@@ -2,7 +2,9 @@
  * DumpInfo = {id, state:'remote'|'downloading'|'assembling'|'indexing'|'ready'|'failed',
  *             source, size, error, progress:{done,total}|null, meta}
  * Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed',
- *        progress:{done,total}|null, log:[str], error}
+ *        progress:{done,total} | {done,total,stage:'download'|'assemble',
+ *        speed,eta,asm:{done,total},parts:[{n,have,size,done}]} | null,
+ *        log:[str], error}
  */
 import {api, apiPost, apiDel} from "./http.js";
 
@@ -14,7 +16,13 @@ export const startDownload = id =>
 export const retryDownload = id =>
   apiPost(`/api/dumps/${encodeURIComponent(id)}/retry`);
 
+export const cancelDownload = id =>
+  apiPost(`/api/dumps/${encodeURIComponent(id)}/cancel`);
+
 export const deleteDump = id => apiDel(`/api/dumps/${encodeURIComponent(id)}`);
+
+export const setTags = (id, tags) =>
+  apiPost(`/api/dumps/${encodeURIComponent(id)}/tags`, {tags});
 
 /* Polls GET /api/jobs every ms, invokes onJobs([Job]), returns a stop function.
  * A failed poll is logged and skipped — polling continues, onJobs is only

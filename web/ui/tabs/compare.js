@@ -160,7 +160,9 @@ export function mount(container, repo, opts = {}){
     wrap.classList.remove('hidden');
   }
 
-  /* ---- dump selectors (only 'ready' dumps are selectable) ---- */
+  /* ---- dump selectors (every local dump whose data bundle may already be
+     unpacked is selectable, busy states included; the server 409s until the
+     data lands and the error renders as the tab message) ---- */
   async function refreshList(){
     if(opts.inline){ showMsg('compare is not available in a static snapshot.'); return; }
     const my = ++seq;
@@ -168,21 +170,21 @@ export function mount(container, repo, opts = {}){
     const r = await listDumps();
     if(my !== seq) return;
     if(!r.ok){ showMsg('failed to list dumps: ' + (r.error || 'unknown error'), true); return; }
-    const ready = (r.data || []).filter(d => d.state === 'ready');
+    const avail = (r.data || []).filter(d => d.state !== 'remote' && d.state !== 'failed');
     const prevO = selOld.value, prevN = selNew.value;
     selOld.innerHTML = ''; selNew.innerHTML = '';
-    for(const d of ready){
+    for(const d of avail){
       for(const sel of [selOld, selNew]){
         const o = document.createElement('option');
-        o.value = d.id; o.textContent = d.id;
+        o.value = d.id; o.textContent = d.state === 'ready' ? d.id : `${d.id} (${d.state})`;
         sel.appendChild(o);
       }
     }
-    const ids = new Set(ready.map(d => d.id));
-    selOld.value = ids.has(prevO) ? prevO : (ready[0] || {id: ''}).id;
-    selNew.value = ids.has(prevN) ? prevN : (ready[1] || ready[0] || {id: ''}).id;
-    if(ready.length < 2){
-      showMsg(`compare needs two ready dumps — only ${ready.length} ready right now.`);
+    const ids = new Set(avail.map(d => d.id));
+    selOld.value = ids.has(prevO) ? prevO : (avail[0] || {id: ''}).id;
+    selNew.value = ids.has(prevN) ? prevN : (avail[1] || avail[0] || {id: ''}).id;
+    if(avail.length < 2){
+      showMsg(`compare needs two local dumps with data — only ${avail.length} available right now.`);
       return;
     }
     hideMsg();
@@ -197,7 +199,14 @@ export function mount(container, repo, opts = {}){
     out.innerHTML = `<div class="pad">comparing ${esc(o)} → ${esc(n)} …</div>`;
     const r = await R.compare(o, n);
     if(my !== cseq) return;
-    if(!r.ok){ out.innerHTML = `<div class="pad err">compare failed: ${esc(r.error || 'unknown error')}</div>`; return; }
+    if(!r.ok){
+      out.innerHTML = `<div class="pad err">compare failed: ${esc(r.error || 'unknown error')}</div>`;
+      // a selected dump's data bundle may not be unpacked yet — retry while
+      // the server keeps saying so (409); other errors are terminal
+      if(r.status === 409 && !opts.inline)
+        setTimeout(() => { if(cseq === my) runCompare(); }, 4000);
+      return;
+    }
     CMP = r.data;
     CMP.oldId = o; CMP.newId = n;
     CMPSORT = 'abs';
