@@ -113,7 +113,8 @@ def dump_stage(store, dump_id, view, rt):
 
 def data_stage(store, dump_id, view, rt):
     """ACQUIRE_DATA: the tiny data bundle — staged untar, moved into place
-    only after tar succeeded (an interrupted attempt never leaves truncated
+    only after tar succeeded, then ingested into data/analysis.db via the
+    store's on_data_files hook (an interrupted attempt never leaves truncated
     CSVs that would pass has_data()). The bundle's data/meta.json is NOT
     moved over the store-owned live meta (single-writer rule); its non-state
     fields (modules, dump, …) are merged via update_meta."""
@@ -125,6 +126,13 @@ def data_stage(store, dump_id, view, rt):
         d = store.dir_of(dump_id)
         if files.has_data(d):
             return Comp(DONE)
+        if store.on_data_files is not None and files.has_data_csvs(d):
+            # a previous attempt crashed between the move and the ingest:
+            # the CSVs are complete (staging-validated) — ingest, don't
+            # re-download
+            store.on_data_files(dump_id)
+            if files.has_data(d):
+                return Comp(DONE)
         tmp = os.path.join(d, ".dl")
         os.makedirs(tmp, exist_ok=True)
 
@@ -142,10 +150,12 @@ def data_stage(store, dump_id, view, rt):
                 raise
             finally:
                 job.progress = None
-            if not files.has_data(staging):
+            # old bundles ship the CSV pair (ingested after the move); new
+            # ones ship analysis.db directly — either is a complete bundle
+            if not (files.has_data(staging) or files.has_data_csvs(staging)):
                 shutil.rmtree(staging, ignore_errors=True)
                 raise AssemblyError(
-                    "data bundle unpacked but histogram/dominator CSVs missing",
+                    "data bundle unpacked but histogram/dominator extracts missing",
                     [part])
             os.remove(bp)
             sdata = os.path.join(staging, "data")
@@ -166,6 +176,8 @@ def data_stage(store, dump_id, view, rt):
                           if k not in ("state", "error", "machine")}
                 if fields:
                     store.update_meta(dump_id, lambda m: m.update(fields))
+            if store.on_data_files is not None:
+                store.on_data_files(dump_id)   # ingest CSVs -> analysis.db
             log("  data: overview ready (classes/treemap/compare)")
 
         _attempts(rt, log, body,

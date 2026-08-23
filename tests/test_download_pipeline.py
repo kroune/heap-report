@@ -24,7 +24,9 @@ from backend.localstore import (FsDumpStore, drop_untrusted_raws, parse_debris,
 from backend.localstore import stages as stages_mod
 from backend.localstore import transfer as transfer_mod
 from backend.mat import MatQueryEngine
+from backend.mat import db as dbmod
 from backend.mat.extract import CorruptIndexError
+from tests import dbfix
 
 HIST = ("Class Name,Objects,Shallow Heap\n"
         "org.gradle.Big,5,200000\n"
@@ -143,6 +145,7 @@ class Fixture(unittest.TestCase):
     def make_store(self, source):
         store = FsDumpStore(self.tmp.name, self.jobs, [source])
         store.init()
+        dbfix.wire_ingest_hook(store)   # the engine's ingest hook, minus MAT
         return store
 
     def make_engine(self, store):
@@ -183,14 +186,11 @@ class Fixture(unittest.TestCase):
         return plan, payloads
 
     def make_ready_noindex(self, store, dump_id="run-t", idx_manifest=None):
-        """READY dump (hprof + data bundle) without MAT indexes. States are
-        inferred from the artifacts — no machine is written by hand."""
+        """READY dump (hprof + ingested data bundle) without MAT indexes.
+        States are inferred from the artifacts — no machine is written by
+        hand."""
         d = os.path.join(self.tmp.name, dump_id)
-        os.makedirs(os.path.join(d, "data"), exist_ok=True)
-        with open(os.path.join(d, "data", "histogram.csv"), "w") as f:
-            f.write(HIST)
-        with open(os.path.join(d, "data", "dominator_by_class.csv"), "w") as f:
-            f.write(DOM)
+        dbfix.make_data_db(d, HIST, DOM)
         with open(os.path.join(d, "daemon.hprof"), "wb") as f:
             f.write(HPROF)
         fields = {"dump": "daemon.hprof"}
@@ -362,8 +362,8 @@ class TestEarlyData(Fixture):
         store.start_download("run-t")
         try:
             wait_for(lambda: os.path.exists(os.path.join(
-                self.tmp.name, "run-t", "data", "histogram.csv")),
-                what="data bundle to be unpacked")
+                self.tmp.name, "run-t", "data", "analysis.db")),
+                what="data bundle to be ingested")
             self.assertIs(store.get("run-t").state, core.DumpState.DOWNLOADING)
             t = engine.trees("run-t")
             self.assertEqual(t["stats"]["totalObjects"], 8)
@@ -411,7 +411,7 @@ class TestEarlyData(Fixture):
         store.start_download("run-u")
         try:
             wait_for(lambda: os.path.exists(os.path.join(
-                self.tmp.name, "run-u", "data", "histogram.csv")),
+                self.tmp.name, "run-u", "data", "analysis.db")),
                 what="run-u data bundle")
             out = engine.compare("run-t", "run-u")
             self.assertEqual(out["new"]["totalObjects"], 8)
@@ -523,8 +523,10 @@ class TestIndexingFill(Fixture):
         self.assertEqual([j.detail for j in submitted], ["data", "indexes"])
         wait_ready(store, "run-t")
         wait_all_idle(self.jobs)
-        with open(os.path.join(d, "data", "histogram.csv")) as f:
-            self.assertEqual(f.read(), HIST)
+        db = dbmod.open_db(os.path.join(d, "data"))
+        self.assertEqual(dbmod.read_hist(db),
+                         [("org.gradle.Big", 5, 200000), ("com.android.App", 3, 60000)])
+        db.close()
         for name in IDX:   # the index tar came along too
             self.assertTrue(os.path.exists(os.path.join(d, name)), name)
 
@@ -915,10 +917,7 @@ class TestReconcileTick(unittest.TestCase):
         with open(os.path.join(d, "daemon.hprof"), "wb") as f:
             f.write(b"x")
         if with_data:
-            with open(os.path.join(d, "data", "histogram.csv"), "w") as f:
-                f.write(HIST)
-            with open(os.path.join(d, "data", "dominator_by_class.csv"), "w") as f:
-                f.write(DOM)
+            dbfix.make_data_db(d, HIST, DOM)
         if with_indexes:
             with open(os.path.join(d, "daemon.index.zst"), "wb") as f:
                 f.write(b"z")

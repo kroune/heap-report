@@ -50,7 +50,15 @@ def raws_zsts(dump_dir):
 
 
 def has_data(dump_dir):
-    """The extracted data bundle (the overview tabs work off these two)."""
+    """The ingested data bundle (data/analysis.db). db commits are
+    transactional, so presence ⟹ complete."""
+    return os.path.exists(os.path.join(dump_dir, "data", "analysis.db"))
+
+
+def has_data_csvs(dump_dir):
+    """The just-landed CSV pair, pre-ingest: staging validation after the
+    untar, and the crash-between-move-and-ingest re-entry (the landing hook
+    ingests + deletes them; analysis.db is the steady state)."""
     return os.path.exists(os.path.join(dump_dir, "data", "histogram.csv")) and \
         os.path.exists(os.path.join(dump_dir, "data", "dominator_by_class.csv"))
 

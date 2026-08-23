@@ -1,16 +1,18 @@
 """backend/mat/engine — MatQueryEngine: the MAT-backed core.QueryEngine +
 local bootstrap (LocalIndexer role).
 
-  - Payload caches live here and only here, keyed on the source files' mtimes AND
+  - Payload caches live here and only here, keyed on analysis.db's mtime AND
     meta's state; invalidate(dump_id) drops everything cached for a dump. The
     store/kernel calls invalidate() when a dump's data changes (download,
     bootstrap, compact, finished analysis).
   - No on-disk payload caches: only the store writes a dump dir. The in-memory
-    payload cache + the separately cached CSV parse cover the re-parse cost.
-  - A failed extraction raises -> the ANALYZE job is FAILED with the real error
-    and meta.json is never updated for data that does not exist.
+    payload cache over the db covers the re-read cost.
+  - Extracts land as CSV (MAT's only output), are ingested into the per-dump
+    data/analysis.db (db.py) and deleted; resumability is the db's kv marker
+    rows. A failed extraction raises -> the ANALYZE job is FAILED with the
+    real error and nothing is recorded for data that does not exist.
   - Overview queries (trees/classes/compare) only need the tiny data bundle,
-    so they are served from any busy state once it is unpacked (_data_early);
+    so they are served from any busy state once it is ingested (_data_early);
     analysis-level queries stay READY-only (_data_dir).
 
 All dump-dir paths come from store.dir_of (state gating lives here); all
@@ -20,16 +22,15 @@ subprocess goes through extract.MatRunner.
 from __future__ import annotations
 
 import glob
-import json
 import os
 import re
 import threading
 
 from .. import core, machine
 from ..localstore import drop_index_set, raws_zsts
-from .parsing import (_analysis_index_build, _anat_src_load, _anat_srcs,
-                      _merge_fams, _parse_dom, _parse_hist, _read_csv,
-                      _rs_totals_build)
+from . import db as dbmod
+from . import reach as reachmod
+from .parsing import _merge_fams, _read_csv
 from .payloads import (PROXIES, _anatomy_build, _anatomy_diff,
                        _class_table_build, _composition_build, _stats_build,
                        _trees_build, _waterfall)
@@ -52,8 +53,26 @@ class MatQueryEngine:
         self._runner = MatRunner(jobs)
         self._lock = threading.RLock()
         self._cache = {}            # key tuple -> (fingerprint, payload)
+        # the store stays free of any mat import: it calls this hook blind
+        # when data-bundle files land (download stage) so they get ingested
+        store.on_data_files = self._on_data_files
 
     # ---------------------------------------------------------- plumbing
+
+    def _on_data_files(self, dump_id):
+        """Store hook: data-bundle files just landed in data/ (or survived a
+        crash between move and ingest) — ingest the CSVs into analysis.db and
+        delete them."""
+        data = os.path.join(self._store.dir_of(dump_id), "data")
+        dbmod.ingest_data_dir(data)
+        self.invalidate(dump_id)
+
+    def _read_db(self, data, fn):
+        db = dbmod.open_db(data)
+        try:
+            return fn(db)
+        finally:
+            db.close()
 
     def _data_dir(self, dump_id):
         """Analysis-level entry: READY only (dir_of hands out the dir in any
@@ -73,8 +92,7 @@ class MatQueryEngine:
             raise core.ApiError("bad_state",
                                 f"dump {dump_id} is {info.state.value}", 409)
         data = os.path.join(self._store.dir_of(dump_id), "data")
-        if not (os.path.exists(os.path.join(data, "histogram.csv"))
-                and os.path.exists(os.path.join(data, "dominator_by_class.csv"))):
+        if not os.path.exists(dbmod.db_path(data)):
             raise core.ApiError(
                 "bad_state", f"dump {dump_id} has no data bundle yet "
                 f"({info.state.value}) — the overview appears once it lands", 409)
@@ -120,45 +138,53 @@ class MatQueryEngine:
 
     # ---------------------------------------------------------- cached raw loaders
 
+    def _db_fp(self, dump_id):
+        """The cache fingerprint of every db-backed entry: the db files' newest
+        mtime + meta's state."""
+        data = os.path.join(self._store.dir_of(dump_id), "data")
+        return self._fp(dump_id, dbmod.fp_paths(data))
+
     def _load_hist(self, dump_id):
-        p = os.path.join(self._data_early(dump_id), "histogram.csv")
-        return self._cached((dump_id, "hist"), self._fp(dump_id, [p]),
-                            lambda: _parse_hist(p))
+        data = self._data_early(dump_id)
+        return self._cached((dump_id, "hist"), self._db_fp(dump_id),
+                            lambda: self._read_db(data, dbmod.read_hist))
 
     def _load_dom(self, dump_id):
-        p = os.path.join(self._data_early(dump_id), "dominator_by_class.csv")
-        return self._cached((dump_id, "dom"), self._fp(dump_id, [p]),
-                            lambda: _parse_dom(p))
+        data = self._data_early(dump_id)
+        return self._cached((dump_id, "dom"), self._db_fp(dump_id),
+                            lambda: self._read_db(data, dbmod.read_dom))
 
     def _analysis_index(self, dump_id):
         data = self._data_early(dump_id)
-        mp = os.path.join(data, "meta.json")
-        return self._cached((dump_id, "anaidx"), self._fp(dump_id, [mp]),
-                            lambda: _analysis_index_build(data, self._meta(dump_id)))
+        return self._cached((dump_id, "anaidx"), self._db_fp(dump_id),
+                            lambda: self._read_db(data, dbmod.read_analysis_index))
 
     def _rs_totals(self, dump_id):
+        """full class -> (retained shallow total, retained object count,
+        #classes in set), for analyzed (comp) classes only."""
         data = self._data_early(dump_id)
-        mp = os.path.join(data, "meta.json")
-        return self._cached((dump_id, "rstot"), self._fp(dump_id, [mp]),
-                            lambda: _rs_totals_build(data, self._meta(dump_id),
-                                                     self._analysis_index(dump_id)))
+
+        def load():
+            by_key = self._read_db(data, dbmod.read_rs_totals)
+            idx = self._analysis_index(dump_id)
+            return {full: by_key[st["key"]] for full, st in idx.items()
+                    if st["comp"] and st["key"] in by_key}
+
+        return self._cached((dump_id, "rstot"), self._db_fp(dump_id), load)
 
     # ---------------------------------------------------------- queries
 
     def trees(self, dump_id):
-        data = self._data_early(dump_id)
-        paths = [os.path.join(data, n) for n in
-                 ("histogram.csv", "dominator_by_class.csv", "meta.json")]
+        self._data_early(dump_id)
         return self._cached(
-            (dump_id, "trees"), self._fp(dump_id, paths),
+            (dump_id, "trees"), self._db_fp(dump_id),
             lambda: {"stats": _stats_build(self._load_hist(dump_id), self._load_dom(dump_id),
                                            self._meta(dump_id), self._analysis_index(dump_id)),
                      "trees": _trees_build(self._load_hist(dump_id), self._load_dom(dump_id))})
 
     def _class_table(self, dump_id):
-        data = self._data_early(dump_id)
-        paths = [os.path.join(data, n) for n in ("histogram.csv", "meta.json")]
-        return self._cached((dump_id, "classtable"), self._fp(dump_id, paths),
+        self._data_early(dump_id)
+        return self._cached((dump_id, "classtable"), self._db_fp(dump_id),
                             lambda: _class_table_build(self._load_hist(dump_id),
                                                        self._analysis_index(dump_id),
                                                        self._rs_totals(dump_id)))
@@ -192,40 +218,32 @@ class MatQueryEngine:
         st = self._analysis_index(dump_id).get(cls)
         if not st or not st["comp"]:
             return None
-        meta = self._meta(dump_id)
-        p = os.path.join(data, meta.get("rs", {}).get(st["key"], f"rs_{st['key']}.csv"))
-        if not os.path.exists(p):
-            return None
-        return self._cached((dump_id, "comp", st["key"]),
-                            self._fp(dump_id, [p, os.path.join(data, "meta.json")]),
-                            lambda: _composition_build(p))
+        key = st["key"]
+        return self._cached((dump_id, "comp", key), self._db_fp(dump_id),
+                            lambda: _composition_build(
+                                self._read_db(data, lambda db: dbmod.read_rs_rows(db, key))))
 
     def _anat_src(self, dump_id, key, K):
         data = self._data_dir(dump_id)
-        srcs = _anat_srcs(data, key, K)
-        if not srcs:
-            return None
-        return self._cached((dump_id, "anatsrc", key, K), self._fp(dump_id, srcs),
-                            lambda: _anat_src_load(data, key, srcs, self._meta(dump_id)))
+        return self._cached((dump_id, "anatsrc", key, K), self._db_fp(dump_id),
+                            lambda: self._read_db(
+                                data, lambda db: dbmod.anat_src(db, key, K)))
 
     def anatomy(self, dump_id, cls, samples=None):
         """Full-graph reference tree for one analyzed class. None = not analyzed."""
-        data = self._data_dir(dump_id)
+        self._data_dir(dump_id)
         st = self._analysis_index(dump_id).get(cls)
         if not st or not st["anat"]:
             return None
         key = st["key"]
         avail = st["anat"]
         K = samples if samples in avail else avail[-1]
-        if not _anat_srcs(data, key, K):
-            return None
 
         def load():
             src = self._anat_src(dump_id, key, K)
             return None if src is None else _anatomy_build(src, cls, K, avail, 32, 40)
 
-        return self._cached((dump_id, "anat", key, K),
-                            self._fp(dump_id, _anat_srcs(data, key, K)), load)
+        return self._cached((dump_id, "anat", key, K), self._db_fp(dump_id), load)
 
     def compare(self, a, b):
         """Not payload-cached at this level: it assembles cheap merges over the
@@ -299,8 +317,10 @@ class MatQueryEngine:
         return hits[0] if hits else None
 
     def _alloc_key(self, dump_id, full):
-        """Stable short key for a class, collision-free against meta."""
-        classes = self._meta(dump_id).get("classes", {})
+        """Stable short key for a class, collision-free against the db's
+        classes table."""
+        data = os.path.join(self._store.dir_of(dump_id), "data")
+        classes = self._read_db(data, dbmod.known_classes)
         for k, v in classes.items():
             if v == full:
                 return k
@@ -314,7 +334,7 @@ class MatQueryEngine:
     def analyze(self, dump_id, cls, samples=SAMPLES, with_anatomy=True):
         """Queue on-demand per-class MAT analysis. The class is
         validated against the histogram first; a failed extraction surfaces as a
-        FAILED job with the real error and is never recorded in meta.json.
+        FAILED job with the real error and is never recorded.
 
         Analysis needs the MAT index set, which READY dumps may not have yet.
         Index acquisition is the machine's job (store.request_indexes): the
@@ -366,93 +386,101 @@ class MatQueryEngine:
 
     def _analyze_class(self, job, dump_id, hprof, cls, samples, with_anatomy):
         """Retained-set composition + (optionally) reference-tree anatomy for one
-        class. Resumable: existing CSVs are reused, so escalating to more samples
-        only runs the missing extractions."""
+        class. Resumable at the db-marker level: an ingested part is never
+        re-run, so escalating to more samples only runs the missing
+        extractions. Every MAT query still lands as CSV (MAT's only output)
+        and is ingested into analysis.db + deleted right after; the reach
+        pass (derived tables) runs once all parts of an extraction landed."""
         data = self._data_dir(dump_id)
         anat = os.path.join(data, "anat")
         os.makedirs(anat, exist_ok=True)
         key = self._alloc_key(dump_id, cls)
         log = lambda m: self._jobs.log(job, m)
         log(f"analyzing {cls} (key={key}, samples={samples}, anatomy={with_anatomy})")
-        # retained-set composition and the full id list are independent — overlap them
-        tasks = [lambda: self._runner.run(job, hprof, data, suffix("rs", key),
-                                        f"show_retained_set {cls}", f"rs_{key}.csv")]
-        if with_anatomy:
-            tasks.append(lambda: self._runner.run(job, hprof, data, suffix("idsall", key),
-                                                  f'oql "SELECT s.@objectId FROM INSTANCEOF {cls} s"',
-                                                  f"idsall_{key}.csv", limit=IDS_LIMIT))
-        res = _par(tasks)
-        if not res[0] or not os.path.exists(res[0]):
-            raise RuntimeError("retained-set query failed")
-
-        def record_rs(m):
-            m.setdefault("classes", {})[key] = cls
-            m.setdefault("rs", {})[key] = f"rs_{key}.csv"
-
-        self._store.update_meta(dump_id, record_rs)
-        if not with_anatomy:
+        db = dbmod.open_db(data)
+        try:
+            # retained-set composition and the full id list are independent —
+            # overlap them; ingested parts (marker row) are skipped entirely
+            tasks = []
+            if not dbmod.has_marker(db, f"part:rs:{key}"):
+                tasks.append(lambda: self._runner.run(job, hprof, data, suffix("rs", key),
+                                                      f"show_retained_set {cls}",
+                                                      f"rs_{key}.csv"))
+            if with_anatomy and not dbmod.has_marker(db, f"part:idsall:{key}"):
+                tasks.append(lambda: self._runner.run(job, hprof, data, suffix("idsall", key),
+                                                      f'oql "SELECT s.@objectId FROM INSTANCEOF {cls} s"',
+                                                      f"idsall_{key}.csv", limit=IDS_LIMIT))
+            if tasks:
+                _par(tasks)
+            p = os.path.join(data, f"rs_{key}.csv")
+            if os.path.exists(p):
+                dbmod.ingest_rs(db, key, p)
+            if not dbmod.has_marker(db, f"part:rs:{key}"):
+                raise RuntimeError("retained-set query failed")
+            dbmod.upsert_class(db, key, cls)
+            if not with_anatomy:
+                self.invalidate(dump_id)
+                return
+            p = os.path.join(data, f"idsall_{key}.csv")
+            if os.path.exists(p):
+                dbmod.ingest_idsall(db, key, p)
+            # full id list -> evenly-spaced sample of K instances
+            picked = sample_even(dbmod.read_idsall(db, key), samples)
+            if not picked:
+                raise RuntimeError("no instance ids")
+            K = len(picked)
+            if not dbmod.has_marker(db, f"part:anat:{key}:{K}"):
+                idx = ", ".join(f"outbounds(o)[{i}]" for i in range(MAX_EDGE))
+                idx_full = ", ".join(f"outbounds(o)[{i}]" for i in range(EDGE_FULL_CAP))
+                sub = subselect(cls, picked)
+                # nodes / edges / fields scan the same retained set independently
+                # — run concurrently. edgesfull captures complete outbounds for
+                # objects with >MAX_EDGE refs (the plain edges query truncates at
+                # MAX_EDGE, which silently orphans big-array children). Any of
+                # these queries may legitimately return EMPTY (no sampled object
+                # with >MAX_EDGE refs, no IInstance fields for array classes, ...):
+                # MatRunner.run then writes no CSV and returns None, and the ingest
+                # treats the absent file as "no data" — only nodes is mandatory.
+                _par([
+                    lambda: self._runner.run(job, hprof, anat, suffix("n2", f"{key}_s{K}"),
+                            f'oql "SELECT o.@objectId, toHex(o.@objectAddress), classof(o).@name, o.@usedHeapSize, o.@retainedHeapSize FROM OBJECTS ({sub}) o"',
+                            f"{key}_s{K}_nodes.csv"),
+                    lambda: self._runner.run(job, hprof, anat, suffix("e2", f"{key}_s{K}"),
+                            f'oql "SELECT o.@objectId, outbounds(o).length, {idx} FROM OBJECTS ({sub}) o"',
+                            f"{key}_s{K}_edges.csv"),
+                    lambda: self._runner.run(job, hprof, anat, suffix("f2", f"{key}_s{K}"),
+                            f'oql "SELECT o.@objectId, o.getFields() FROM OBJECTS ({sub}) o WHERE o implements org.eclipse.mat.snapshot.model.IInstance"',
+                            f"{key}_s{K}_fields.csv"),
+                    lambda: self._runner.run(job, hprof, anat, suffix("ef", f"{key}_s{K}"),
+                            f'oql "SELECT o.@objectId, outbounds(o).length, {idx_full} FROM OBJECTS ({sub}) o WHERE outbounds(o).length > {MAX_EDGE}"',
+                            f"{key}_s{K}_edgesfull.csv"),
+                ])
+                nodes_p = os.path.join(anat, f"{key}_s{K}_nodes.csv")
+                if not os.path.exists(nodes_p):
+                    raise RuntimeError(f"anatomy extraction failed: {key}_s{K}_nodes.csv missing")
+                strings_dst = os.path.join(anat, f"{key}_s{K}_strings.csv")
+                if not os.path.exists(strings_dst):
+                    addrs = [r[1] for r in _read_csv(nodes_p)[1:]
+                             if len(r) >= 5 and r[2] == "java.lang.String"][:MAX_STRINGS]
+                    # guarded: no String children -> the query would be a wasted MAT run
+                    # (an empty result writes no CSV; missing strings.csv is tolerated)
+                    if addrs:
+                        self._runner.run(job, hprof, anat, suffix("s2", f"{key}_s{K}"),
+                                f'oql "SELECT toHex(o.@objectAddress), toString(o) FROM OBJECTS {",".join(addrs)} o"',
+                                f"{key}_s{K}_strings.csv")
+                n = dbmod.ingest_anat(db, key, K, picked,
+                                      dbmod.anat_files(anat, key, K))
+                log(f"  anatomy ingested: {n} objects -> analysis.db")
+            if not dbmod.has_marker(db, f"part:reach:{key}:{K}"):
+                src = dbmod.anat_src(db, key, K)
+                log(f"  reach pass over {len(src['nodes'])} objects "
+                    f"(inclusive retained + holder-set split) ...")
+                rows = reachmod.compute(src, picked, log)
+                dbmod.write_reach(db, key, K, *rows)
             self.invalidate(dump_id)
-            return
-        # full id list -> evenly-spaced sample of K instances
-        ids = []
-        p = res[1]
-        if p and os.path.exists(p):
-            ids = [r[0] for r in _read_csv(p)[1:] if r and r[0].isdigit()]
-        picked = sample_even(ids, samples)
-        if not picked:
-            raise RuntimeError("no instance ids")
-        K = len(picked)
-        # per-extraction sidecar so the anatomy can be rebuilt with the same ids
-        with open(os.path.join(anat, f"{key}_s{K}.json"), "w") as f:
-            json.dump({"key": key, "cls": cls, "samples": K, "ids": picked}, f)
-        idx = ", ".join(f"outbounds(o)[{i}]" for i in range(MAX_EDGE))
-        idx_full = ", ".join(f"outbounds(o)[{i}]" for i in range(EDGE_FULL_CAP))
-        sub = subselect(cls, picked)
-        # nodes / edges / fields scan the same retained set independently — run
-        # concurrently. edgesfull captures complete outbounds for objects with
-        # >MAX_EDGE refs (the plain edges query truncates at MAX_EDGE, which
-        # silently orphans big-array children). Any of these queries may
-        # legitimately return EMPTY (no sampled object with >MAX_EDGE refs, no
-        # IInstance fields for array classes, ...): MatRunner.run then writes
-        # no CSV and returns None, and parsing._anat_src_load treats the absent
-        # file as "no data" — only nodes is mandatory (checked below).
-        _par([
-            lambda: self._runner.run(job, hprof, anat, suffix("n2", f"{key}_s{K}"),
-                    f'oql "SELECT o.@objectId, toHex(o.@objectAddress), classof(o).@name, o.@usedHeapSize, o.@retainedHeapSize FROM OBJECTS ({sub}) o"',
-                    f"{key}_s{K}_nodes.csv"),
-            lambda: self._runner.run(job, hprof, anat, suffix("e2", f"{key}_s{K}"),
-                    f'oql "SELECT o.@objectId, outbounds(o).length, {idx} FROM OBJECTS ({sub}) o"',
-                    f"{key}_s{K}_edges.csv"),
-            lambda: self._runner.run(job, hprof, anat, suffix("f2", f"{key}_s{K}"),
-                    f'oql "SELECT o.@objectId, o.getFields() FROM OBJECTS ({sub}) o WHERE o implements org.eclipse.mat.snapshot.model.IInstance"',
-                    f"{key}_s{K}_fields.csv"),
-            lambda: self._runner.run(job, hprof, anat, suffix("ef", f"{key}_s{K}"),
-                    f'oql "SELECT o.@objectId, outbounds(o).length, {idx_full} FROM OBJECTS ({sub}) o WHERE outbounds(o).length > {MAX_EDGE}"',
-                    f"{key}_s{K}_edgesfull.csv"),
-        ])
-        nodes_p = os.path.join(anat, f"{key}_s{K}_nodes.csv")
-        if not os.path.exists(nodes_p):
-            raise RuntimeError(f"anatomy extraction failed: {key}_s{K}_nodes.csv missing")
-        strings_dst = os.path.join(anat, f"{key}_s{K}_strings.csv")
-        if not os.path.exists(strings_dst):
-            addrs = [r[1] for r in _read_csv(nodes_p)[1:]
-                     if len(r) >= 5 and r[2] == "java.lang.String"][:MAX_STRINGS]
-            # guarded: no String children -> the query would be a wasted MAT run
-            # (an empty result writes no CSV; missing strings.csv is tolerated)
-            if addrs:
-                self._runner.run(job, hprof, anat, suffix("s2", f"{key}_s{K}"),
-                        f'oql "SELECT toHex(o.@objectAddress), toString(o) FROM OBJECTS {",".join(addrs)} o"',
-                        f"{key}_s{K}_strings.csv")
-
-        def record_anat(m):
-            ks = set(m.get("anatSamples", {}).get(key, []))
-            ks.add(K)
-            m.setdefault("anatSamples", {})[key] = sorted(ks)
-            m.setdefault("ids", {})[key] = picked
-
-        self._store.update_meta(dump_id, record_anat)
-        self.invalidate(dump_id)
-        log(f"done: {cls} ({K} samples)")
+            log(f"done: {cls} ({K} samples)")
+        finally:
+            db.close()
 
     # ---------------------------------------------------------- bootstrap (LocalIndexer)
 
@@ -526,7 +554,8 @@ class MatQueryEngine:
         return self._jobs.submit(core.JobKind.INDEX, dump_id, "bootstrap", fn)
 
     def _bootstrap(self, job, dump_id):
-        """Global extracts for one dump -> <dump>/data/. Resumable. Runs while
+        """Global extracts for one dump -> <dump>/data/analysis.db. Resumable
+        at the marker level (an ingested extract is never re-run). Runs while
         the data component is still missing (dir_of hands out the dir in any
         state; the query-side gates live in _data_dir/_data_early)."""
         dump_dir = self._store.dir_of(dump_id)
@@ -538,34 +567,46 @@ class MatQueryEngine:
         abort = self._store.abort_event(dump_id)
         log = lambda m: self._jobs.log(job, m)
         log(f"analyzing {hprof} -> {dump_dir} (mat-jobs={MAT_JOBS})")
+        db = dbmod.open_db(data)
+        try:
+            # the histogram runs first and alone: when the MAT indexes are missing the
+            # first query triggers the full hprof parse, and concurrent parsers would
+            # clobber each other's index files
+            if not dbmod.has_marker(db, "part:hist"):
+                p = self._runner.run(job, hprof, data, "histogram", "histogram",
+                                     "histogram.csv", abort=abort)
+                if p:
+                    dbmod.ingest_hist(db, p)
+            log("  histogram done (parse complete)")
 
-        # the histogram runs first and alone: when the MAT indexes are missing the
-        # first query triggers the full hprof parse, and concurrent parsers would
-        # clobber each other's index files
-        self._runner.run(job, hprof, data, "histogram", "histogram", "histogram.csv",
-                         abort=abort)
-        log("  histogram done (parse complete)")
+            # dominator groupings are independent — run in parallel
+            tasks = []
+            if not dbmod.has_marker(db, "part:dom"):
+                tasks.append(lambda: self._runner.run(
+                    job, hprof, data, "domclass", "dominator_tree -groupBy BY_CLASS",
+                    "dominator_by_class.csv", abort=abort))
+            if not os.path.exists(os.path.join(data, "dominator_by_package.csv")):
+                tasks.append(lambda: self._runner.run(
+                    job, hprof, data, "dompkg", "dominator_tree -groupBy BY_PACKAGE",
+                    "dominator_by_package.csv", abort=abort))
+            if tasks:
+                _par(tasks)
+            p = os.path.join(data, "dominator_by_class.csv")
+            if os.path.exists(p):
+                dbmod.ingest_dom(db, p)
 
-        # dominator groupings are independent — run in parallel
-        _par([
-            lambda: self._runner.run(job, hprof, data, "domclass", "dominator_tree -groupBy BY_CLASS",
-                                     "dominator_by_class.csv", abort=abort),
-            lambda: self._runner.run(job, hprof, data, "dompkg", "dominator_tree -groupBy BY_PACKAGE",
-                                     "dominator_by_package.csv", abort=abort),
-        ])
+            # module count = DefaultScriptHandler instances (fallback 3010)
+            modules = 3010
+            for name, cnt, _s, _r in dbmod.read_dom(db):
+                if name.endswith("DefaultScriptHandler_Decorated"):
+                    modules = cnt
 
-        # module count = DefaultScriptHandler instances (fallback 3010)
-        modules = 3010
-        domp = os.path.join(data, "dominator_by_class.csv")
-        if os.path.exists(domp):
-            for r in _read_csv(domp)[1:]:
-                if len(r) >= 4 and r[0].endswith("DefaultScriptHandler_Decorated") and r[1].isdigit():
-                    modules = int(r[1])
+            def record(m):
+                m["modules"] = modules   # merge — don't clobber prior on-demand analyses
+                m["dump"] = os.path.basename(hprof)
 
-        def record(m):
-            m["modules"] = modules   # merge — don't clobber prior on-demand analyses
-            m["dump"] = os.path.basename(hprof)
-
-        self._store.update_meta(dump_id, record)
-        self.invalidate(dump_id)
-        log(f"data: {data}")
+            self._store.update_meta(dump_id, record)
+            self.invalidate(dump_id)
+            log(f"data: {data}")
+        finally:
+            db.close()

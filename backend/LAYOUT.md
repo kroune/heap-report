@@ -8,16 +8,33 @@ id and matches `[\w.-]+` (no `/`, no `..`).
 dumps/<id>/
   daemon.hprof            # the heap dump (assembled from .gz parts)
   data/
-    meta.json             # store-owned state + analysis index (see below)
-    histogram.csv         # MAT histogram extract
-    dominators.csv        # MAT dominator-tree extract
-    anat/                 # per-class on-demand analysis extracts (CSV + sidecars)
+    meta.json             # store-owned state (see below)
+    analysis.db           # SQLite: every extract, ingested at landing (see below)
   *.index.zst             # compacted Eclipse MAT indexes
   .dl/                    # in-flight download parts (shared by the component
                           #   stages; removed only by the store's quiescent sweep)
   .untar/<component>/     # in-flight untar staging, per component (data/indexes
                           #   untar concurrently; absent unless interrupted)
 ```
+
+## data/analysis.db — the analysis store (stdlib sqlite3)
+
+MAT only outputs CSV, so CSV stays the LANDING + interchange format (CI
+publishes it in `data.tar.gz`, `MatRunner` writes it) — but once a CSV lands
+it is ingested into `analysis.db` and deleted (`backend/mat/db.py`; new-format
+bundles may ship the db directly). Commits are transactional, so the file's
+presence implies completeness: `files.has_data()` (the machine's data
+predicate) keys on it, and a crash between the file move and the ingest is
+healed by re-ingesting the landed CSVs, never by re-downloading.
+
+Resumability lives in the db, not the filesystem: the `kv` table holds
+`part:<name>` ingest markers (`part:hist`, `part:dom`, `part:rs:<key>`,
+`part:idsall:<key>`, `part:anat:<key>:<K>`, `part:reach:<key>:<K>`) — a marked
+part is never re-extracted. Raw tables mirror the old CSVs (hist/dom/rs/
+idsall/samples/nodes/einfo/edges/edgesfull/fields/strings); derived tables
+(`reach`, `sgroups`, `slinks`) are written by the reachability pass
+(`backend/mat/reach.py`) at analyze time. `SCHEMA_VERSION` mismatches wipe and
+recreate — the caller re-ingests/re-analyzes; no compat code.
 
 ## meta.json (written ONLY by LocalDumpStore / MatQueryEngine via the store)
 
@@ -35,17 +52,17 @@ dumps/<id>/
                                    //   later observations validate against THIS
   "indexes": "remote",             // how the index set was acquired (remote|local)
   "dump": "daemon.hprof",          // hprof filename
-  "classes": { "<key>": "<fqcn>" },// analyzed classes (analysis index)
-  "rs": { "<key>": {...} },        // retained-set extract info
-  "anatSamples": { "<key>": [32] },// which sample counts were extracted
-  "...": "other analysis-index fields (see backend/mat/parsing.py _analysis_index_build)"
+  "modules": 3010                  // DefaultScriptHandler instance count
 }
 ```
 
+The analysis index (analyzed classes, retained-set extracts, sample counts,
+sampled ids) used to live in meta.json (`classes`/`rs`/`anatSamples`/`ids`) —
+it moved into analysis.db; meta.json carries only dump-level fields now.
+
 There is no flat `state` field: the machine is the truth and the flat
-`DumpState` the API serves is a pure projection of it. The analysis-index
-fields are written and read only by `MatQueryEngine`; nothing else may rely
-on them. A dir WITHOUT a `machine` field adopts one inferred from artifact
+`DumpState` the API serves is a pure projection of it. A dir WITHOUT a
+`machine` field adopts one inferred from artifact
 observation (in-progress states are untrusted by design, so inference only
 needs `wanted` + DONE promotions). A dir with neither machine nor artifacts
 shows up as FAILED with "no recorded state" — delete and re-download it.
@@ -108,7 +125,10 @@ dumps without a local dir are taggable. `delete()` drops the dump's entry.
 ## Migration
 
 Format changes are handled by a one-time throwaway migration script, never by
-permanent compat code in the store. A dir without a `machine` field is not a
+permanent compat code in the store (the CSV → analysis.db move was
+`tools/migrate_analysis_db.py`: ingest via the shared path, run the reach
+pass per extraction, delete the migrated CSVs/JSON sidecars, strip the old
+meta.json analysis-index fields). A dir without a `machine` field is not a
 legacy format burden: the store infers a machine from artifact observation
 (DONE promotions only — in-progress work simply re-enters and re-validates).
 A dir with neither machine nor artifacts shows up as FAILED with

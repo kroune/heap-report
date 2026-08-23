@@ -62,9 +62,19 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   None for a legitimately empty OQL result (MAT reports those as a text page
   with no CSV outputter, rc=0 — the report text is the only way to tell them
   from real query errors, which raise with that text attached); parsing treats
-  the absent supplementary CSV as "no data". `parsing.py` —
-  extract files (CSV/sidecars) → structures. `payloads.py` — structures →
-  JSON payloads, pure.
+  the absent supplementary CSV as "no data". `parsing.py` — raw extract
+  parsing helpers (pure). `db.py` — the per-dump analysis store
+  `data/analysis.db` (stdlib sqlite3): MAT still outputs CSV (its report
+  engine can't do anything else) and CSV stays the CI/CD interchange +
+  landing format, but once a CSV lands it is ingested into the db and
+  deleted; resumability lives in `kv` marker rows (`part:<name>`), not file
+  presence; readers return the same structures the old CSV parsers produced
+  (payloads.py untouched). The engine registers `store.on_data_files` so
+  localstore stays free of any mat import. `reach.py` — the reachability
+  pass at analyze time: per-class inclusive retained (DOWNWARD-oriented
+  cones — back-references to ancestors don't count) + root-diversity shared
+  bytes, holder-set split copies (`reach`/`sgroups`/`slinks` derived tables).
+  `payloads.py` — structures → JSON payloads, pure.
 - `backend/jobs.py` — `InMemoryJobRegistry`: serial queue for INDEX/ANALYZE/
   COMPACT (one MAT JVM at a time, `-Xmx10g`), pool of 2 for DOWNLOAD.
 - `backend/http.py` / `kernel.py` — thin HTTP adapter (uniform
@@ -87,6 +97,8 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
 
 - UI: `python3 -m backend.kernel` → http://127.0.0.1:8321/
 - Snapshot: `python3 -m backend.snapshot --dump <id> --out report.html`
+- One-time CSV → analysis.db migration (throwaway): `python3
+  tools/migrate_analysis_db.py [--dump <id>]` (run once, server stopped).
 - Trigger an index build: `gh workflow run build-indexes.yml -R kroune/heap-report
   -f source_repo=kroune/feature-module-3000 -f release_tag=run-123`.
 - Smoke: `python3 -m py_compile backend/*.py backend/mat/*.py backend/machine/*.py backend/localstore/*.py tools/*.py`,

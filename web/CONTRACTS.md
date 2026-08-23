@@ -26,7 +26,12 @@ web/viz/common.js       viz registry + popup host + openViz() + shared helpers  
 web/viz/anatomy.js      anatomy viz (full-graph reference tree)                   (viz)
 web/viz/hierarchy.js    hierarchy viz                                               (viz)
 web/viz/graph.js        reference graph viz (layout split from rendering)           (viz-graph)
-web/viz/flow.js         flow viz (top-down layered DAG, pinned column, nesting)    (viz-graph)
+web/viz/flow/index.js   flow viz module contract (kind/prepare/render delegates)    (viz-graph)
+web/viz/flow/layout.js  flow layout: computeFlowLayout (pure; rincl sizing, split copies) (viz-graph)
+web/viz/flow/prepare.js flow data step (fetch, scale/extrapolation, viewModel)      (viz-graph)
+web/viz/flow/controls.js flow toolbar, pins editor, help overlay, pin storage       (viz-graph)
+web/viz/flow/detail.js  flow side panel (click detail) HTML builders                (viz-graph)
+web/viz/flow/render.js  flow canvas/edges/nodes + interaction wiring                (viz-graph)
 ```
 
 ## Module style (HARD rules — the snapshot bundler depends on them)

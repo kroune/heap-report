@@ -60,10 +60,11 @@ export function makeInlineRepo(payload) {
     return c ? {ok:true, data: c} : NOT_ANALYZED;
   };
 
-  /* anatomy at the default sample count is inlined */
+  /* anatomy at the default sample count is inlined; an explicit request for
+     exactly that count (viz refetches round-trip their params) gets it too */
   const anatomy = async (id, className, {samples = null} = {}) => {
-    const a = samples == null ? payload.anats[className] : null;
-    return a ? {ok:true, data: a} : NOT_ANALYZED;
+    const a = payload.anats[className];
+    return a && (samples == null || samples === a.samples) ? {ok:true, data: a} : NOT_ANALYZED;
   };
 
   const compare = async () => SNAP();

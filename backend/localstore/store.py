@@ -88,6 +88,9 @@ class FsDumpStore:
                                    # parse, run INLINE by await_indexes (the
                                    # caller is the serial MAT worker — queueing
                                    # the parse behind it would deadlock)
+        self.on_data_files = None  # wired by MatQueryEngine.__init__: ingest
+                                   # landed data-bundle CSVs into analysis.db.
+                                   # Keeps localstore free of any mat import.
         self._meta_locks = {}
         self._meta_guard = threading.Lock()
         self._tags_lock = threading.Lock()

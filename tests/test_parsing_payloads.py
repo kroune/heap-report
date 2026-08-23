@@ -107,6 +107,26 @@ class TestAnatomyAndCompare(unittest.TestCase):
         self.assertIn('name: "hello"', kids)
         self.assertEqual(kids['name: "hello"']["pres"], 1)   # non-null in 1/1 samples
         self.assertIn("count: 5", kids)
+        # no reach pass -> 4-column graph nodes, no split (frontend hides the
+        # wedge/split affordances)
+        self.assertEqual(len(out["graph"]["nodes"][0]), 4)
+        self.assertNotIn("split", out["graph"])
+
+    def test_anatomy_reach_columns_and_split(self):
+        """With the reach pass's derived tables in the src dict, graph.nodes
+        rows gain [rincl, rshared] and graph.split carries the holder-set
+        copies (holders list in the last column)."""
+        src = dict(self.SRC,
+                   reach={"com.x.Holder": (56, 32), "java.lang.String": (32, 0)},
+                   split={"nodes": [["com.x.Holder", 1, 24, 100, 56, 32, []],
+                                    ["java.lang.String", 1, 32, 32, 32, 0,
+                                     ["com.x.Holder"]]],
+                          "links": [[0, 1, "name", 1, 32]]})
+        out = _anatomy_build(src, "com.x.Holder", 1, [1], 32, 40)
+        rows = {r[0]: r for r in out["graph"]["nodes"]}
+        self.assertEqual(rows["com.x.Holder"], ["com.x.Holder", 1, 24, 100, 56, 32])
+        self.assertEqual(rows["java.lang.String"], ["java.lang.String", 1, 32, 32, 32, 0])
+        self.assertEqual(out["graph"]["split"], src["split"])
 
     def test_finish_agg_fold_keeps_kids(self):
         root = _new_agg("root", "com.x.Root")

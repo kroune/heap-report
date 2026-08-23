@@ -6,8 +6,8 @@ contract of the query endpoints.
 """
 from __future__ import annotations
 
-from .parsing import (_merge_fams, _read_csv, _short, _split_refs, cat_of,
-                      norm_lambda, split_pkg)
+from .parsing import (_merge_fams, _short, _split_refs, cat_of, norm_lambda,
+                      split_pkg)
 
 HIST_MIN_SHALLOW = 96 * 1024  # classes smaller than this fold into "· other ·" per package (treemap only)
 
@@ -120,12 +120,10 @@ def _trees_build(hist, dom):
     return {"dom": _build_tree(dom_leaves), "hist": _build_tree(hist_leaves)}
 
 
-def _composition_build(p):
-    rows = []
-    for r in _read_csv(p)[1:]:
-        if len(r) >= 3 and r[1].isdigit():
-            rows.append((r[0], int(r[1]), int(r[2])))
-    rows.sort(key=lambda r: -r[2])
+def _composition_build(rows):
+    """rows = [(cls, objects, shallow)] — the retained-set histogram of one
+    analyzed class (db.read_rs_rows)."""
+    rows = sorted(rows, key=lambda r: -r[2])
     return {"rows": [[c, s, n] for c, n, s in rows[:100]],
             "totalShallow": sum(s for _, _, s in rows),
             "totalObjects": sum(n for _, n, _ in rows),
@@ -354,7 +352,12 @@ def _anatomy_build(src, full, K, avail, max_depth, max_kids):
     _attach_pres(root, pres)
 
     # class-level reference graph (graph view): nodes = classes present in the
-    # retained set (with their retained bytes), links = field/element references
+    # retained set (with their retained bytes), links = field/element references.
+    # When the reachability pass has run (src["reach"]), node rows carry two
+    # extra columns — [cls, n, shallow, ret, rincl, rshared] — and graph.split
+    # holds the holder-set split copies; both stay absent for pre-reach
+    # extractions (the frontend hides the wedge/split affordances then).
+    reach = src.get("reach")
     gidx, gnodes, glinks = {}, [], {}
     for oid, ch in adj.items():
         sc = nodes[oid]["cls"]
@@ -375,12 +378,19 @@ def _anatomy_build(src, full, K, avail, max_depth, max_kids):
         gnodes[i][1] += 1
         gnodes[i][2] += nodes[oid]["used"]
         gnodes[i][3] += nodes[oid]["ret"]
+    if reach:
+        for row in gnodes:
+            ri = reach.get(row[0])
+            row.extend(ri if ri else (row[3], 0))
     links = sorted(([gidx[s], gidx[t], f, n, b] for (s, f, t), (n, b) in glinks.items()),
                    key=lambda x: -x[4])[:5000]
 
+    graph = {"nodes": gnodes, "links": links}
+    if src.get("split"):
+        graph["split"] = src["split"]
     return {"tree": _finish_agg(root, max_kids), "samples": K, "available": avail,
             "roots": root["n"], "untracked": untracked, "fullEdges": src["hasFullEdges"],
-            "depth": max_depth, "graph": {"nodes": gnodes, "links": links}}
+            "depth": max_depth, "graph": graph}
 
 
 # ---------------------------------------------------------------- compare

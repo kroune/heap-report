@@ -18,7 +18,7 @@ import { registerViz, initViz } from '../viz/common.js';
 import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
 import * as graph from '../viz/graph.js';
-import * as flow from '../viz/flow.js';
+import * as flow from '../viz/flow/index.js';
 
 const TABS = [
   ['classes', classesTab],

@@ -46,9 +46,10 @@
 .gside .gopenrow{margin-top:7px}
 .gside .gopen{font-size:12px;padding:3px 10px}
 
-/* flow viz (web/viz/flow.js) — reuses the g* classes above; only the flow-specific
+/* flow viz (web/viz/flow/) — reuses the g* classes above; only the flow-specific
    extras live here */
 .gnode.froot{stroke:#e8edf5;stroke-width:1.6}
+.gwedge{fill:#e8b339;fill-opacity:.9;stroke:#0d1117;stroke-width:.4;pointer-events:none}
 .fnest{stroke:#0d1117;stroke-width:.6;fill-opacity:.95;cursor:pointer}
 .gpinbar{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
 .gpin{display:inline-flex;gap:5px;align-items:center;background:#131a24;border:1px solid var(--border);border-radius:10px;padding:1px 4px 1px 8px;font-size:11.5px;color:#c4ccd9}
@@ -73,7 +74,7 @@
 .gref-meta .f{color:var(--dim);overflow-wrap:anywhere}
 .gref-meta .n{white-space:nowrap;color:#c4ccd9}
 
-/* flow toolbar + folds (web/viz/flow.js) */
+/* flow toolbar + folds (web/viz/flow/) */
 .fbar{display:flex;gap:14px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
 .fbar .anatseg{margin:0}
 .fgroup{display:flex;gap:6px;align-items:center}

@@ -14,6 +14,8 @@ import subprocess
 import tempfile
 import unittest
 
+from backend.mat import db as dbmod
+from backend.mat import reach as reachmod
 from backend.mat.extract import CorruptIndexError, MatRunner
 
 STUB = r"""#!/usr/bin/env python3
@@ -129,6 +131,97 @@ class TestRestoreCorruptZst(unittest.TestCase):
         with open(os.path.join(d, "daemon.a2s.index"), "rb") as f:
             self.assertEqual(f.read(), b"hello-index")   # valid sibling restored
         self.assertFalse(os.path.exists(os.path.join(d, "daemon.a2s.index.tmp999")))
+
+
+class TestAnalysisDbIngest(unittest.TestCase):
+    """CSV -> analysis.db -> read structures round-trips (the shared ingest
+    path used by analyze, the data-bundle landing hook and the migration)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data = os.path.join(self.tmp.name, "data")
+        self.anat = os.path.join(self.data, "anat")
+        os.makedirs(self.anat)
+        self.db = dbmod.open_db(self.data)
+        self.addCleanup(self.db.close)
+
+    def _w(self, name, text):
+        """Write `text` to <data>/<name> (anat parts get their anat/ prefix)."""
+        p = os.path.join(self.data, name)
+        with open(p, "w") as f:
+            f.write(text)
+        return p
+
+    def test_hist_dom_ingest_and_read(self):
+        hp = self._w("histogram.csv",
+                     "Class Name,Objects,Shallow Heap\ncom.a.A,10,1000\nbad,row\n")
+        dp = self._w("dominator_by_class.csv",
+                     "Class Name,Objects,Shallow Heap,Retained Heap,x\n"
+                     "com.a.A,10,1000,5000,z\n")
+        dbmod.ingest_data_dir(self.data)
+        self.assertEqual(dbmod.read_hist(self.db), [("com.a.A", 10, 1000)])
+        self.assertEqual(dbmod.read_dom(self.db), [("com.a.A", 10, 1000, 5000)])
+        self.assertFalse(os.path.exists(hp))   # ingested CSVs are deleted
+        self.assertFalse(os.path.exists(dp))
+        self.assertTrue(dbmod.has_marker(self.db, "part:hist"))
+
+    def test_rs_idsall_and_analysis_index(self):
+        dbmod.upsert_class(self.db, "K1", "com.a.A")
+        dbmod.ingest_rs(self.db, "K1", self._w(
+            "rs_K1.csv", "Class Name,Objects,Shallow Heap\ncom.a.A,2,48\ncom.a.B,3,96\n"))
+        dbmod.ingest_idsall(self.db, "K1", self._w(
+            "idsall_K1.csv", "Id\n7\n9\n"))
+        self.assertEqual(dbmod.read_idsall(self.db, "K1"), [7, 9])
+        self.assertEqual(dbmod.read_rs_rows(self.db, "K1"),
+                         [("com.a.A", 2, 48), ("com.a.B", 3, 96)])
+        self.assertEqual(dbmod.read_rs_totals(self.db), {"K1": (144, 5, 2)})
+        idx = dbmod.read_analysis_index(self.db)
+        self.assertEqual(idx, {"com.a.A": {"key": "K1", "comp": True, "anat": []}})
+
+    def test_anat_round_trip_and_reach(self):
+        self._w("anat/K1_s8_nodes.csv",
+                "Id,Address,Class,Used,Retained\n"
+                "1,0x10,com.Root,10,100\n2,0x20,com.A,20,50\n3,0x30,com.C,40,40\n")
+        self._w("anat/K1_s8_edges.csv", "Id,Len,Out\n1,1,2\n2,1,3\n")
+        self._w("anat/K1_s8_fields.csv",
+                'Id,Fields\n1,"[ref a:\t0x20, boolean debug:\ttrue]"\n'
+                '2,"[ref c:\t0x30]"\n')
+        self._w("anat/K1_s8_strings.csv", "Address,Value\n0x30,hello\n")
+        paths = dbmod.anat_files(self.anat, "K1", 8)
+        n = dbmod.ingest_anat(self.db, "K1", 8, [1], paths)
+        self.assertEqual(n, 3)
+        self.assertEqual(os.listdir(self.anat), [])   # all parts ingested
+        src = dbmod.anat_src(self.db, "K1", 8)
+        self.assertEqual(src["ids"], [1])
+        self.assertEqual(src["nodes"][2]["cls"], "com.A")
+        self.assertEqual(src["refs"], {1: [("a", 0x20, False)],
+                                       2: [("c", 0x30, False)]})
+        self.assertEqual(src["prims"], {1: [("debug", "true", False)]})
+        self.assertEqual(src["edges"], {1: [2], 2: [3]})
+        self.assertEqual(src["elen"], {1: 1, 2: 1})
+        self.assertFalse(src["hasFullEdges"])
+        self.assertEqual(src["strings"], {0x30: "hello"})
+        self.assertIsNone(src["reach"])   # the pass has not run yet
+        self.assertIsNone(src["split"])
+        # derived tables -> reach/split in the src dict
+        rows = reachmod.compute(src, [1])
+        dbmod.write_reach(self.db, "K1", 8, *rows)
+        src = dbmod.anat_src(self.db, "K1", 8)
+        self.assertEqual(src["reach"]["com.Root"], (70, 0))
+        self.assertTrue(dbmod.has_marker(self.db, "part:reach:K1:8"))
+        sn = src["split"]["nodes"]
+        self.assertEqual([r[0] for r in sn], ["com.C", "com.A", "com.Root"])
+        self.assertEqual(sn[1][:6], ["com.A", 1, 20, 50, 60, 0])
+        self.assertEqual(sn[1][6], ["com.Root"])
+        self.assertEqual(src["split"]["links"],
+                         [[1, 0, "c", 1, 40], [2, 1, "a", 1, 20]])
+        # schema version mismatch wipes and recreates (no compat code)
+        self.db.execute("UPDATE kv SET v='999' WHERE k='schema'")
+        self.db.commit()
+        db2 = dbmod.open_db(self.data)
+        self.assertEqual(dbmod.read_hist(db2), [])
+        db2.close()
 
 
 if __name__ == "__main__":

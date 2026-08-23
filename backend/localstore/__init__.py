@@ -10,7 +10,7 @@ On-disk contract: backend/LAYOUT.md. State machine: backend/machine/.
 """
 from .files import (MARKER, MARKER_TEXT, UNTAR, drop_index_set,
                     drop_untrusted_raws, has_compacted, has_data,
-                    parse_debris, raws_zsts)
+                    has_data_csvs, parse_debris, raws_zsts)
 from .compact import compact_dir
 from .transfer import (ASSEMBLE_TIMEOUT, AssemblyError, DL_CONN, DL_RETRIES,
                        DlProgress, PartPipe, Transfer)
@@ -18,7 +18,8 @@ from .store import FsDumpStore, COMPACT_HOLD_MAX
 
 __all__ = [
     "MARKER", "MARKER_TEXT", "UNTAR", "drop_index_set", "drop_untrusted_raws",
-    "has_compacted", "has_data", "parse_debris", "raws_zsts", "compact_dir",
+    "has_compacted", "has_data", "has_data_csvs", "parse_debris", "raws_zsts",
+    "compact_dir",
     "ASSEMBLE_TIMEOUT", "AssemblyError", "DL_CONN", "DL_RETRIES",
     "DlProgress", "PartPipe", "Transfer", "FsDumpStore", "COMPACT_HOLD_MAX",
 ]

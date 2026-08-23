@@ -1,9 +1,9 @@
 """Store + engine tests over synthetic tmpdir dumps. No MAT, no network:
 MatRunner is constructed but never invoked (queries read CSVs, not the hprof).
 
-State is the machine's business now: fixtures plant ARTIFACTS (hprof, data
-CSVs, .dl parts) and let the store's observation/inference derive states —
-exactly like a restart would."""
+State is the machine's business now: fixtures plant ARTIFACTS (hprof, the
+ingested data bundle, .dl parts) and let the store's observation/inference
+derive states — exactly like a restart would."""
 import os
 import tempfile
 import time
@@ -14,6 +14,7 @@ from backend.jobs import InMemoryJobRegistry
 from backend.localstore import (COMPACT_HOLD_MAX, MARKER, FsDumpStore,
                                 compact_dir)
 from backend.mat import MatQueryEngine
+from tests import dbfix
 
 HIST = ("Class Name,Objects,Shallow Heap\n"
         "org.gradle.Big,5,200000\n"
@@ -33,15 +34,12 @@ class Fixture(unittest.TestCase):
         self.engine = MatQueryEngine(self.store, self.jobs)
 
     def make_dump(self, dump_id="run-t", with_data=True, with_hprof=True):
-        """A READY dump: hprof + data bundle. The machine infers DONE/DONE
-        from the artifacts — no state is written by hand."""
+        """A READY dump: hprof + ingested data bundle. The machine infers
+        DONE/DONE from the artifacts — no state is written by hand."""
         d = os.path.join(self.tmp.name, dump_id)
         os.makedirs(os.path.join(d, "data"), exist_ok=True)
         if with_data:
-            with open(os.path.join(d, "data", "histogram.csv"), "w") as f:
-                f.write(HIST)
-            with open(os.path.join(d, "data", "dominator_by_class.csv"), "w") as f:
-                f.write(DOM)
+            dbfix.make_data_db(d, HIST, DOM)
         if with_hprof:
             with open(os.path.join(d, "daemon.hprof"), "wb") as f:
                 f.write(b"hprof-bytes")
@@ -191,10 +189,7 @@ class TestCompactHold(unittest.TestCase):
         for rel in ("daemon.hprof", "a.index", "a.index.zst"):
             with open(os.path.join(d, rel), "wb") as f:
                 f.write(b"x")
-        with open(os.path.join(d, "data", "histogram.csv"), "w") as f:
-            f.write(HIST)
-        with open(os.path.join(d, "data", "dominator_by_class.csv"), "w") as f:
-            f.write(DOM)
+        dbfix.make_data_db(d, HIST, DOM)
         with open(os.path.join(d, MARKER), "w") as f:
             f.write("x")
         return d
@@ -429,11 +424,9 @@ class TestStartupReconcile(unittest.TestCase):
     def test_terminal_states_stay_put(self):
         store = self.make_store()
         d = self.make_dump(store, "run-r")
-        for name, content in (("daemon.hprof", b"h"),
-                              ("data/histogram.csv", HIST.encode()),
-                              ("data/dominator_by_class.csv", DOM.encode())):
-            with open(os.path.join(d, name), "wb") as f:
-                f.write(content)
+        with open(os.path.join(d, "daemon.hprof"), "wb") as f:
+            f.write(b"h")
+        dbfix.make_data_db(d, HIST, DOM)
         self.make_dump(store, "run-f",
                        dump=machine.Comp(machine.ERROR, error="boom"))
         store.reconcile_all()
