@@ -88,7 +88,13 @@ jobs:
           set -euo pipefail
           mkdir -p work && cd work
           gh release view "$TAG" -R "$SOURCE_REPO" --json name,assets --jq '.assets[].name' > assets.txt
-          if grep -q '^daemon\.hprof\.gz\.part-' assets.txt; then
+          # PREFER the stripped dump: strip-hprof rewrites offsets, so it is a
+          # different file from the full dump — and it is what MAT indexes are
+          # (from now on) built from. Old releases only carry the full dump.
+          if grep -q '^daemon\.stripped\.hprof\.gz$' assets.txt; then
+            gh release download "$TAG" -R "$SOURCE_REPO" -p daemon.stripped.hprof.gz --clobber
+            gzip -dc daemon.stripped.hprof.gz > daemon.hprof
+          elif grep -q '^daemon\.hprof\.gz\.part-' assets.txt; then
             # parts are independent assets — fetch them in parallel
             grep '^daemon\.hprof\.gz\.part-' assets.txt \
               | xargs -P4 -n1 -I{} gh release download "$TAG" -R "$SOURCE_REPO" -p {} --clobber
@@ -167,7 +173,8 @@ jobs:
           cd work
           tar -cf indexes.tar ./*.index.zst ./*.threads INDEXES-COMPACTED.txt
           split -b 1900m indexes.tar indexes.tar.part-
-          rm indexes.tar
+          # keep indexes.tar: the S3 upload below ships it (zstd-compressed)
+          # as ONE unsplit object — S3 has no 2 GiB asset cap
           tar_bytes=$(du -cb indexes.tar.part-* | tail -1 | cut -f1)
           data_bytes=$(stat -c%s data.tar.gz)
           gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
@@ -200,3 +207,26 @@ jobs:
             echo "- indexes.tar: $(numfmt --to=iec $tar_bytes) in $(ls indexes.tar.part-* | wc -l) parts + data.tar.gz ($(numfmt --to=iec $data_bytes))"
             echo "- release: ${{ github.server_url }}/${{ github.repository }}/releases/tag/idx-$TAG"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # The user's local fast lane: the same artifacts as SINGLE objects (no
+      # 2 GiB splitting on S3) in the private SeaweedFS — the heap-report
+      # server prefers S3 over GitHub for downloads. NON-FATAL: the GitHub
+      # release stays the source of truth.
+      - name: Upload to S3
+        continue-on-error: true
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+        run: |
+          set -euo pipefail
+          cd work
+          aws configure set default.s3.max_concurrent_requests 16
+          aws configure set default.s3.multipart_threshold 16MB
+          aws configure set default.s3.multipart_chunksize 16MB
+          zstd -q -T0 -f indexes.tar   # the unsplit tar, truthfully named
+          for f in data.tar.gz indexes.tar.zst manifest.json; do
+            aws s3 cp "$f" "s3://$S3_BUCKET/idx-$TAG/$f" \
+              --endpoint-url https://s3.kroune.tech
+          done
