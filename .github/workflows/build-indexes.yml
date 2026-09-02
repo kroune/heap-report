@@ -28,8 +28,13 @@ on:
 permissions:
   contents: write # publish idx-* releases
 
+# Serialized across ALL tags, not just per-tag: two concurrent builds (e.g. a
+# base+candidate pair dispatched together) upload ~8 GiB of indexes each to the
+# small SeaweedFS/Cloudflare lane, and concurrent multi-GB multipart uploads
+# reliably starve it (feature-module-3000 run-25/26: the later leg failed all
+# three full-file attempts while the earlier one was uploading).
 concurrency:
-  group: idx-${{ github.event.client_payload.release_tag || inputs.release_tag }}
+  group: build-indexes
   cancel-in-progress: false
 
 env:

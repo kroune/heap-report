@@ -244,7 +244,12 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   plus briefly-polled HEAD size verification (aws-cli has returned 0 for a truncated
   multipart upload, so exit status alone is not trusted). The step remains
   continue-on-error — a failed upload turns red, while the GitHub release
-  stays the source of truth. CI never downloads from S3.
+  stays the source of truth. CI never downloads from S3. The whole workflow
+  is serialized with a single repo-wide concurrency group (`build-indexes`,
+  cancel-in-progress: false) — a base+candidate pair dispatched together
+  queues instead of uploading ~8 GiB of indexes concurrently, because
+  concurrent multi-GB multipart uploads reliably starve the small
+  SeaweedFS/Cloudflare lane (feature-module-3000 run-25/26).
 - Index mtime convention: a raw `.index` whose mtime matches its `.zst` is
   untouched and can be dropped. MAT's "is the index stale?" check is also
   mtime-only: an hprof newer than `daemon.index` triggers a full reparse.
