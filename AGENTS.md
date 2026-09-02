@@ -238,8 +238,10 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   for old releases) and, after publishing the GitHub `idx-<tag>` release
   exactly as before, uploads `data.tar.gz` + `indexes.tar.zst` (the ORIGINAL
   unsplit tar, zstd-compressed — no 2 GiB splitting on S3) + `manifest.json`
-  to `s3://$S3_BUCKET/idx-<tag>/` via `tools/s3_upload.sh`: up to 3 attempts
-  plus HEAD size verification (aws-cli has returned 0 for a truncated
+  to `s3://$S3_BUCKET/idx-<tag>/` via `tools/s3_upload.sh`: aws-cli's default
+  CRC64 trailer checksums are disabled (`when_required` — SeaweedFS/Cloudflare can
+  report multipart completion success but leave no object), then up to 3 attempts
+  plus briefly-polled HEAD size verification (aws-cli has returned 0 for a truncated
   multipart upload, so exit status alone is not trusted). The step remains
   continue-on-error — a failed upload turns red, while the GitHub release
   stays the source of truth. CI never downloads from S3.
