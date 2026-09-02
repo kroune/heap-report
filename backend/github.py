@@ -2,10 +2,13 @@
 """GitHub Releases source: remote dump discovery + downloads (backend impl).
 
 The benchmark repo publishes `run-*`
-releases carrying `daemon.hprof.gz.part-*`; this repo's CI publishes matching
-`idx-<tag>` releases carrying `indexes.tar.part-*` + `data.tar.gz` +
-`manifest.json`. Both repos are public, so anonymous REST works; when the `gh`
-CLI is authenticated it is used instead (higher rate limits).
+releases carrying `daemon.stripped.hprof.gz` (preferred — CI builds the MAT
+indexes from it; strip-hprof rewrites offsets, so it is a DIFFERENT file from
+the full dump) or, on old releases, `daemon.hprof.gz.part-*`; this repo's CI
+publishes matching `idx-<tag>` releases carrying `indexes.tar.part-*` +
+`data.tar.gz` + `manifest.json`. Both repos are public, so anonymous REST
+works; when the `gh` CLI is authenticated it is used instead (higher rate
+limits).
 
 API/transport failures are NEVER swallowed into empty
 results — they raise core.ApiError('upstream', ..., status=502). Only a
@@ -51,6 +54,25 @@ def _split_parts(assets, prefix, single):
         return [core.Part(name=single, index=0, size=a["size"],
                           url=a["browser_download_url"])]
     return None
+
+
+def _dump_parts(assets):
+    """The hprof payload of a release/prefix: the STRIPPED dump preferred
+    (CI's MAT indexes are built from it and the local MAT runs must match
+    those indexes), the full dump as fallback (old releases lack the
+    stripped variant). Shared with backend/s3.py (same layout, minus the
+    2 GiB part-splitting)."""
+    return (_split_parts(assets, "daemon.stripped.hprof.gz.part-",
+                         "daemon.stripped.hprof.gz")
+            or _split_parts(assets, "daemon.hprof.gz.part-", "daemon.hprof.gz"))
+
+
+def _index_parts(assets):
+    """The compacted index tar: split parts or a single object — plain
+    `indexes.tar`, or the zstd-compressed `indexes.tar.zst` the S3 lane
+    ships (the untar stage picks its pipeline off the part-name suffix)."""
+    return (_split_parts(assets, "indexes.tar.part-", "indexes.tar")
+            or _split_parts(assets, "indexes.tar.zst.part-", "indexes.tar.zst"))
 
 
 class GitHubSource:
@@ -135,7 +157,10 @@ class GitHubSource:
 
         [{tag, title, created_at, dump_bytes, indexed, idx_built_at, index_bytes}]
         Index-repo failures degrade to indexed=False (runs stay listable);
-        source-repo failures raise upstream."""
+        source-repo failures raise upstream — unless an expired cache can be
+        served instead: stale-but-real rows beat a 502 (offline listings keep
+        working, and a failure is still never swallowed into an EMPTY result).
+        Only a successful refresh replaces the cache."""
         with self._lock:
             if self._runs_cache is not None and time.time() - self._runs_at < TTL:
                 return self._runs_cache
@@ -147,25 +172,33 @@ class GitHubSource:
                         idx[m.group(1)] = rel
             except core.ApiError:
                 pass   # index repo unreachable/empty — runs are still listable
+            try:
+                releases = self._list_releases(self.source_repo)
+            except core.ApiError:
+                if self._runs_cache is not None:
+                    return self._runs_cache   # offline: serve the stale listing
+                raise
             out = []
-            for rel in self._list_releases(self.source_repo):
+            for rel in releases:
                 tag = rel.get("tag_name", "")
                 if not RUN_RE.match(tag):
                     continue
-                dump = _split_parts(_asset_map(rel), "daemon.hprof.gz.part-",
-                                    "daemon.hprof.gz")
+                dump = _dump_parts(_asset_map(rel))
                 if not dump:
                     continue
                 i = idx.get(tag)
-                tar = _split_parts(_asset_map(i), "indexes.tar.part-",
-                                   "indexes.tar") if i else None
+                tar = _index_parts(_asset_map(i)) if i else None
                 out.append({
                     "tag": tag,
                     "title": rel.get("name") or tag,
-                    "created_at": rel.get("created_at", ""),
+                    # published_at, not created_at: the benchmark workflow
+                    # creates the release object at run START and publishes
+                    # days later — created_at would show a stale date. No
+                    # fallback: a missing date is honest, a stale one lies.
+                    "created_at": rel.get("published_at") or "",
                     "dump_bytes": sum(p.size or 0 for p in dump),
                     "indexed": bool(tar),
-                    "idx_built_at": (i or {}).get("created_at", ""),
+                    "idx_built_at": (i or {}).get("published_at") or "",
                     "index_bytes": sum(p.size or 0 for p in tar) if tar else 0,
                 })
             out.sort(key=lambda r: r["created_at"], reverse=True)
@@ -191,15 +224,14 @@ class GitHubSource:
         rel = self._release(self.source_repo, dump_id)
         if rel is None:
             return None
-        dump = _split_parts(_asset_map(rel), "daemon.hprof.gz.part-",
-                            "daemon.hprof.gz")
+        dump = _dump_parts(_asset_map(rel))
         if not dump:
             return None
         tar, data, manifest = [], None, {}
         idx_rel = self._release(self.index_repo, f"idx-{dump_id}")
         if idx_rel is not None:
             assets = _asset_map(idx_rel)
-            tar = _split_parts(assets, "indexes.tar.part-", "indexes.tar") or []
+            tar = _index_parts(assets) or []
             if "data.tar.gz" in assets:
                 a = assets["data.tar.gz"]
                 data = core.Part(name="data.tar.gz", index=0, size=a["size"],
@@ -215,6 +247,11 @@ class GitHubSource:
         return core.DownloadPlan(dump_id=dump_id, data_bundle=data,
                                  hprof_parts=tuple(dump), index_parts=tuple(tar),
                                  manifest=manifest)
+
+    def owns(self, part):
+        """Release assets are plain HTTP urls — this source fetches anything,
+        so it is the generic fallback owner in transfer's SourceRouter."""
+        return True
 
     def fetch(self, part, offset=0):
         """Stream one part, resuming at `offset` via HTTP Range. urllib follows

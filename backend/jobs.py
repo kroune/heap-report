@@ -62,6 +62,16 @@ class InMemoryJobRegistry:
             job = self._jobs.get(job_id)
             return self._snapshot(job) if job is not None else None
 
+    def cancel(self, job_id: int) -> bool:
+        """QUEUED -> CANCELLED. A RUNNING job can't be killed here — its fn
+        exits via the dump's abort flag (store.cancel) and lands CANCELLED."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.state is not core.JobState.QUEUED:
+                return False
+            job.state = core.JobState.CANCELLED
+            return True
+
     def list(self, limit: int = 30) -> list:
         """Most-recent-first snapshots."""
         with self._lock:
@@ -88,9 +98,15 @@ class InMemoryJobRegistry:
             job, fn = q.get()
             try:
                 with self._lock:
+                    if job.state is core.JobState.CANCELLED:
+                        continue   # cancelled while queued — never runs
                     job.state = core.JobState.RUNNING
                 try:
                     fn(job)
+                except core.Aborted as e:
+                    with self._lock:
+                        job.state = core.JobState.CANCELLED
+                    self.log(job, f"cancelled: {e}")
                 except Exception as e:  # noqa: BLE001 - surfaced in the job
                     with self._lock:
                         job.state = core.JobState.FAILED

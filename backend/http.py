@@ -177,7 +177,13 @@ class _Handler(BaseHTTPRequestHandler):
         if parts == ["dumps"] and method == "GET":
             merged = {}
             for src in app.sources:
-                for d in src.list():
+                try:
+                    entries = src.list()
+                except core.ApiError as e:
+                    # a down remote must not hide the local dumps (offline use)
+                    log.warning("dump source %s unavailable: %s", src.name, e)
+                    continue
+                for d in entries:
                     merged.setdefault(d.id, d)  # store first: local state wins
             tags = app.store.user_tags()
             dumps = list(merged.values())
@@ -205,6 +211,27 @@ class _Handler(BaseHTTPRequestHandler):
             if job is None:
                 raise core.ApiError("not_found", f"no such job: {job_id}", 404)
             return self._json(200, _job_json(job))
+
+        if len(parts) == 3 and parts[0] == "jobs" and parts[2] == "cancel" \
+                and method == "POST":
+            try:
+                job_id = int(parts[1])
+            except ValueError:
+                raise core.ApiError("not_found", "no such job", 404)
+            job = app.jobs.get(job_id)
+            if job is None:
+                raise core.ApiError("not_found", f"no such job: {job_id}", 404)
+            if job.state is core.JobState.QUEUED:
+                app.jobs.cancel(job_id)
+                return self._json(200, {"id": job_id, "cancelled": True})
+            if job.state is core.JobState.RUNNING and job.dump_id:
+                # cooperative abort via the dump's machine — the fn raises
+                # core.Aborted and the job lands CANCELLED on its own
+                app.store.cancel(job.dump_id)
+                return self._json(200, {"id": job_id, "cancelled": True})
+            raise core.ApiError("bad_state",
+                                f"job {job_id} is {job.state.value} — not cancellable",
+                                409)
 
         if len(parts) >= 2 and parts[0] == "dumps":
             dump_id = _check_dump_id(parts[1])

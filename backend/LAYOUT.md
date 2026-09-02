@@ -6,7 +6,10 @@ id and matches `[\w.-]+` (no `/`, no `..`).
 
 ```
 dumps/<id>/
-  daemon.hprof            # the heap dump (assembled from .gz parts)
+  daemon.hprof            # the heap dump (assembled from .gz parts; the
+                          #   STRIPPED variant when the source has one — the
+                          #   MAT indexes are built from it — else the full
+                          #   dump; the on-disk name is fixed either way)
   data/
     meta.json             # store-owned state (see below)
     analysis.db           # SQLite: every extract, ingested at landing (see below)

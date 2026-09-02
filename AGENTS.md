@@ -32,17 +32,49 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   `reconcile()` loop (observe disk truth → query remotes when needed →
   pure `decide()` → persist → execute actions as jobs), CAS
   `machine_transition`, user actions (`start_download`/`cancel`/`delete`).
-  `stages.py` — one executor per component acquisition; retries live at the
-  work site (bounded `STAGE_ATTEMPTS`). `transfer.py` — the byte-moving
-  machinery (Range resume, streaming `PartPipe` into gzip/tar as parts land,
-  staged untar + manifest validation). `files.py` — artifact predicates/drop
-  helpers, `compact.py` — zstd compaction (mtime convention).
+  Remote plans merge in priority order (`_merge_plans`: S3 first, each
+  component from the first source that has it); the stage fetcher is a
+  `SourceRouter` over all sources. `stages.py` — one executor per component
+  acquisition; retries live at the work site (bounded `STAGE_ATTEMPTS`).
+  `transfer.py` — the byte-moving machinery (Range resume, streaming
+  `PartPipe` into gzip/tar as parts land, staged untar + manifest
+  validation, `SourceRouter` per-part source resolution). `files.py` —
+  artifact predicates/drop helpers, `compact.py` — zstd compaction (mtime
+  convention).
   Analysis-level queries are READY-only, overview queries run off the data
   bundle in any busy state. `set_tags()` — user tags in the root-level
   `.tags.json` sidecar (remote dumps are taggable too).
 - `backend/github.py` — `GitHubSource`: release discovery + asset streaming.
   Transport failures raise `ApiError('upstream', 502)`; only a confirmed 404
   means "we don't have it". Never swallow errors into empty results.
+  Exception for the LISTING only: `_runs()` serves the expired cache when a
+  refresh fails (stale-but-real rows, never an empty list), so the UI keeps
+  working offline; `GET /api/dumps` also isolates a failing source — a down
+  remote never hides the local dumps, and downloads still 502 truthfully.
+  The dump component PREFERS `daemon.stripped.hprof.gz` (CI strips primitive
+  array payloads IN PLACE — same size, same offsets, so the MAT indexes built
+  from it are equally valid for the full dump), falling back to
+  `daemon.hprof.gz` parts on old releases. Also owns the shared release-layout
+  helpers (`_dump_parts`/`_index_parts`, RUN_RE/IDX_RE) the S3 source reuses.
+- `backend/s3.py` — `S3Source`: the private SeaweedFS (`s3.kroune.tech`,
+  bucket `heap-reports`, same LAN — the fast lane; GitHub is throttled).
+  Same layout as the releases, one prefix per tag, SINGLE objects (no 2 GiB
+  split): `<tag>/daemon.stripped.hprof.gz` (the full dump is GitHub-only),
+  `idx-<tag>/data.tar.gz` + `indexes.tar.zst` + `manifest.json`. Stdlib-only
+  SigV4 (path-style, UNSIGNED-PAYLOAD, signed per request — host+path only,
+  scheme-independent). Credentials from `~/.aws/credentials` `[default]`;
+  endpoint resolution: `HEAP_REPORT_S3_ENDPOINT` > `endpoint_url` in
+  `~/.aws/config` `[default]` > `https://s3.kroune.tech` — RKN throttles the
+  Cloudflare front to KB/s from Russia, so the user's machine points the
+  config at a direct LAN NodePort (plain http); CI uploads run outside
+  Russia and are unaffected. Bucket: `HEAP_REPORT_S3_BUCKET`. No credentials
+  = the source DISABLES itself (logged once; GitHub keeps working). Strict
+  priority: the store queries it first and merges plans per component (S3
+  wins what it has, GitHub fills the rest), and transfer's `SourceRouter`
+  probes S3 per part attempt (`offer()`, HEAD, negative answers cached
+  `HEAP_REPORT_S3_PROBE_TTL`=45 s) so an in-flight GitHub download switches
+  to S3 mid-stream when the object appears late — only by exact identity
+  (same name + size; a GitHub part series never maps onto one S3 object).
 - `backend/mat/` — the MAT package. `engine.py` — `MatQueryEngine`: read
   queries (payload caches it owns; `_data_early` serves trees/classes/compare
   once the data bundle lands, `_data_dir` is READY-only) + on-demand MAT
@@ -119,7 +151,11 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   are skipped on retry, `.tmp` partials resume via HTTP Range; retry backoff
   does NOT hold a connection slot. Download job progress is a dict
   (`DlProgress`): stage (download/assemble), done/total bytes, a 10 s-window
-  speed + ETA, per-part states, and assembly-overlap bytes. Assembly is
+  speed + ETA, per-part states, assembly-overlap bytes, and `source` — which
+  remote is currently feeding bytes ("s3"/"github", absent until the first
+  fetch; the SourceRouter can flip it mid-download). The dumps listing
+  exposes the same dict on the in-progress dump (falling back to the
+  disk-counted {done,total} tuple when no download job is live). Assembly is
   streamed: each part is piped
   into `gzip -dc` / `tar -x` in index order the moment it lands
   (`PartPipe`), so decompression overlaps the remaining download and gunzip
@@ -174,7 +210,14 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   ERROR/CANCELLED components stay put until the user's explicit
   `start_download` resets them. `cancel()` is cooperative: the abort flag is
   polled at chunk/attempt boundaries (`core.Aborted`); stage outcomes are
-  CAS-applied, so a cancel/preempt that already moved the state wins.
+  CAS-applied, so a cancel/preempt that already moved the state wins. A user
+  cancel also PURGES the partial download scratch (`.dl/`, `.untar/`,
+  `*.assembling`) once the aborted stages have drained — a retry after cancel
+  restarts the download from scratch (only crash/ERROR re-entry resumes kept
+  parts). Jobs are cancellable too: `POST /api/jobs/<id>/cancel` flips a
+  QUEUED job to CANCELLED in the registry, or routes a RUNNING job through
+  `store.cancel(job.dump_id)` (the fn's `core.Aborted` lands the job
+  CANCELLED, never FAILED).
   `dir_of` hands out the dir in ANY state; state gating lives in the engine
   (`_data_dir` READY-only for analysis, `_data_early` busy-ok for the
   overview, bootstrap works during INDEXING).
@@ -182,6 +225,24 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   indexes as `indexes.tar.part-*` (individual `*.index.zst` can exceed 2 GiB,
   so they're tarred first). Part order comes from an explicit parsed index,
   never name sorting.
+- Stripped dumps: the benchmark CI publishes `daemon.stripped.hprof.gz`
+  (`tools/strip_hprof.py` in feature-module-3000 — primitive array payloads
+  zeroed IN PLACE: same size, same offsets, so the stripped dump and the full
+  dump are index-compatible; MAT indexes are built from the stripped one).
+  Both remote sources prefer it over the full dump; the local on-disk name
+  stays `daemon.hprof` (LAYOUT.md untouched). The S3 lane ships the index tar
+  as ONE zstd-compressed object `indexes.tar.zst`; GNU tar does not
+  auto-detect compression on stdin, so the indexes stage pipes through
+  `zstd -dc` when the part name ends in `.zst`.
+- build-indexes.yml downloads the stripped dump (fallback: full-dump parts
+  for old releases) and, after publishing the GitHub `idx-<tag>` release
+  exactly as before, uploads `data.tar.gz` + `indexes.tar.zst` (the ORIGINAL
+  unsplit tar, zstd-compressed — no 2 GiB splitting on S3) + `manifest.json`
+  to `s3://$S3_BUCKET/idx-<tag>/` via `tools/s3_upload.sh`: up to 3 attempts
+  plus HEAD size verification (aws-cli has returned 0 for a truncated
+  multipart upload, so exit status alone is not trusted). The step remains
+  continue-on-error — a failed upload turns red, while the GitHub release
+  stays the source of truth. CI never downloads from S3.
 - Index mtime convention: a raw `.index` whose mtime matches its `.zst` is
   untouched and can be dropped. MAT's "is the index stale?" check is also
   mtime-only: an hprof newer than `daemon.index` triggers a full reparse.

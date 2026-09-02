@@ -71,16 +71,20 @@ listDumps()                -> Result<[DumpInfo]>   // GET /api/dumps (merged)
 startDownload(id)          -> Result<Job>          // POST /api/dumps/{id}/download
 retryDownload(id)          -> Result<Job>          // POST .../retry
 cancelDownload(id)         -> Result<{id, cancelled}> // POST .../cancel
+cancelJob(id)              -> Result<{id, cancelled}> // POST /api/jobs/{id}/cancel
 deleteDump(id)             -> Result<null>         // DELETE /api/dumps/{id}
 setTags(id, tags)          -> Result<{id, tags}>   // POST /api/dumps/{id}/tags
 pollJobs(onJobs, ms=2500)  -> stopFn               // polls GET /api/jobs; onJobs([Job])
 // DumpInfo = {id, state:'remote'|'downloading'|'assembling'|'indexing'|'ready'|'failed',
 //             source, size, error, progress:{done,total}|null, meta}
-//   meta.tags = user tags ([] when none; set via setTags, persisted
+//   while a download job is live, progress is the full job dict below (with
+//   source); meta.tags = user tags ([] when none; set via setTags, persisted
 //   server-side in dumps/.tags.json); meta.title/created_at for remote dumps
-// Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed',
+// Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed'|'cancelled',
 //        progress:{done,total} | {done,total,stage:'download'|'assemble',
-//        speed,eta,asm:{done,total},parts:[{n,have,size,done}]} | null,
+//        speed,eta,asm:{done,total},parts:[{n,have,size,done}],
+//        source:'s3'|'github' (the download lane; absent until the first
+//        fetch, may flip mid-download)} | null,
 //        log:[str], error}
 
 // data/dumpdatarepo.js — per-dump queries; cache keyed by dump id lives HERE
@@ -140,6 +144,8 @@ every job kind uniformly (kind, dump, state, progress bar from
 progress.done/total, log tail expandable, error in red). Rebuilds DOM at most
 once per poll tick; rebuilds preserve expanded logs and log scroll positions.
 Every card has a close button — dismissal is UI-only (the job keeps running).
+Queued/running cards also get a cancel button (`cancelJob(id)` →
+`POST /api/jobs/{id}/cancel`; a failed cancel renders the error on the card).
 
 ## Viz contract
 

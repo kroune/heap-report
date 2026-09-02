@@ -123,6 +123,17 @@ GitHub Releases source: discovery (`list()`), release asset enumeration,
 parallel part download with Range resume, rate-limit cache. Never decides
 what's "ready" locally — it only describes what exists remotely.
 
+### `impl/s3`
+
+S3 source (private SeaweedFS, stdlib SigV4): the same release layout as
+single unsplit objects. Strictly preferred over GitHub: the store merges
+per-source plans in priority order (each component from the first source
+that has it), and transfer's `SourceRouter` re-resolves the source per part
+attempt — probe-capable sources (`offer()`) win over the part's owner
+(`owns()`), which is how an in-flight GitHub download switches to S3 when
+an object appears late. Disabled cleanly (empty listing, no plans) when
+`~/.aws/credentials` is missing.
+
 ### `impl/mat`
 
 MAT engine: `LocalIndexer` (bootstrap = histogram + dominators) and the MAT
@@ -259,6 +270,7 @@ Hard requirements that remain:
 
 - No framework, no bundler, no new runtime deps.
 - No speculative parameters on core interfaces "for future sources" — the
-  interface serves the two real impls (local, GitHub).
+  interface serves the real impls (local, GitHub, S3); the router's
+  `offer()`/`owns()` are optional duck-typed capabilities, not contract.
 - Shared logic is extracted, never copied (backend payload builders, frontend viz).
 - Every async UI path renders an error state; nothing spins forever.

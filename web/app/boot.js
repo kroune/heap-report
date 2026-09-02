@@ -92,13 +92,17 @@ function bootInline(payload) {
    actions; boot owns the list itself and the state badge ---- */
 
 async function bootApi() {
+  const LIST_POLL_MS = 30000;   // backend listing is cached/cheap at this rate
   const selBtn = document.getElementById('dumpsel-btn');
   let dumps = [];
   const liveDl = new Set();   // dump ids with an active (queued/running) download job
 
   const refresh = async () => {
     const res = await listDumps();
+    // keep the last good list on failure — the picker must stay usable
+    // offline; the LIST_POLL_MS timer below retries and clears the banner
     if (!res.ok) { shellError(`cannot load the dump list: ${res.error}`); return; }
+    shellError(null);
     dumps = res.data;
     const cur = getDump();
     // hash-restored/current id wins; otherwise prefer the first ready dump,
@@ -120,6 +124,9 @@ async function bootApi() {
   selBtn.addEventListener('click', () => picker.open());
 
   await refresh();
+  // slow re-list: recovers remote rows when the network comes back, picks up
+  // releases published mid-session, and retries after a failed refresh
+  setInterval(refresh, LIST_POLL_MS);
   onDumpChange(() => { syncHeader(dumps); picker.update(dumps, liveDl); });
 
   // a finished download changes states/sizes — refresh the list + badge,
@@ -158,6 +165,6 @@ function syncHeader(dumps) {
 
 function shellError(msg) {
   const box = document.getElementById('shell-err');
-  box.textContent = msg;
-  box.hidden = false;
+  box.hidden = !msg;              // null clears: the next success un-shows it
+  if (msg) box.textContent = msg;
 }

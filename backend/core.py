@@ -5,6 +5,8 @@ modules (one file each, owned by one author/agent):
 
   backend/localstore.py  FsDumpStore        — LocalDumpStore (the writable source)
   backend/github.py      GitHubSource       — RemoteDumpSource over GitHub releases
+  backend/s3.py          S3Source           — RemoteDumpSource over the private
+                         SeaweedFS (fast lane, strictly preferred; SigV4, stdlib)
   backend/jobs.py        InMemoryJobRegistry — JobRegistry + executors
   backend/mat/         MatQueryEngine     — QueryEngine + LocalIndexer (MAT);
                        package: parsing / payloads / extract / engine
@@ -34,7 +36,8 @@ class DumpState(enum.Enum):
     persisted in meta.json and reconciled from disk truth; this flat enum is
     never the source of anything.
 
-        dump error/cancelled  -> FAILED (retry resumes it)
+        dump error/cancelled  -> FAILED (retry resumes an errored download;
+            a cancelled one was purged and restarts from scratch)
         dump in flight        -> DOWNLOADING / ASSEMBLING (parts tail in gzip)
         dump done, data open  -> INDEXING
         dump done, data done  -> READY (MAT indexes are OPTIONAL and lazy —
@@ -71,6 +74,7 @@ class JobState(enum.Enum):
     RUNNING = "running"
     DONE = "done"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class JobKind(enum.Enum):
@@ -109,6 +113,12 @@ class JobRegistry(Protocol):
 
     def get(self, job_id: int) -> Optional[Job]: ...
     def list(self, limit: int = 30) -> list: ...
+
+    def cancel(self, job_id: int) -> bool:
+        """QUEUED -> CANCELLED (True); anything else False. A RUNNING job is
+        NOT killable at this level — its fn exits via the dump's cooperative
+        abort flag (LocalDumpStore.cancel) and lands CANCELLED on its own."""
+        ...
 
 
 # ---------------------------------------------------------------- sources
@@ -185,7 +195,10 @@ class LocalDumpStore(DumpSource, Protocol):
 
     def cancel(self, dump_id: DumpId) -> None:
         """User abort: every in-progress component -> CANCELLED, the running
-        stage jobs abort cooperatively and kept parts stay resumable."""
+        stage jobs abort cooperatively, and the partial download scratch
+        (.dl/ parts, .untar/ staging, *.assembling) is purged once the stages
+        have exited — an explicit retry restarts the download from scratch
+        (only ERROR/crash re-entry resumes kept parts)."""
         ...
 
     def reconcile(self, dump_id: DumpId, allow_local: bool = False) -> list:

@@ -1,7 +1,7 @@
 /* data/dumprepo.js — dump list + lifecycle ops + job polling.
  * DumpInfo = {id, state:'remote'|'downloading'|'assembling'|'indexing'|'ready'|'failed',
  *             source, size, error, progress:{done,total}|null, meta}
- * Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed',
+ * Job = {id, kind, dump, detail, state:'queued'|'running'|'done'|'failed'|'cancelled',
  *        progress:{done,total} | {done,total,stage:'download'|'assemble',
  *        speed,eta,asm:{done,total},parts:[{n,have,size,done}]} | null,
  *        log:[str], error}
@@ -23,6 +23,8 @@ export const deleteDump = id => apiDel(`/api/dumps/${encodeURIComponent(id)}`);
 
 export const setTags = (id, tags) =>
   apiPost(`/api/dumps/${encodeURIComponent(id)}/tags`, {tags});
+
+export const cancelJob = id => apiPost(`/api/jobs/${id}/cancel`);
 
 /* Polls GET /api/jobs every ms, invokes onJobs([Job]), returns a stop function.
  * A failed poll is logged and skipped — polling continues, onJobs is only

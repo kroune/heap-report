@@ -34,13 +34,27 @@ from .. import core, machine
 from ..machine import Comp
 from . import files, stages
 from .compact import compact_dir
-from .transfer import Transfer
+from .transfer import SourceRouter, Transfer
 
 log = logging.getLogger("backend.localstore")
 
 DUMP_RE = re.compile(r"^[\w.-]+$")
 TAG_RE = re.compile(r"^\w[\w .:-]{0,39}$")   # user tags: 1-40 chars
 MAX_TAGS = 24                                # per dump
+
+
+def _merge_plans(a, b):
+    """Priority-ordered plan merge: each component comes from the FIRST
+    source (remote_sources order — S3 before GitHub) that has it, e.g. S3's
+    dump plus GitHub's late-published indexes. Parts carry source-specific
+    urls; the SourceRouter fetches each from its owner (and switches a part
+    to a faster lane mid-download when a probe hits)."""
+    return core.DownloadPlan(
+        dump_id=a.dump_id,
+        data_bundle=a.data_bundle or b.data_bundle,
+        hprof_parts=a.hprof_parts or b.hprof_parts,
+        index_parts=a.index_parts or b.index_parts,
+        manifest=a.manifest or b.manifest)
 
 # active job (kind, detail) -> the machine components it drives
 _LIVE = {
@@ -464,7 +478,12 @@ class FsDumpStore:
         """Query the remote sources — but only when some component could act
         on the answer (the GitHub REST API is rate-limited). An upstream
         failure is a view with error set (decide idles), never an empty
-        result masquerading as "nothing published"."""
+        result masquerading as "nothing published". Plans merge in
+        remote_sources priority order (S3 first, _merge_plans): a source may
+        have the dump while another has the late-published indexes. The
+        stage fetcher is a SourceRouter over all sources: per-part-attempt
+        resolution (owner by url) plus probes that switch a part to S3
+        mid-download when the object appears late."""
         need = False
         if m.wanted:
             if m.dump.s not in machine.TERMINAL and "dump" not in live:
@@ -477,7 +496,7 @@ class FsDumpStore:
             need = True
         if not need:
             return machine.RemoteView()
-        plan = source = None
+        plan = None
         err = None
         for s in self.remote_sources:
             try:
@@ -486,16 +505,17 @@ class FsDumpStore:
                 err = err or e
                 continue
             if p is not None:
-                plan, source = p, s
-                break
+                plan = p if plan is None else _merge_plans(plan, p)
         if plan is None:
             return machine.RemoteView(queried=True,
                                       error=str(err) if err else None)
-        return machine.RemoteView(queried=True,
-                                  hprof=bool(plan.hprof_parts),
-                                  data=plan.data_bundle is not None,
-                                  indexes=bool(plan.index_parts),
-                                  plan=plan, source=source)
+        return machine.RemoteView(
+            queried=True,
+            hprof=bool(plan.hprof_parts),
+            data=plan.data_bundle is not None,
+            indexes=bool(plan.index_parts),
+            plan=plan,
+            source=SourceRouter(plan, self.remote_sources))
 
     # ------------------------------------------------------------ user actions
 
@@ -508,14 +528,21 @@ class FsDumpStore:
         fresh = not os.path.isdir(self._dir(dump_id))
         if fresh:
             # a fresh download: only when some source actually has the dump —
-            # otherwise don't even create the dir
-            has = False
+            # otherwise don't even create the dir. One lane being DOWN must
+            # not hide another that has it (S3 offline, GitHub fine).
+            has, err = False, None
             for s in self.remote_sources:
-                p = s.download_plan(dump_id)   # upstream errors raise (502)
+                try:
+                    p = s.download_plan(dump_id)
+                except core.ApiError as e:
+                    err = err or e
+                    continue
                 if p is not None and p.hprof_parts:
                     has = True
                     break
             if not has:
+                if err is not None:
+                    raise err   # upstream errors surface truthfully (502)
                 raise core.ApiError("not_found",
                                     f"no remote source has dump: {dump_id}", 404)
         os.makedirs(self._dir(dump_id), exist_ok=True)
@@ -547,7 +574,10 @@ class FsDumpStore:
     def cancel(self, dump_id):
         """User abort: in-progress components -> CANCELLED, running stages
         notice the abort flag at their next chunk/attempt boundary and exit.
-        Kept .dl/ parts stay resumable; an explicit retry re-enters."""
+        Once nothing is live, the partial download scratch (.dl/ parts,
+        .untar/ staging, *.assembling) is PURGED — an explicit retry
+        restarts the download from scratch (only ERROR/crash re-entry
+        resumes kept parts)."""
         self.get(dump_id)   # 404 for unknown ids
         rt = self._rt(dump_id)
         rt.abort.set()
@@ -563,6 +593,20 @@ class FsDumpStore:
         self.update_meta(dump_id, mut)
         with rt.cond:
             rt.cond.notify_all()
+        # wait for the aborted stages to exit before touching their scratch —
+        # .dl/ is shared by the concurrent component stages, so this purge
+        # (like the quiescent sweep) may only run once nothing is live
+        deadline = time.monotonic() + 60
+        while self._live(dump_id) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        d = self._dir(dump_id)
+        if os.path.isdir(d):
+            shutil.rmtree(os.path.join(d, ".dl"), ignore_errors=True)
+            shutil.rmtree(os.path.join(d, files.UNTAR), ignore_errors=True)
+            try:
+                os.remove(os.path.join(d, "daemon.hprof.assembling"))
+            except OSError:
+                pass
         self.kick(dump_id)
 
     def delete(self, dump_id):
@@ -689,6 +733,21 @@ class FsDumpStore:
                 return False
         return True
 
+    def _dl_progress(self, dump_id):
+        """The live dump-stage progress dict (done/total/speed/eta/parts and
+        `source` — which remote the bytes currently come from) while its
+        download job runs; None otherwise (the caller falls back to the
+        disk-counted tuple)."""
+        try:
+            for j in self.jobs.list(limit=1000):
+                if j.dump_id == dump_id and j.kind is core.JobKind.DOWNLOAD \
+                        and j.detail == "dump" and j.state in _ACTIVE \
+                        and isinstance(j.progress, dict):
+                    return j.progress
+        except Exception:   # noqa: BLE001 - a registry without list(): no progress
+            pass
+        return None
+
     def _info(self, dump_id):
         d = self._dir(dump_id)
         meta = self.read_meta(dump_id)
@@ -701,16 +760,18 @@ class FsDumpStore:
         state, error = machine.project(m, self._assembled(dump_id, m))
         progress = None
         if state in (core.DumpState.DOWNLOADING, core.DumpState.ASSEMBLING):
-            tmp = os.path.join(d, ".dl")
-            done = 0
-            if os.path.isdir(tmp):
-                for f in os.listdir(tmp):
-                    try:
-                        done += os.path.getsize(os.path.join(tmp, f))
-                    except OSError:
-                        pass   # part renamed/dropped by a stage mid-listing
-            progress = (done, sum(v for v in m.dump.parts.values()
-                                  if isinstance(v, int)))
+            progress = self._dl_progress(dump_id)
+            if progress is None:
+                tmp = os.path.join(d, ".dl")
+                done = 0
+                if os.path.isdir(tmp):
+                    for f in os.listdir(tmp):
+                        try:
+                            done += os.path.getsize(os.path.join(tmp, f))
+                        except OSError:
+                            pass   # part renamed/dropped by a stage mid-listing
+                progress = (done, sum(v for v in m.dump.parts.values()
+                                      if isinstance(v, int)))
         hprof = os.path.join(d, "daemon.hprof")
         size = os.path.getsize(hprof) if os.path.exists(hprof) else \
             sum(v for v in m.dump.parts.values() if isinstance(v, int)) or None

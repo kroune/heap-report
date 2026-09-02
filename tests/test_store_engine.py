@@ -129,6 +129,30 @@ class TestStore(Fixture):
         self.assertEqual(m.indexes.s, machine.CANCELLED)
         self.assertEqual(m.dump.s, machine.DONE)   # done components untouched
 
+    def test_cancel_purges_download_scratch(self):
+        """A user cancel throws the partial download away: .dl/ parts,
+        .untar/ staging and a stale .assembling file are removed once the
+        (here: no) live stages drain — a retry restarts from scratch."""
+        d = self.make_dump()
+        self.set_machine("run-t", dump=machine.Comp(machine.DONE),
+                         data=machine.Comp(machine.DONE),
+                         indexes=machine.Comp(machine.DOWNLOADING))
+        os.makedirs(os.path.join(d, ".dl"), exist_ok=True)
+        with open(os.path.join(d, ".dl", "indexes.tar.part-0"), "wb") as f:
+            f.write(b"x" * 100)
+        os.makedirs(os.path.join(d, ".untar", "indexes"), exist_ok=True)
+        with open(os.path.join(d, "daemon.hprof.assembling"), "wb") as f:
+            f.write(b"partial")
+        self.store.cancel("run-t")
+        self.assertFalse(os.path.exists(os.path.join(d, ".dl")))
+        self.assertFalse(os.path.exists(os.path.join(d, ".untar")))
+        self.assertFalse(os.path.exists(os.path.join(d,
+                                                     "daemon.hprof.assembling")))
+        m = machine.machine_from(self.store.read_meta("run-t")["machine"])
+        self.assertEqual(m.indexes.s, machine.CANCELLED)
+        # completed artifacts are NOT scratch — the ready dump survives
+        self.assertTrue(os.path.exists(os.path.join(d, "daemon.hprof")))
+
     def test_tags(self):
         self.make_dump()
         tags = self.store.set_tags("run-t", ["base", " idea ", "base"])

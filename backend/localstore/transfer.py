@@ -50,6 +50,60 @@ class AssemblyError(RuntimeError):
         self.parts = list(parts)
 
 
+class SourceRouter:
+    """Per-part-ATTEMPT fetch-source resolution (mid-download lane switching).
+
+    The plan's parts carry source-specific urls; the first source (priority
+    order — the store's remote_sources) owning a part's url fetches it
+    (`owns()`, default True for generic HTTP fetchers like GitHub). Before
+    that, probe-capable sources (`offer(prefix, part)`, e.g. S3) are asked
+    for the same object: a hit switches this and all later range-requests of
+    the part to the faster lane mid-download. Parts already complete are
+    never re-fetched (the resume logic in fetch_all), and probes cache their
+    answers (hit or miss), so a missing object costs at most one HEAD per
+    probe TTL while a late upload is still picked up quickly. Switching is
+    only by exact object identity (same name + size) — a differently-segmented
+    copy (GitHub parts vs one S3 object) never matches and is left alone.
+    """
+
+    def __init__(self, plan, sources):
+        self.plan = plan
+        self.sources = list(sources)
+        self.probes = [s for s in self.sources if hasattr(s, "offer")]
+        self._prefix = {p: plan.dump_id for p in plan.hprof_parts}
+        idx = f"idx-{plan.dump_id}"
+        for p in plan.index_parts:
+            self._prefix[p] = idx
+        if plan.data_bundle is not None:
+            self._prefix[plan.data_bundle] = idx
+
+    def resolve(self, part):
+        """(source, part) to fetch from — the probe winner, else the part's
+        owner. Called per fetch attempt, so a late S3 upload is picked up by
+        the retry loop."""
+        prefix = self._prefix.get(part)
+        if prefix:
+            for s in self.probes:
+                owns = getattr(s, "owns", None)
+                if owns is not None and owns(part):
+                    return s, part   # already this probe's own url
+                try:
+                    alt = s.offer(prefix, part)
+                except Exception:   # noqa: BLE001 - a broken probe must never
+                    alt = None      # break the download: the fallback owns it
+                if alt is not None:
+                    return s, alt
+        for s in self.sources:
+            owns = getattr(s, "owns", None)
+            if owns is None or owns(part):
+                return s, part
+        return self.sources[-1], part
+
+    def fetch(self, part, offset=0):
+        src, p = self.resolve(part)
+        return src.fetch(p, offset)
+
+
 class DlProgress:
     """Throttled job.progress reporter for downloads: a per-part byte counter
     with a speed/ETA window, plus the assembly tail (bytes fed into
@@ -65,6 +119,9 @@ class DlProgress:
         self.total = 0             # expected download bytes (known part sizes)
         self.asm_total = 0         # bytes to feed through assembly
         self.fed = 0               # assembly bytes so far
+        self.source = None         # name of the remote source currently feeding
+                                   # bytes ("s3"/"github"/…), None until the
+                                   # first fetch — omitted from the payload then
         self._new = 0              # bytes downloaded in this attempt (speed base)
         self._samples = deque()    # (monotonic, _new) — ~10s speed window
         self._last_push = 0.0
@@ -113,6 +170,14 @@ class DlProgress:
             self.stage = stage
             self._push(force=True)
 
+    def set_source(self, name):
+        """Which remote source is serving the current fetch (the SourceRouter
+        may switch lanes mid-download)."""
+        with self.lock:
+            if name != self.source:
+                self.source = name
+                self._push(force=True)
+
     def flush(self):
         """Force a payload refresh — used after each fully-fed part so a
         download stall doesn't leave the assembly overlap stale."""
@@ -124,6 +189,7 @@ class DlProgress:
         if not force and now - self._last_push < 0.4:
             return
         self._last_push = now
+        src = {"source": self.source} if self.source else {}
         if self.stage == "download":
             done = sum(e["have"] for e in self.parts.values())
             self._samples.append((now, self._new))
@@ -138,14 +204,14 @@ class DlProgress:
                         eta = (self.total - done) / speed
             self.job.progress = {
                 "stage": "download", "done": done, "total": self.total,
-                "speed": speed, "eta": eta,
+                "speed": speed, "eta": eta, **src,
                 "asm": {"done": self.fed, "total": self.asm_total},
                 "parts": [{"n": n, "have": e["have"], "size": e["size"],
                            "done": e["done"]} for n, e in self.parts.items()],
             }
         else:
             self.job.progress = {"stage": "assemble", "done": self.fed,
-                                 "total": self.asm_total}
+                                 "total": self.asm_total, **src}
 
 
 class PartPipe:
@@ -300,14 +366,21 @@ class Transfer:
             raise RuntimeError(f"download failed: {errors[0][0]}: {errors[0][1]}")
 
     def _fetch_part(self, source, part, dst, job, sem, prog, abort):
-        """One part -> one file (atomic via .tmp rename). Retries re-call
-        source.fetch with the resumed offset; the source itself never retries.
-        The connection slot (sem) is held only while bytes flow — backoff
-        sleeps happen outside it so a retrying part doesn't idle a slot."""
+        """One part -> one file (atomic via .tmp rename). Retries re-resolve
+        the source per attempt (a SourceRouter picks up a late S3 upload
+        mid-download) and re-call fetch with the resumed offset; the source
+        itself never retries. The connection slot (sem) is held only while
+        bytes flow — backoff sleeps happen outside it so a retrying part
+        doesn't idle a slot."""
+        router = source if isinstance(source, SourceRouter) else None
         tmp = dst + ".tmp"
         for attempt in range(1, DL_RETRIES + 1):
             if abort is not None and abort.is_set():
                 raise core.Aborted(f"{part.name}: cancelled")
+            src, p = router.resolve(part) if router else (source, part)
+            name = getattr(src, "name", "")
+            if name:
+                prog.set_source(name)
             have = os.path.getsize(tmp) if os.path.exists(tmp) else 0
             if part.size is not None and have >= part.size and os.path.exists(tmp):
                 os.remove(tmp)   # stale/oversized partial — start over
@@ -317,7 +390,7 @@ class Transfer:
                 with sem:
                     n = have
                     with open(tmp, "ab" if have else "wb") as f:
-                        for chunk in source.fetch(part, offset=have):
+                        for chunk in src.fetch(p, offset=have):
                             if abort is not None and abort.is_set():
                                 raise core.Aborted(f"{part.name}: cancelled")
                             if not chunk:

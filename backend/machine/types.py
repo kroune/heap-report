@@ -106,8 +106,10 @@ class RemoteView:
     """What the remote sources offer, as of this pass. `error` = the lookup
     itself failed (upstream hiccup): decide() treats everything as unknown
     and idles; the next tick re-queries. `queried=False` when no component
-    could need the remote (same idling, cheaper). plan/source are carried
-    for the store's stage executors; decide() only reads the booleans."""
+    could need the remote (same idling, cheaper). plan is the priority-merged
+    DownloadPlan and source the transfer.SourceRouter over the ordered remote
+    sources — both carried for the store's stage executors; decide() only
+    reads the booleans."""
     queried: bool = False
     error: Optional[str] = None
     hprof: bool = False

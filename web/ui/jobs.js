@@ -14,20 +14,24 @@
  *  - scrollTop of every log <pre> survives (saved before the swap, restored
  *    after the new tree is ATTACHED — scrollTop does not stick on detached
  *    elements, keyed by job id + tail/full),
- *  - jobs already done/failed on the FIRST poll are pre-dismissed: they
- *    finished before this page loaded, re-showing them on every reload is
- *    noise (jobs that finish while the page is open still appear),
+ *  - jobs already done/failed/cancelled on the FIRST poll are pre-dismissed:
+ *    they finished before this page loaded, re-showing them on every reload
+ *    is noise (jobs that finish while the page is open still appear),
  *  - each card has a close button; dismissed job ids are kept in a per-mount
- *    Set and skipped (UI-only — the job itself keeps running).
+ *    Set and skipped (UI-only — the job itself keeps running),
+ *  - queued/running cards also have a cancel button (POST /api/jobs/<id>/cancel
+ *    via cancelJob()); a failed cancel renders the error on the card
+ *    (.job-err, per-mount cancelErrs map).
  *
  * All styling lives in the shell css (app.css, owner: shell) — classes used:
  *   jobs-empty, job-card, job-done, job-failed, job-head, job-kind, job-title,
- *   job-state, job-state-<state>, job-close, job-prog, job-prog-track,
- *   job-prog-bar, job-prog-label, job-log, job-log-full, job-err
+ *   job-state, job-state-<state>, job-close, job-cancel, job-prog,
+ *   job-prog-track, job-prog-bar, job-prog-label, job-src, job-log,
+ *   job-log-full, job-err
  * The only inline style is the progress bar width (a dynamic layout value).
  */
-import {fmtB, fmtDur} from "../data/http.js";
-import {pollJobs} from "../data/dumprepo.js";
+import {fmtB, fmtDur, fmtSrc} from "../data/http.js";
+import {pollJobs, cancelJob} from "../data/dumprepo.js";
 
 const LOG_TAIL = 10;
 
@@ -70,6 +74,23 @@ function jobCard(job, ui) {
   close.addEventListener("click", () => ui.dismiss(job.id));
   card.appendChild(close);
 
+  if (job.state === "queued" || job.state === "running") {
+    const cancel = document.createElement("button");
+    cancel.className = "job-cancel";
+    cancel.textContent = "cancel";
+    cancel.title = "cancel the job (partial downloads are purged)";
+    cancel.addEventListener("click", () => ui.cancel(job, cancel));
+    card.appendChild(cancel);
+  }
+
+  const cerr = ui.cancelErrs.get(job.id);
+  if (cerr) {
+    const err = document.createElement("div");
+    err.className = "job-err";
+    err.textContent = cerr;
+    card.appendChild(err);
+  }
+
   const p = job.progress;
   if (p && p.total > 0) {
     const pct = Math.min(100, 100 * p.done / p.total);
@@ -93,6 +114,12 @@ function jobCard(job, ui) {
       text += ` · ${fmtB(p.asm.done)} unpacked`;
     label.textContent = text;
     wrap.appendChild(label);
+    if (p.source) {   // the lane the bytes come from ("s3"/"github"); absent
+      const src = document.createElement("span");   // until the first fetch
+      src.className = "job-src";
+      src.textContent = fmtSrc(p.source);
+      wrap.appendChild(src);
+    }
     if (Array.isArray(p.parts) && p.parts.length) {
       const isDone = x => x.done || (x.size != null && x.have >= x.size);
       const done = p.parts.filter(isDone).length;
@@ -147,7 +174,17 @@ export function mountJobs(container) {
     openLogs: new Set(),   // job ids whose full-log <details> is expanded
     dismissed: new Set(),  // job ids hidden via the close button
     scrolls: new Map(),    // "id:tail"|"id:full" -> scrollTop, survives rebuilds
+    cancelErrs: new Map(), // job id -> last failed cancel attempt's error
     dismiss(id) { this.dismissed.add(id); render(lastJobs); },
+    async cancel(job, btn) {
+      btn.disabled = true;
+      const r = await cancelJob(job.id);
+      if (!r.ok) {
+        this.cancelErrs.set(job.id, r.error || "cancel failed");
+        render(lastJobs);   // terminal error state on the card
+      }
+      // success: the next poll tick shows the job cancelled
+    },
   };
 
   function render(jobs) {
@@ -157,7 +194,7 @@ export function mountJobs(container) {
       // jobs that already finished before this page loaded: pre-dismiss —
       // they are history, not news (running/queued ones still show)
       for (const j of jobs || []) {
-        if (j.state === "done" || j.state === "failed") ui.dismissed.add(j.id);
+        if (j.state !== "queued" && j.state !== "running") ui.dismissed.add(j.id);
       }
     }
     // save log scroll positions before the swap

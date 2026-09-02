@@ -9,7 +9,7 @@
  * ready/failed local dumps. boot.js owns the
  * dump list — it pushes data via update(); this module renders and calls
  * opts.onRefresh() after lifecycle ops. Styles: app.css (.pk-*, .tagchip). */
-import {fmtB} from '../data/http.js';
+import {fmtB, fmtSrc} from '../data/http.js';
 import {startDownload, cancelDownload, deleteDump, setTags} from '../data/dumprepo.js';
 import {getDump} from '../app/state.js';
 
@@ -193,6 +193,8 @@ export function mountDumpPicker(opts) {
       meta.appendChild(metaSpan(fmtB(d.progress.done) + ' / ' + fmtB(d.progress.total)));
     else if (d.size)
       meta.appendChild(metaSpan(fmtB(d.size)));
+    if (d.progress && d.progress.source)   // live download lane ("s3"/"github")
+      meta.appendChild(metaSpan(fmtSrc(d.progress.source)));
     if (dateOf(d)) meta.appendChild(metaSpan(dateOf(d).slice(0, 10)));
     if (d.source) meta.appendChild(metaSpan(d.source));
 

@@ -6,12 +6,16 @@
  *                 404 {analyzed:false} of composition/anatomy)
  *   network fail: {ok:false, status:0, code:'network', error}
  * Shared helpers: esc (escapes & < > " '), fmtB (bytes), fmtN (number
- * grouping), fmtDur (seconds -> compact duration).
+ * grouping), fmtDur (seconds -> compact duration), fmtSrc (download lane
+ * badge label).
  */
 
 export const esc = s => String(s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+/* download source lane ("s3"|"github", from progress.source) -> badge label */
+export const fmtSrc = s => s === "s3" ? "S3" : s === "github" ? "GitHub" : String(s || "");
 
 /* bytes -> compact: 1.5G / 320M / 12K / 999B */
 export const fmtB = v => {

@@ -221,6 +221,5 @@ jobs:
           aws configure set default.s3.multipart_chunksize 16MB
           zstd -q -T0 -f indexes.tar   # the unsplit tar, truthfully named
           for f in data.tar.gz indexes.tar.zst manifest.json; do
-            aws s3 cp "$f" "s3://$S3_BUCKET/idx-$TAG/$f" \
-              --endpoint-url https://s3.kroune.tech
+            bash ../tools/s3_upload.sh "$f" "s3://$S3_BUCKET/idx-$TAG/$f"
           done

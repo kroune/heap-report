@@ -13,7 +13,7 @@ from .files import (MARKER, MARKER_TEXT, UNTAR, drop_index_set,
                     has_data_csvs, parse_debris, raws_zsts)
 from .compact import compact_dir
 from .transfer import (ASSEMBLE_TIMEOUT, AssemblyError, DL_CONN, DL_RETRIES,
-                       DlProgress, PartPipe, Transfer)
+                       DlProgress, PartPipe, SourceRouter, Transfer)
 from .store import FsDumpStore, COMPACT_HOLD_MAX
 
 __all__ = [
@@ -21,5 +21,6 @@ __all__ = [
     "has_compacted", "has_data", "has_data_csvs", "parse_debris", "raws_zsts",
     "compact_dir",
     "ASSEMBLE_TIMEOUT", "AssemblyError", "DL_CONN", "DL_RETRIES",
-    "DlProgress", "PartPipe", "Transfer", "FsDumpStore", "COMPACT_HOLD_MAX",
+    "DlProgress", "PartPipe", "SourceRouter", "Transfer", "FsDumpStore",
+    "COMPACT_HOLD_MAX",
 ]

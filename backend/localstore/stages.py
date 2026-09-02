@@ -225,8 +225,15 @@ def indexes_stage(store, dump_id, view, rt):
         def body():
             prog = DlProgress(job)
             staging = store.transfer.stage_prepare(d, "indexes")
+            # the S3 lane ships the tar zstd-compressed (indexes.tar.zst) and
+            # GNU tar does not auto-detect compression on stdin — pipe through
+            # zstd first. A zstd failure truncates tar's input -> non-zero rc
+            # -> AssemblyError, same as any other corrupt part.
+            argv = ["tar", "-x", "-C", staging]
+            if parts[0].name.endswith(".zst"):
+                argv = ["sh", "-c", 'zstd -dc | tar -x -C "$1"', "sh", staging]
             pipe = PartPipe(store.jobs, job, parts, tmp,
-                            ["tar", "-x", "-C", staging], None, "untar",
+                            argv, None, "untar",
                             on_fed=prog.fed_bytes, on_part=prog.flush)
             try:
                 store.transfer.fetch_all(parts, source, tmp, job, log, prog,
