@@ -88,9 +88,9 @@ jobs:
           set -euo pipefail
           mkdir -p work && cd work
           gh release view "$TAG" -R "$SOURCE_REPO" --json name,assets --jq '.assets[].name' > assets.txt
-          # PREFER the stripped dump: strip-hprof rewrites offsets, so it is a
-          # different file from the full dump — and it is what MAT indexes are
-          # (from now on) built from. Old releases only carry the full dump.
+          # PREFER the stripped dump (primitive arrays zeroed in place — offsets
+          # preserved, so indexes are valid for both variants; it is simply the
+          # smaller, canonical download). Old releases only carry the full dump.
           if grep -q '^daemon\.stripped\.hprof\.gz$' assets.txt; then
             gh release download "$TAG" -R "$SOURCE_REPO" -p daemon.stripped.hprof.gz --clobber
             gzip -dc daemon.stripped.hprof.gz > daemon.hprof
