@@ -50,7 +50,11 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   Exception for the LISTING only: `_runs()` serves the expired cache when a
   refresh fails (stale-but-real rows, never an empty list), so the UI keeps
   working offline; `GET /api/dumps` also isolates a failing source — a down
-  remote never hides the local dumps, and downloads still 502 truthfully.
+  remote never hides the local dumps, and downloads still 502 truthfully. A
+  HUNG remote (dead endpoint, no response at all) is isolated too: each
+  remote's `list()` runs in its own thread under a shared deadline
+  (`HEAP_REPORT_LIST_TIMEOUT`, default 20 s) and is skipped when it expires,
+  so the listing always returns.
   The dump component PREFERS `daemon.stripped.hprof.gz` (CI strips primitive
   array payloads IN PLACE — same size, same offsets, so the MAT indexes built
   from it are equally valid for the full dump), falling back to
@@ -75,6 +79,10 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   `HEAP_REPORT_S3_PROBE_TTL`=45 s) so an in-flight GitHub download switches
   to S3 mid-stream when the object appears late — only by exact identity
   (same name + size; a GitHub part series never maps onto one S3 object).
+  Timeouts split control plane from streaming: listing/HEAD/manifest calls
+  use the short `HEAP_REPORT_S3_TIMEOUT` (default 10 s) so a dead endpoint
+  (the LAN NodePort unreachable from off-network) fails in seconds instead
+  of hanging callers for a minute; only the streaming Range GET keeps 60 s.
 - `backend/mat/` — the MAT package. `engine.py` — `MatQueryEngine`: read
   queries (payload caches it owns; `_data_early` serves trees/classes/compare
   once the data bundle lands, `_data_dir` is READY-only) + on-demand MAT
@@ -105,7 +113,13 @@ snapshot bundler depends on; follow them exactly when editing `web/`.
   localstore stays free of any mat import. `reach.py` — the reachability
   pass at analyze time: per-class inclusive retained (DOWNWARD-oriented
   cones — back-references to ancestors don't count) + root-diversity shared
-  bytes, holder-set split copies (`reach`/`sgroups`/`slinks` derived tables).
+  bytes, holder-set split copies (`reach`/`sgroups`/`slinks` derived tables) —
+  and, from the same in-memory src, the served anatomy payload is precomputed
+  into the `payloads` table: `anatomy()` is a blob read (`available` injected
+  at serve time), because rebuilding the tree from raw rows per request hung
+  the server on giant extractions (a class retaining GBs → an extraction at
+  MAT's 2M-row cap). The tree's `· N more` folds are budget-bounded
+  (`TREE_NODE_BUDGET`) so the payload size can't grow with the object count.
   `payloads.py` — structures → JSON payloads, pure.
 - `backend/jobs.py` — `InMemoryJobRegistry`: serial queue for INDEX/ANALYZE/
   COMPACT (one MAT JVM at a time, `-Xmx10g`), pool of 2 for DOWNLOAD.

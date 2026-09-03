@@ -13,6 +13,7 @@ import tempfile
 import time
 import unittest
 import unittest.mock
+import urllib.error
 from datetime import datetime, timezone
 
 from backend import core, github, s3
@@ -501,6 +502,42 @@ class TestEndpointResolution(unittest.TestCase):
             src = s3.S3Source(endpoint="https://arg.example/",
                               creds_file=self.creds, config_file=self.config)
             self.assertEqual(src.endpoint, "https://arg.example")  # rstrip("/")
+
+
+class TestRequestTimeouts(unittest.TestCase):
+    """Control-plane calls (listing/HEAD/manifest) must fail fast against a
+    dead endpoint (TIMEOUT); only the streaming Range GET keeps GET_TIMEOUT."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.src = s3.S3Source(endpoint="https://s3.test", bucket="b",
+                               creds_file=_creds_file(self.tmp.name))
+
+    def _timeouts(self, fn):
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            raise urllib.error.URLError("timed out")
+        with unittest.mock.patch.object(s3.urllib.request, "urlopen",
+                                        fake_urlopen):
+            with self.assertRaises(core.ApiError):
+                fn()
+        return calls
+
+    def test_control_plane_uses_short_timeout(self):
+        calls = self._timeouts(lambda: self.src._req("GET", query=[("list-type", "2")]))
+        self.assertEqual(calls, [s3.TIMEOUT])
+        calls = self._timeouts(lambda: self.src._req("HEAD", "run-1/x",
+                                                     allow_404=True))
+        self.assertEqual(calls, [s3.TIMEOUT])
+
+    def test_streaming_get_keeps_long_timeout(self):
+        part = core.Part(name="x", index=0, size=1,
+                         url="https://s3.test/b/run-1/x")
+        calls = self._timeouts(lambda: next(self.src.fetch(part)))
+        self.assertEqual(calls, [s3.GET_TIMEOUT])
 
 
 class TestDisabled(unittest.TestCase):

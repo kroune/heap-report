@@ -10,6 +10,7 @@ from .parsing import (_merge_fams, _short, _split_refs, cat_of, norm_lambda,
                       split_pkg)
 
 HIST_MIN_SHALLOW = 96 * 1024  # classes smaller than this fold into "· other ·" per package (treemap only)
+TREE_NODE_BUDGET = 20000   # fold-overflow nodes kept per anatomy payload (stats stay exact regardless)
 
 PROXIES = [
     "org.gradle.api.internal.initialization.DefaultScriptHandler_Decorated",
@@ -141,18 +142,30 @@ def _new_agg(label, cls, sk=False):
     return n
 
 
-def _finish_agg(n, max_kids):
+def _finish_agg(n, max_kids, budget=None):
+    """budget: one-element list, fold-overflow nodes the payload may still
+    keep (None = fresh default). The overflow of a "· N more" fold is kept
+    (biggest first) only while the budget lasts — an unbounded fold made the
+    payload grow with the extraction's object count, which is what made giant
+    analyses unopenable. The fold's summed n/s/r stay exact either way."""
+    if budget is None:
+        budget = [TREE_NODE_BUDGET]
     kids = sorted(n["kids"].values(), key=lambda k: (-k["r"], -k["s"]))
     more = None
     if len(kids) > max_kids:
-        # pure UI collapse: the overflow keeps its full structure inside a
-        # "· N more" fold node, so the frontend can expand it on click
+        # pure UI collapse: the overflow keeps its structure inside a "· N more"
+        # fold node, so the frontend can expand it on click — up to the budget
         rest = kids[max_kids:]
         kids = kids[:max_kids]
+        mkids = []
+        for k in rest:
+            if budget[0] <= 0:
+                break
+            budget[0] -= 1
+            mkids.append(_finish_agg(k, max_kids, budget))
         more = {"name": f"· {len(rest)} more", "full": "",
                 "n": sum(k["n"] for k in rest), "s": sum(k["s"] for k in rest),
-                "r": sum(k["r"] for k in rest),
-                "kids": [_finish_agg(k, max_kids) for k in rest]}
+                "r": sum(k["r"] for k in rest), "kids": mkids}
         refs = sum(k["refs"] for k in rest)
         if refs > more["n"]:
             more["refs"] = refs
@@ -163,7 +176,7 @@ def _finish_agg(n, max_kids):
         out["sk"] = 1
     if n["refs"] > n["n"]:
         out["refs"] = n["refs"]
-    out["kids"] = [_finish_agg(k, max_kids) for k in kids] + ([more] if more else [])
+    out["kids"] = [_finish_agg(k, max_kids, budget) for k in kids] + ([more] if more else [])
     return out
 
 
@@ -230,7 +243,10 @@ def _agg_walk(seeds, adj, nodes, strings, indeg, visited, max_depth, prims=None,
 def _anatomy_build(src, full, K, avail, max_depth, max_kids):
     """Full-graph reference tree (complete outbounds, deeper walk, skipped
     fields traversed), `refs` on aggregate nodes, `untracked` grouped by cause,
-    and a class-level reference `graph`."""
+    and a class-level reference `graph`. One TREE_NODE_BUDGET bounds the fold
+    overflow across the whole payload: the main tree finishes first, the
+    untracked groups share what remains."""
+    budget = [TREE_NODE_BUDGET]
     nodes, addr2id = src["nodes"], src["addr2id"]
     edges, edges_full, elen = src["edges"], src["edgesFull"], src["elen"]
     strings, ids = src["strings"], src["ids"]
@@ -346,10 +362,13 @@ def _anatomy_build(src, full, K, avail, max_depth, max_kids):
             un["s"] = sum(k["s"] for k in un["kids"].values())
             un["r"] = sum(k["r"] for k in un["kids"].values())
             untracked.append({"why": why, "n": un["n"], "s": un["s"], "r": un["r"],
-                              "tree": _finish_agg(un, max_kids)})
+                              "agg": un})
         untracked.sort(key=lambda g: -g["r"])
 
     _attach_pres(root, pres)
+    tree = _finish_agg(root, max_kids, budget)   # the main view gets first claim on the budget
+    for g in untracked:
+        g["tree"] = _finish_agg(g.pop("agg"), max_kids, budget)
 
     # class-level reference graph (graph view): nodes = classes present in the
     # retained set (with their retained bytes), links = field/element references.
@@ -388,7 +407,7 @@ def _anatomy_build(src, full, K, avail, max_depth, max_kids):
     graph = {"nodes": gnodes, "links": links}
     if src.get("split"):
         graph["split"] = src["split"]
-    return {"tree": _finish_agg(root, max_kids), "samples": K, "available": avail,
+    return {"tree": tree, "samples": K, "available": avail,
             "roots": root["n"], "untracked": untracked, "fullEdges": src["hasFullEdges"],
             "depth": max_depth, "graph": graph}
 

@@ -4,7 +4,12 @@ local bootstrap (LocalIndexer role).
   - Payload caches live here and only here, keyed on analysis.db's mtime AND
     meta's state; invalidate(dump_id) drops everything cached for a dump. The
     store/kernel calls invalidate() when a dump's data changes (download,
-    bootstrap, compact, finished analysis).
+    bootstrap, compact, finished analysis). Concurrent loads of the same key
+    are deduped (_loading): followers wait for the in-flight build.
+  - The anatomy payload is PRECOMPUTED at analyze time and stored as a JSON
+    blob in analysis.db's payloads table (db.write_payload) — anatomy() is a
+    blob read; rebuilding from raw rows per request made huge extractions
+    hang the server.
   - No on-disk payload caches: only the store writes a dump dir. The in-memory
     payload cache over the db covers the re-read cost.
   - Extracts land as CSV (MAT's only output), are ingested into the per-dump
@@ -22,6 +27,7 @@ subprocess goes through extract.MatRunner.
 from __future__ import annotations
 
 import glob
+import json
 import os
 import re
 import threading
@@ -39,6 +45,7 @@ from .extract import (EDGE_FULL_CAP, IDS_LIMIT, MAT_JOBS, MAX_EDGE,
                       sample_even, subselect, suffix)
 
 PAGE = 200                    # classes() page size
+ANAT_DEPTH, ANAT_KIDS = 32, 40   # anatomy tree walk/fold parameters
 
 
 class MatQueryEngine:
@@ -53,6 +60,7 @@ class MatQueryEngine:
         self._runner = MatRunner(jobs)
         self._lock = threading.RLock()
         self._cache = {}            # key tuple -> (fingerprint, payload)
+        self._loading = {}          # key tuple -> Event: a _cached load in flight
         # the store stays free of any mat import: it calls this hook blind
         # when data-bundle files land (download stage) so they get ingested
         store.on_data_files = self._on_data_files
@@ -116,14 +124,32 @@ class MatQueryEngine:
         return (mt, state)
 
     def _cached(self, key, fp, loader):
+        """fp-fresh cache with in-flight dedupe: concurrent callers for the
+        same key wait for the running load instead of each building a copy
+        (concurrent giant builds multiplied the server's memory footprint)."""
         with self._lock:
             ent = self._cache.get(key)
             if ent is not None and ent[0] == fp:
                 return ent[1]
-        val = loader()
-        with self._lock:
-            self._cache[key] = (fp, val)
-        return val
+            ev = self._loading.get(key)
+            if ev is None:
+                ev = self._loading[key] = threading.Event()
+                leader = True
+            else:
+                leader = False
+        if not leader:
+            ev.wait()
+            # the leader stored its value (or failed, or fp moved on) — re-enter
+            return self._cached(key, fp, loader)
+        try:
+            val = loader()
+            with self._lock:
+                self._cache[key] = (fp, val)
+            return val
+        finally:
+            with self._lock:
+                del self._loading[key]
+                ev.set()
 
     def invalidate(self, dump_id=None):
         """Drop cached payloads for one dump (or all). The store/kernel calls this
@@ -230,7 +256,11 @@ class MatQueryEngine:
                                 data, lambda db: dbmod.anat_src(db, key, K)))
 
     def anatomy(self, dump_id, cls, samples=None):
-        """Full-graph reference tree for one analyzed class. None = not analyzed."""
+        """Full-graph reference tree for one analyzed class. None = not analyzed.
+        Served from the payload blob precomputed at analyze time (the analyze
+        job already holds the extraction in memory for the reach pass); the
+        on-demand rebuild from raw rows is only the fallback for an extraction
+        whose job died between the reach pass and the payload write."""
         self._data_dir(dump_id)
         st = self._analysis_index(dump_id).get(cls)
         if not st or not st["anat"]:
@@ -238,10 +268,17 @@ class MatQueryEngine:
         key = st["key"]
         avail = st["anat"]
         K = samples if samples in avail else avail[-1]
+        data = os.path.join(self._store.dir_of(dump_id), "data")
 
         def load():
-            src = self._anat_src(dump_id, key, K)
-            return None if src is None else _anatomy_build(src, cls, K, avail, 32, 40)
+            raw = self._read_db(data, lambda db: dbmod.read_payload(db, key, K, "anat"))
+            if raw is not None:
+                pl = json.loads(raw)
+                pl["available"] = avail   # fresh: escalations must not stale the blob
+                return pl
+            src = self._anat_src(dump_id, key, K)   # pre-blob extraction
+            return None if src is None else _anatomy_build(src, cls, K, avail,
+                                                           ANAT_DEPTH, ANAT_KIDS)
 
         return self._cached((dump_id, "anat", key, K), self._db_fp(dump_id), load)
 
@@ -390,7 +427,9 @@ class MatQueryEngine:
         re-run, so escalating to more samples only runs the missing
         extractions. Every MAT query still lands as CSV (MAT's only output)
         and is ingested into analysis.db + deleted right after; the reach
-        pass (derived tables) runs once all parts of an extraction landed."""
+        pass (derived tables) and the served anatomy payload (payloads table)
+        are computed once all parts of an extraction landed — from the same
+        in-memory src, so the extraction is materialized once per analysis."""
         data = self._data_dir(dump_id)
         anat = os.path.join(data, "anat")
         os.makedirs(anat, exist_ok=True)
@@ -471,12 +510,30 @@ class MatQueryEngine:
                 n = dbmod.ingest_anat(db, key, K, picked,
                                       dbmod.anat_files(anat, key, K))
                 log(f"  anatomy ingested: {n} objects -> analysis.db")
+            src = None
             if not dbmod.has_marker(db, f"part:reach:{key}:{K}"):
                 src = dbmod.anat_src(db, key, K)
                 log(f"  reach pass over {len(src['nodes'])} objects "
                     f"(inclusive retained + holder-set split) ...")
                 rows = reachmod.compute(src, picked, log)
                 dbmod.write_reach(db, key, K, *rows)
+                # attach the just-written derived data so the payload build
+                # below doesn't re-read the whole extraction from the db
+                src["reach"] = {c: (ri, rs) for c, ri, rs in rows[0]}
+                src["split"] = dbmod.split_from_rows(rows[1], rows[2])
+            if dbmod.read_payload(db, key, K, "anat") is None:
+                # the served anatomy payload is precomputed HERE (the job
+                # already holds src; `available` is injected at serve time, so
+                # a later sample escalation doesn't stale the blob). A job that
+                # died between the reach pass and this write re-enters with the
+                # marker set: src then comes from the db, derived data included.
+                if src is None:
+                    src = dbmod.anat_src(db, key, K)
+                log(f"  precomputing the anatomy payload "
+                    f"({len(src['nodes'])} objects) ...")
+                dbmod.write_payload(db, key, K, "anat",
+                                    _anatomy_build(src, cls, K, [],
+                                                   ANAT_DEPTH, ANAT_KIDS))
             self.invalidate(dump_id)
             log(f"done: {cls} ({K} samples)")
         finally:

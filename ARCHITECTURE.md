@@ -144,9 +144,11 @@ A package (`backend/mat/`): `engine.py` (`MatQueryEngine` — queries, caches,
 analyze/bootstrap orchestration), `extract.py` (`MatRunner` — the only place
 MAT subprocesses exist), `parsing.py` (raw extract parsing helpers, pure),
 `db.py` (the per-dump analysis store `data/analysis.db`: CSV landing ingest +
-markers, readers), `reach.py` (the reachability pass → derived inclusive-
-retained / split-copy tables), `payloads.py` (structures → JSON, pure and
-unit-tested). Temp workspaces always cleaned up; MAT output streamed to job log, not
+markers, readers, the precomputed anatomy payload blobs), `reach.py` (the
+reachability pass → derived inclusive-retained / split-copy tables),
+`payloads.py` (structures → JSON, pure and unit-tested; fold overflow is
+budget-bounded so payload size can't grow with the object count).
+Temp workspaces always cleaned up; MAT output streamed to job log, not
 buffered whole.
 
 **CI dependency:** `build-indexes.yml` drives `backend/ci.py`. The indexing

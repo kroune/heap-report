@@ -58,6 +58,8 @@ BUCKET = os.environ.get("HEAP_REPORT_S3_BUCKET", "heap-reports")
 REGION = "us-east-1"   # SeaweedFS ignores it; SigV4 still needs one
 TTL = int(os.environ.get("HEAP_REPORT_REMOTE_TTL", "60"))
 PROBE_TTL = int(os.environ.get("HEAP_REPORT_S3_PROBE_TTL", "45"))
+TIMEOUT = int(os.environ.get("HEAP_REPORT_S3_TIMEOUT", "10"))
+GET_TIMEOUT = 60   # streaming Range GET: reads may legitimately take a while
 NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 
 
@@ -164,10 +166,15 @@ class S3Source:
 
     # ------------------------------------------------------------ transport
 
-    def _req(self, method, key="", query=(), extra=None, allow_404=False):
+    def _req(self, method, key="", query=(), extra=None, allow_404=False,
+             timeout=TIMEOUT):
         """One signed request; returns the open response (caller reads/closes).
         None on a confirmed 404 with allow_404; any other failure raises
-        core.ApiError('upstream', ..., status=502) — never an empty result."""
+        core.ApiError('upstream', ..., status=502) — never an empty result.
+        Control-plane calls (listing/HEAD/manifest) use the short TIMEOUT —
+        a dead endpoint (e.g. the LAN NodePort from off-network) must fail
+        in seconds, not hang the caller for a minute; only streaming GETs
+        pass GET_TIMEOUT."""
         path = f"/{self.bucket}" + ("/" + quote(key, safe="-_.~/") if key else "")
         hdrs = _signed_request(method, self._host, path, query,
                                self._access, self._secret, extra=extra)
@@ -176,7 +183,7 @@ class S3Source:
             f"{self.endpoint}{path}" + (f"?{q}" if q else ""),
             headers=hdrs, method=method)
         try:
-            return urllib.request.urlopen(req, timeout=60)
+            return urllib.request.urlopen(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             e.close()
             if allow_404 and e.code == 404:
@@ -367,7 +374,7 @@ class S3Source:
         if not self.enabled:
             raise core.ApiError("upstream", "S3 source is disabled", status=502)
         key = part.url[len(self._base) + 1:]   # _url() output, same quoting
-        resp = self._req("GET", key,
+        resp = self._req("GET", key, timeout=GET_TIMEOUT,
                          extra={"range": f"bytes={offset}-"} if offset else None)
         try:
             while True:

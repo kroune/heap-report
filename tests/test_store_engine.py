@@ -14,6 +14,7 @@ from backend.jobs import InMemoryJobRegistry
 from backend.localstore import (COMPACT_HOLD_MAX, MARKER, FsDumpStore,
                                 compact_dir)
 from backend.mat import MatQueryEngine
+from backend.mat import db as dbmod
 from tests import dbfix
 
 HIST = ("Class Name,Objects,Shallow Heap\n"
@@ -327,6 +328,38 @@ class TestEngine(Fixture):
         self.make_dump()
         self.assertIsNone(self.engine.composition("run-t", "org.gradle.Big"))
         self.assertIsNone(self.engine.anatomy("run-t", "org.gradle.Big"))
+
+    def _plant_anat(self, dump_id, key, cls, K=8):
+        """One ingested anatomy extraction (one root object, no refs)."""
+        data = os.path.join(self.tmp.name, dump_id, "data")
+        anat = os.path.join(data, "anat")
+        os.makedirs(anat, exist_ok=True)
+        with open(os.path.join(anat, f"{key}_s{K}_nodes.csv"), "w") as f:
+            f.write("Id,Address,Class,Used,Retained\n1,0x10,com.Root,10,100\n")
+        db = dbmod.open_db(data)
+        try:
+            dbmod.upsert_class(db, key, cls)
+            dbmod.ingest_anat(db, key, K, [1], dbmod.anat_files(anat, key, K))
+        finally:
+            db.close()
+
+    def test_anatomy_blob_fast_path(self):
+        """anatomy() serves the precomputed blob when the analyze job stored
+        one (available injected fresh); without a blob it falls back to the
+        on-demand build from the raw rows."""
+        self.make_dump()
+        self._plant_anat("run-t", "K1", "org.gradle.Big")
+        a = self.engine.anatomy("run-t", "org.gradle.Big")   # fallback build
+        self.assertEqual(a["tree"]["n"], 1)
+        self.assertEqual(a["available"], [8])
+        data = os.path.join(self.tmp.name, "run-t", "data")
+        db = dbmod.open_db(data)
+        dbmod.write_payload(db, "K1", 8, "anat", {"blob": True, "available": []})
+        db.close()
+        self.engine.invalidate("run-t")
+        b = self.engine.anatomy("run-t", "org.gradle.Big")   # blob fast path
+        self.assertTrue(b["blob"])
+        self.assertEqual(b["available"], [8])
 
 
 class FakeJobs:

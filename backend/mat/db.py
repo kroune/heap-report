@@ -8,7 +8,9 @@ presence implies completeness (localstore.files.has_data keys on it).
 
 Raw tables hold exactly what today's CSVs held (keyed by extraction where
 applicable); derived tables (reach/sgroups/slinks) are written by the
-reachability pass (reach.py) at analyze time. Read helpers return the same
+reachability pass (reach.py) at analyze time, and the served anatomy payload
+is precomputed there too (the payloads table — a giant extraction rebuilt
+from raw rows per HTTP request hung the server). Read helpers return the same
 structures the old CSV parsers produced, so payloads.py is untouched.
 
 SCHEMA_VERSION lives in the kv table; a mismatch wipes and recreates the
@@ -23,7 +25,7 @@ import sqlite3
 
 from .parsing import SKIP_FIELD, _parse_fields_dump, _read_csv
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT);
@@ -40,10 +42,13 @@ CREATE TABLE nodes (key TEXT, k INT, oid INT, addr INT, cls TEXT,
                     used INT, ret INT, PRIMARY KEY (key, k, oid));
 CREATE TABLE einfo (key TEXT, k INT, oid INT, elen INT,
                     PRIMARY KEY (key, k, oid));
+-- edges/edgesfull are read "WHERE key=? AND k=? ORDER BY oid, slot" (anat_src):
+-- the index must cover slot too, or SQLite sorts the whole extraction through
+-- a temp b-tree per read (millions of rows on a big retained set)
 CREATE TABLE edges (key TEXT, k INT, oid INT, slot INT, tid INT);
-CREATE INDEX edges_key ON edges(key, k, oid);
+CREATE INDEX edges_key ON edges(key, k, oid, slot);
 CREATE TABLE edgesfull (key TEXT, k INT, oid INT, slot INT, tid INT);
-CREATE INDEX edgesfull_key ON edgesfull(key, k, oid);
+CREATE INDEX edgesfull_key ON edgesfull(key, k, oid, slot);
 CREATE TABLE fields (key TEXT, k INT, oid INT, raw TEXT,
                      PRIMARY KEY (key, k, oid));
 CREATE TABLE strings (key TEXT, k INT, addr INT, value TEXT,
@@ -55,11 +60,13 @@ CREATE TABLE sgroups (key TEXT, k INT, gid INT, cls TEXT, holders_json TEXT,
                       PRIMARY KEY (key, k, gid));
 CREATE TABLE slinks (key TEXT, k INT, s INT, t INT, f TEXT, n INT, b INT);
 CREATE INDEX slinks_key ON slinks(key, k);
+CREATE TABLE payloads (key TEXT, k INT, kind TEXT, json TEXT,
+                       PRIMARY KEY (key, k, kind));
 """
 
 TABLES = ["kv", "hist", "dom", "classes", "rs", "idsall", "samples", "nodes",
           "einfo", "edges", "edgesfull", "fields", "strings", "reach",
-          "sgroups", "slinks"]
+          "sgroups", "slinks", "payloads"]
 
 
 def db_path(data_dir):
@@ -268,6 +275,39 @@ def write_reach(db, key, K, reach_rows, sgroup_rows, slink_rows):
         _set_marker(db, f"part:reach:{key}:{K}")
 
 
+def write_payload(db, key, K, kind, payload):
+    """Precomputed query payload for one extraction (kind "anat"), built once
+    at analyze time from the same in-memory src the reach pass consumed and
+    served as a blob — rebuilding it from raw rows per request is what made
+    huge extractions hang the server. `available` is injected at serve time,
+    so a later sample escalation never stales the stored blob."""
+    with db:
+        db.execute("INSERT OR REPLACE INTO payloads VALUES (?,?,?,?)",
+                   (key, K, kind, json.dumps(payload)))
+
+
+def read_payload(db, key, K, kind):
+    """The stored payload JSON text, or None (extraction predates the
+    precompute / the job died between the reach pass and the write)."""
+    row = db.execute("SELECT json FROM payloads WHERE key=? AND k=? AND kind=?",
+                     (key, K, kind)).fetchone()
+    return row[0] if row else None
+
+
+def split_from_rows(sgroup_rows, slink_rows):
+    """(gid, cls, holders_json, n, s, r, rincl, rshared) + (s, t, f, n, b) rows
+    -> the payload's split dict ({nodes, links}; gid ordering is the node
+    index). Shared by anat_src (db read) and the analyze-time precompute,
+    which already holds these rows in memory."""
+    gid2i = {g[0]: i for i, g in enumerate(sgroup_rows)}
+    snodes = [[g[1], g[3], g[4], g[5], g[6], g[7],
+               json.loads(g[2]) if g[2] is not None else None]
+              for g in sgroup_rows]
+    links = [[gid2i[s], gid2i[t], f, n, b] for s, t, f, n, b in slink_rows
+             if s in gid2i and t in gid2i]
+    return {"nodes": snodes, "links": links}
+
+
 # ---------------------------------------------------------------- readers
 # Same structures the old CSV parsers produced — payloads.py is untouched.
 
@@ -375,14 +415,9 @@ def anat_src(db, key, K):
         "SELECT gid, cls, holders_json, n, s, r, rincl, rshared FROM sgroups"
         " WHERE key=? AND k=? ORDER BY gid", (key, K)))
     if grows:
-        gid2i = {g[0]: i for i, g in enumerate(grows)}
-        snodes = [[g[1], g[3], g[4], g[5], g[6], g[7],
-                   json.loads(g[2]) if g[2] is not None else None]
-                  for g in grows]
-        slinks = [[gid2i[s], gid2i[t], f, n, b] for s, t, f, n, b in db.execute(
+        split = split_from_rows(grows, list(db.execute(
             "SELECT s, t, f, n, b FROM slinks WHERE key=? AND k=? ORDER BY rowid",
-            (key, K)) if s in gid2i and t in gid2i]
-        split = {"nodes": snodes, "links": slinks}
+            (key, K))))
     return {"nodes": nodes, "addr2id": addr2id, "refs": refs, "prims": prims,
             "edges": edges, "edgesFull": edges_full, "elen": elen,
             "hasFullEdges": bool(edges_full), "strings": strings,

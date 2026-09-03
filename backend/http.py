@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import re
+import threading
+import time
 import traceback
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +25,11 @@ log = logging.getLogger("backend.http")
 DUMP_RE = re.compile(r"^[\w.-]+$")
 CLASS_RE = re.compile(r"^[\w.$]+$")
 MAX_BODY = 1 << 20  # 1 MiB cap on POST bodies
+
+# Per-source deadline for GET /api/dumps: a remote that is slow or HUNG
+# (dead endpoint, swallowed packets — not a clean ApiError) is skipped and
+# the listing still returns; the local store is never subject to it.
+LIST_TIMEOUT = int(os.environ.get("HEAP_REPORT_LIST_TIMEOUT", "20"))
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTENT_TYPES = {".js": "text/javascript; charset=utf-8",
@@ -176,15 +183,37 @@ class _Handler(BaseHTTPRequestHandler):
 
         if parts == ["dumps"] and method == "GET":
             merged = {}
-            for src in app.sources:
+            for d in app.store.list():
+                merged.setdefault(d.id, d)  # store first: local state wins
+            # Remote sources: one thread each under a shared deadline. A
+            # source that merely fails is isolated by the ApiError catch;
+            # a source that HANGS (dead endpoint) is skipped when the
+            # deadline passes — it never hides the dumps either.
+            results = {}
+
+            def query(src):
                 try:
-                    entries = src.list()
+                    results[src.name] = src.list()
                 except core.ApiError as e:
                     # a down remote must not hide the local dumps (offline use)
                     log.warning("dump source %s unavailable: %s", src.name, e)
-                    continue
-                for d in entries:
-                    merged.setdefault(d.id, d)  # store first: local state wins
+                except Exception:
+                    log.exception("dump source %s failed", src.name)
+
+            remotes = [s for s in app.sources if s is not app.store]
+            threads = [threading.Thread(target=query, args=(s,), daemon=True)
+                       for s in remotes]
+            for t in threads:
+                t.start()
+            deadline = time.monotonic() + LIST_TIMEOUT
+            for t, s in zip(threads, remotes):
+                t.join(max(0.0, deadline - time.monotonic()))
+                if t.is_alive():
+                    log.warning("dump source %s too slow (>%ds) — skipped",
+                                s.name, LIST_TIMEOUT)
+            for s in remotes:   # merge in the configured priority order
+                for d in results.get(s.name, []):
+                    merged.setdefault(d.id, d)
             tags = app.store.user_tags()
             dumps = list(merged.values())
             if tags:

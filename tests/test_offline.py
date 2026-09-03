@@ -75,26 +75,78 @@ class _DownRemote:
         raise core.ApiError("upstream", "offline", status=502)
 
 
+class _HungRemote:
+    """A source whose list() never returns (dead endpoint, no response)."""
+
+    def __init__(self, name="s3"):
+        self.name = name
+        self.release = threading.Event()
+
+    def list(self):
+        self.release.wait(60)   # hangs until the test lets go (daemon thread)
+
+
 class TestDumpsRouteOffline(unittest.TestCase):
     """A remote source raising upstream must not hide the local listing."""
 
-    def test_local_dumps_listed_when_remote_down(self):
-        app = core.App(store=_LocalOnly(), engine=None, jobs=None,
-                       sources=[_LocalOnly(), _DownRemote()])
+    def _serve(self, app):
         srv = ThreadingHTTPServer(("127.0.0.1", 0), http._Handler)
         srv.app = app
         t = threading.Thread(target=srv.serve_forever, daemon=True)
         t.start()
+        self.addCleanup(srv.shutdown)
+        self.addCleanup(srv.server_close)
+        return f"http://127.0.0.1:{srv.server_port}/api/dumps"
+
+    def test_local_dumps_listed_when_remote_down(self):
+        app = core.App(store=_LocalOnly(), engine=None, jobs=None,
+                       sources=[_LocalOnly(), _DownRemote()])
+        url = self._serve(app)
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            self.assertEqual(resp.status, 200)
+            body = json.load(resp)
+        self.assertEqual([d["id"] for d in body], ["run-9-base"])
+        self.assertEqual(body[0]["state"], "ready")
+
+    def test_local_dumps_listed_when_remote_hangs(self):
+        """A HUNG source (no error, no response) is skipped at the deadline —
+        the listing still returns the local dumps."""
+        hung = _HungRemote()
+        self.addCleanup(hung.release.set)
+        app = core.App(store=_LocalOnly(), engine=None, jobs=None,
+                       sources=[_LocalOnly(), hung])
+        url = self._serve(app)
+        old = http.LIST_TIMEOUT
+        http.LIST_TIMEOUT = 1
         try:
-            url = f"http://127.0.0.1:{srv.server_port}/api/dumps"
-            with urllib.request.urlopen(url, timeout=10) as resp:
+            with urllib.request.urlopen(url, timeout=15) as resp:
                 self.assertEqual(resp.status, 200)
                 body = json.load(resp)
-            self.assertEqual([d["id"] for d in body], ["run-9-base"])
-            self.assertEqual(body[0]["state"], "ready")
         finally:
-            srv.shutdown()
-            srv.server_close()
+            http.LIST_TIMEOUT = old
+        self.assertEqual([d["id"] for d in body], ["run-9-base"])
+
+    def test_remote_results_still_merge_under_deadline(self):
+        """A fast remote's entries still land in the listing (priority order
+        kept: the store's local state wins on duplicate ids)."""
+        class _FastRemote:
+            name = "github"
+
+            def list(self):
+                return [core.DumpInfo(id="run-9-base",   # dup: store wins
+                                      state=core.DumpState.REMOTE,
+                                      source="github", size=99, meta={}),
+                        core.DumpInfo(id="run-10", state=core.DumpState.REMOTE,
+                                      source="github", size=5, meta={})]
+
+        app = core.App(store=_LocalOnly(), engine=None, jobs=None,
+                       sources=[_LocalOnly(), _FastRemote()])
+        url = self._serve(app)
+        with urllib.request.urlopen(url, timeout=10) as resp:
+            body = json.load(resp)
+        by_id = {d["id"]: d for d in body}
+        self.assertEqual(by_id["run-9-base"]["state"], "ready")   # local wins
+        self.assertEqual(by_id["run-10"]["state"], "remote")
 
 
 if __name__ == "__main__":

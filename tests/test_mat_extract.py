@@ -8,6 +8,7 @@ cases, so the report content — not the exit code — is the contract.
 
 Plus restore_indexes' corruption contract: a .zst that fails decompression
 is deleted and reported as CorruptIndexError (needs the real zstd binary)."""
+import json
 import os
 import shutil
 import subprocess
@@ -222,6 +223,18 @@ class TestAnalysisDbIngest(unittest.TestCase):
         db2 = dbmod.open_db(self.data)
         self.assertEqual(dbmod.read_hist(db2), [])
         db2.close()
+
+    def test_payload_round_trip(self):
+        """The precomputed-payload blob store: absent -> None, write -> read
+        back verbatim, rewrite replaces."""
+        self.assertIsNone(dbmod.read_payload(self.db, "K1", 8, "anat"))
+        dbmod.write_payload(self.db, "K1", 8, "anat", {"tree": {"n": 3}, "x": [1]})
+        self.assertEqual(json.loads(dbmod.read_payload(self.db, "K1", 8, "anat")),
+                         {"tree": {"n": 3}, "x": [1]})
+        dbmod.write_payload(self.db, "K1", 8, "anat", {"v": 2})
+        self.assertEqual(json.loads(dbmod.read_payload(self.db, "K1", 8, "anat")),
+                         {"v": 2})
+        self.assertIsNone(dbmod.read_payload(self.db, "K1", 9, "anat"))
 
 
 if __name__ == "__main__":

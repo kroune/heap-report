@@ -141,6 +141,25 @@ class TestAnatomyAndCompare(unittest.TestCase):
         self.assertEqual(more["r"], 30)   # fold sums the overflow…
         self.assertEqual([k["name"] for k in more["kids"]], ["k3", "k4"])   # …and keeps it
 
+    def test_finish_agg_fold_budget(self):
+        """The fold keeps the biggest overflow kids only while the node budget
+        lasts; the summed stats stay exact regardless (giant extractions)."""
+        root = _new_agg("root", "com.x.Root")
+        for i in range(10):   # r descending: k0=100 … k9=10
+            k = _new_agg(f"k{i}", "com.x.K")
+            k["n"], k["s"], k["r"] = 1, 10 * (10 - i), 10 * (10 - i)
+            root["kids"][f"k{i}"] = k
+        out = _finish_agg(root, 3, [4])
+        more = out["kids"][-1]
+        self.assertEqual(more["name"], "· 7 more")
+        self.assertEqual(more["n"], 7)
+        self.assertEqual(more["r"], 280)          # 70+60+50+40+30+20+10 — exact
+        self.assertEqual([k["name"] for k in more["kids"]],
+                         ["k3", "k4", "k5", "k6"])   # biggest first, budget-bounded
+        out = _finish_agg(root, 3, [0])
+        self.assertEqual(out["kids"][-1]["kids"], [])
+        self.assertEqual(out["kids"][-1]["r"], 280)
+
     def test_anatomy_diff(self):
         a = _anatomy_build(self.SRC, "com.x.Holder", 1, [1], 32, 40)
         b_src = dict(self.SRC, nodes={**self.SRC["nodes"],

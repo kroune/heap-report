@@ -48,7 +48,8 @@ export function findClassStats(trees, className) {
 /* Row display model for one tree node. o = {G, Mf, K, totRet, objCount}.
    The "(shared — held by others too)" bucket gets a dimmed "—" retained cell in
    global mode (not meaningful per-instance). "· N more" fold nodes carry their
-   overflow kids inside — plain expandables, no special-casing here. */
+   biggest overflow kids inside (up to the server's TREE_NODE_BUDGET — a giant
+   extraction's fold can be stats-only) — plain expandables, no special-casing. */
 export function buildRowModel(n, o) {
   const prim = n.full === '(field)';
   const shared = n.full === '(external)';
