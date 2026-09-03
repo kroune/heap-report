@@ -287,8 +287,13 @@ class MatRunner:
         # unique workspace per query: concurrent MAT instances can't share one
         # (Eclipse .lock); a shared workspace would collide across runs
         ws = f"{WS}-{os.getpid()}-{sfx}"
+        # -vmargs locale pin LAST (everything after -vmargs goes to the JVM):
+        # MAT's CSVOutputter switches the field separator to ';' when the
+        # default locale's decimal separator is ',' (e.g. ru) — the CSV
+        # parsers only understand ','.
         cmd = [mat, "-data", ws, hprof, f"-command={command}", "-format=csv",
-               f"-limit={limit}", f"-filename_suffix={sfx}", "org.eclipse.mat.api:query"]
+               f"-limit={limit}", f"-filename_suffix={sfx}", "org.eclipse.mat.api:query",
+               "-vmargs", "-Duser.language=en", "-Duser.country=US"]
         log(f"  MAT {keep_name} ...")
         tail = deque(maxlen=50)
         proc = None

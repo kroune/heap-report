@@ -79,6 +79,12 @@ def ensure(log=print):
         with open(ini) as f:
             txt = f.read()
         txt = re.sub(r"^-Xmx.*$", "-Xmx10g", txt, flags=re.M)
+        # and pin the JVM locale: MAT's CSVOutputter switches the field
+        # separator to ';' when the default locale's decimal separator is ','
+        # (e.g. ru) — the project's CSV parsers only understand ','. (The
+        # backend also pins this per run; the ini covers manual invocations.)
+        if "-Duser.language" not in txt:
+            txt = txt.rstrip("\n") + "\n-Duser.language=en\n-Duser.country=US\n"
         with open(ini, "w") as f:
             f.write(txt)
     log(f"MAT ready: {dst}")
