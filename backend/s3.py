@@ -31,7 +31,10 @@ Error semantics mirror github.py: transport failures raise
 core.ApiError('upstream', 502); only a confirmed 404 (or a successful
 listing without the object) means "we don't have it" — errors are never
 swallowed into empty results (the listing cache serves stale rows on a
-failed refresh, exactly like GitHubSource._runs).
+failed refresh, exactly like GitHubSource._runs). A transport failure
+(no HTTP answer at all) also marks the endpoint down for
+HEAP_REPORT_S3_DOWN_TTL seconds: calls fail fast until the mark expires,
+so a dead endpoint costs one connect timeout per TTL, not per request.
 """
 import configparser
 import hashlib
@@ -59,6 +62,7 @@ REGION = "us-east-1"   # SeaweedFS ignores it; SigV4 still needs one
 TTL = int(os.environ.get("HEAP_REPORT_REMOTE_TTL", "60"))
 PROBE_TTL = int(os.environ.get("HEAP_REPORT_S3_PROBE_TTL", "45"))
 TIMEOUT = int(os.environ.get("HEAP_REPORT_S3_TIMEOUT", "10"))
+DOWN_TTL = int(os.environ.get("HEAP_REPORT_S3_DOWN_TTL", "60"))
 GET_TIMEOUT = 60   # streaming Range GET: reads may legitimately take a while
 NS = "{http://s3.amazonaws.com/doc/2006-03-01/}"
 
@@ -154,6 +158,7 @@ class S3Source:
         self._runs_cache = None      # joined remote runs
         self._runs_at = 0.0
         self._probes = {}            # key -> (monotonic ts, Part | None)
+        self._down_until = 0.0       # monotonic: transport-dead until then
 
     def init(self):
         """Warm the listing cache; tolerate failure (offline start must not crash)."""
@@ -174,7 +179,18 @@ class S3Source:
         Control-plane calls (listing/HEAD/manifest) use the short TIMEOUT —
         a dead endpoint (e.g. the LAN NodePort from off-network) must fail
         in seconds, not hang the caller for a minute; only streaming GETs
-        pass GET_TIMEOUT."""
+        pass GET_TIMEOUT. A TRANSPORT failure (timeout/refused — no HTTP
+        answer at all) additionally marks the endpoint down for DOWN_TTL
+        seconds: every call fails fast until the mark expires, so a dead
+        endpoint costs one connect timeout per DOWN_TTL, not per request
+        (concurrent list() calls would otherwise serialize on _lock and
+        multiply the stall). Any real HTTP answer — even an error — clears
+        the mark."""
+        if time.monotonic() < self._down_until:
+            raise core.ApiError(
+                "upstream",
+                f"S3 {method} {key or '/'}: endpoint recently unreachable",
+                status=502)
         path = f"/{self.bucket}" + ("/" + quote(key, safe="-_.~/") if key else "")
         hdrs = _signed_request(method, self._host, path, query,
                                self._access, self._secret, extra=extra)
@@ -183,8 +199,11 @@ class S3Source:
             f"{self.endpoint}{path}" + (f"?{q}" if q else ""),
             headers=hdrs, method=method)
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            resp = urllib.request.urlopen(req, timeout=timeout)
+            self._down_until = 0.0
+            return resp
         except urllib.error.HTTPError as e:
+            self._down_until = 0.0   # the endpoint answered — it is alive
             e.close()
             if allow_404 and e.code == 404:
                 return None
@@ -192,6 +211,7 @@ class S3Source:
                                 f"S3 {method} {key or '/'}: HTTP {e.code}",
                                 status=502)
         except Exception as e:
+            self._down_until = time.monotonic() + DOWN_TTL
             raise core.ApiError("upstream", f"S3 {method} {key or '/'}: {e}",
                                 status=502)
 

@@ -210,7 +210,9 @@ it); dump done + data missing → INDEXING; dump done + data ERROR → FAILED.
 - A crash mid-stage leaves `.dl/` parts on disk; startup `reconcile_all()`
   (kernel only — snapshot/CI stores are source-less and never reconcile)
   re-enters the in-progress stages, which re-validate and resume. That is
-  normal operation, not "recovery".
+  normal operation, not "recovery". Startup never blocks serving on network:
+  the kernel warms the remote `init()` caches in parallel on a background
+  thread and only then runs `reconcile_all()` (it can query remotes).
 - Analysis-level queries are served only in `READY`; overview queries
   (trees/classes/compare) are served in any busy state once the data bundle
   is unpacked.

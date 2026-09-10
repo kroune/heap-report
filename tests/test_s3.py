@@ -520,6 +520,7 @@ class TestRequestTimeouts(unittest.TestCase):
         def fake_urlopen(req, timeout=None):
             calls.append(timeout)
             raise urllib.error.URLError("timed out")
+        self.src._down_until = 0.0   # each case starts with a live endpoint
         with unittest.mock.patch.object(s3.urllib.request, "urlopen",
                                         fake_urlopen):
             with self.assertRaises(core.ApiError):
@@ -538,6 +539,52 @@ class TestRequestTimeouts(unittest.TestCase):
                          url="https://s3.test/b/run-1/x")
         calls = self._timeouts(lambda: next(self.src.fetch(part)))
         self.assertEqual(calls, [s3.GET_TIMEOUT])
+
+    def test_transport_failure_marks_endpoint_down(self):
+        self._timeouts(lambda: self.src._req("GET", query=[("list-type", "2")]))
+        self.assertGreater(self.src._down_until, time.monotonic())
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            raise urllib.error.URLError("timed out")
+        with unittest.mock.patch.object(s3.urllib.request, "urlopen",
+                                        fake_urlopen):
+            with self.assertRaises(core.ApiError) as cm:
+                self.src._req("GET", query=[("list-type", "2")])
+        self.assertEqual(calls, [])   # failed fast — no second connect stall
+        self.assertIn("recently unreachable", str(cm.exception))
+
+    def test_down_mark_expires_and_success_clears_it(self):
+        self._timeouts(lambda: self.src._req("GET", query=[("list-type", "2")]))
+        self.src._down_until = 0.0   # the mark has expired
+        calls = []
+
+        class _Resp:
+            def close(self):
+                pass
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            return _Resp()
+        with unittest.mock.patch.object(s3.urllib.request, "urlopen",
+                                        fake_urlopen):
+            self.assertIsNotNone(self.src._req("GET", query=[("list-type", "2")]))
+        self.assertEqual(calls, [s3.TIMEOUT])   # really probed again
+        self.assertEqual(self.src._down_until, 0.0)
+
+    def test_http_error_means_alive_not_down(self):
+        calls = []
+
+        def fake_urlopen(req, timeout=None):
+            calls.append(timeout)
+            raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+        with unittest.mock.patch.object(s3.urllib.request, "urlopen",
+                                        fake_urlopen):
+            with self.assertRaises(core.ApiError):
+                self.src._req("GET", query=[("list-type", "2")])
+        self.assertEqual(calls, [s3.TIMEOUT])
+        self.assertEqual(self.src._down_until, 0.0)   # an answer, not a hang
 
 
 class TestDisabled(unittest.TestCase):

@@ -164,20 +164,37 @@ class GitHubSource:
         with self._lock:
             if self._runs_cache is not None and time.time() - self._runs_at < TTL:
                 return self._runs_cache
-            idx = {}
-            try:
-                for rel in self._list_releases(self.index_repo):
-                    m = IDX_RE.match(rel.get("tag_name", ""))
-                    if m and m.group(1) not in idx:
-                        idx[m.group(1)] = rel
-            except core.ApiError:
-                pass   # index repo unreachable/empty — runs are still listable
-            try:
-                releases = self._list_releases(self.source_repo)
-            except core.ApiError:
-                if self._runs_cache is not None:
+            # the two repo listings are independent — fetch them in parallel
+            # (each page is a `gh api` subprocess; serial costs seconds)
+            idx, idx_err, releases, src_err = {}, None, None, None
+
+            def fetch_idx():
+                nonlocal idx_err
+                try:
+                    for rel in self._list_releases(self.index_repo):
+                        m = IDX_RE.match(rel.get("tag_name", ""))
+                        if m and m.group(1) not in idx:
+                            idx[m.group(1)] = rel
+                except core.ApiError as e:
+                    idx_err = e
+
+            def fetch_src():
+                nonlocal releases, src_err
+                try:
+                    releases = self._list_releases(self.source_repo)
+                except core.ApiError as e:
+                    src_err = e
+
+            threads = [threading.Thread(target=f) for f in (fetch_idx, fetch_src)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            if releases is None:
+                if self._runs_cache is not None and src_err is not None:
                     return self._runs_cache   # offline: serve the stale listing
-                raise
+                raise src_err
+            # index repo unreachable/empty — runs are still listable
             out = []
             for rel in releases:
                 tag = rel.get("tag_name", "")

@@ -4,12 +4,14 @@
                             [--source-repo owner/name] [--index-repo owner/name]
 
 Construction order is pinned: jobs -> remote sources (S3 when configured,
-strictly preferred; GitHub always) -> store -> engine, then init() on every
-source (store first), then store.reconcile_all() to adopt dumps orphaned by a
-previous process. Also owns two timers — autocompact and the index/data poll
-— which are both just periodic reconcile kicks: the machine decides what each
-dump needs (late-published data/indexes, a compact while the MAT queue is
-idle, nothing at all).
+strictly preferred; GitHub always) -> store -> engine, then store.init().
+Remote warming (each source's init() — listing prefetch, seconds of network
+latency) and store.reconcile_all() (adopts dumps orphaned by a previous
+process; can query remotes, so it must follow the warm) run on a background
+thread: the HTTP server must accept connections immediately. Also owns two
+timers — autocompact and the index/data poll — which are both just periodic
+reconcile kicks: the machine decides what each dump needs (late-published
+data/indexes, a compact while the MAT queue is idle, nothing at all).
 """
 from __future__ import annotations
 
@@ -45,9 +47,21 @@ def build_app(root: str, source_repo: str = SOURCE_REPO,
     engine = mat.MatQueryEngine(store, jobs)
     store.indexer = engine.submit_bootstrap
     store.parser_inline = engine.parse_inline
-    for src in (store, *remotes):
-        src.init()
-    store.reconcile_all()   # resume work orphaned by a previous process
+    store.init()
+
+    def startup():
+        # warm the remote listing caches in parallel (each init() tolerates
+        # failure — an offline start must not crash), THEN adopt orphaned
+        # local dumps: reconcile can query remotes, so it needs warm caches
+        warms = [threading.Thread(target=src.init, name=f"warm-{src.name}",
+                                  daemon=True) for src in remotes]
+        for t in warms:
+            t.start()
+        for t in warms:
+            t.join()
+        store.reconcile_all()
+
+    threading.Thread(target=startup, name="startup", daemon=True).start()
     return core.App(store, engine, jobs,
                     [store, gh] + ([s3src] if s3src.enabled else []))
 
