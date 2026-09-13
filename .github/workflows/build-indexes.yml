@@ -20,7 +20,7 @@ on:
         required: true
         default: "kroune/feature-module-3000"
       release_tag:
-        description: "release tag, e.g. run-123 or run-45-base"
+        description: "release tag, e.g. run-123, run-45-base or run-jfr-29"
         required: true
   repository_dispatch:
     types: [build-indexes]
@@ -175,8 +175,10 @@ jobs:
           # as ONE unsplit object — S3 has no 2 GiB asset cap
           tar_bytes=$(du -cb indexes.tar.part-* | tail -1 | cut -f1)
           data_bytes=$(stat -c%s data.tar.gz)
-          gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //')
-          xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //')
+          # informational manifest fields — non-fatal under pipefail: jfr measure
+          # titles ("JFR measure #N — <branch>, ..., daemon 9g") carry no "Gradle X"
+          gver=$(echo "$title" | grep -oE 'Gradle [^ ,—]+' | head -1 | sed 's/Gradle //' || true)
+          xmx=$(echo "$title" | grep -oE 'daemon [^ ,—]+' | head -1 | sed 's/daemon //' || true)
           # per-member sizes of the index tar — heap-report validates the
           # extracted set against this before marking a dump ready
           files_json=$(stat -c '%n %s' ./*.index.zst ./*.threads INDEXES-COMPACTED.txt \

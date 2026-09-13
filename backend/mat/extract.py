@@ -52,6 +52,7 @@ MAX_STRINGS = 400
 SAMPLES = 8
 IDS_LIMIT = 1_000_000
 MAT_JOBS = int(os.environ.get("MAT_JOBS", "2"))   # concurrent MAT JVMs within one job (each can grow to -Xmx10g)
+MAT_XMX = os.environ.get("MAT_XMX", "10g")
 ZSTD = os.environ.get("ZSTD", "zstd")
 
 _get_mat_mod = None
@@ -290,10 +291,13 @@ class MatRunner:
         # -vmargs locale pin LAST (everything after -vmargs goes to the JVM):
         # MAT's CSVOutputter switches the field separator to ';' when the
         # default locale's decimal separator is ',' (e.g. ru) — the CSV
-        # parsers only understand ','.
+        # parsers only understand ','. A command-line -vmargs REPLACES the
+        # ini's -vmargs (they never merge), so -Xmx must be repeated here —
+        # without it the JVM silently falls back to the default heap
+        # (RAM/4), which is not enough to parse the big dumps.
         cmd = [mat, "-data", ws, hprof, f"-command={command}", "-format=csv",
                f"-limit={limit}", f"-filename_suffix={sfx}", "org.eclipse.mat.api:query",
-               "-vmargs", "-Duser.language=en", "-Duser.country=US"]
+               "-vmargs", f"-Xmx{MAT_XMX}", "-Duser.language=en", "-Duser.country=US"]
         log(f"  MAT {keep_name} ...")
         tail = deque(maxlen=50)
         proc = None

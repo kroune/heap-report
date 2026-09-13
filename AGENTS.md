@@ -59,6 +59,11 @@ Design docs (read before non-trivial changes):
   mtime to the oldest index mtime, clears parse debris, and holds
   `.matindex.lock` shared). MAT's staleness check is mtime-only; skipping
   this causes concurrent reparse failures.
+- A command-line `-vmargs` REPLACES `MemoryAnalyzer.ini`'s `-vmargs` (they
+  never merge): every backend-spawned MAT must re-specify `-Xmx`
+  (`extract.py` pins `MAT_XMX`, default 10g) next to the locale flags, or the
+  JVM silently runs at the default heap (RAM/4) and big-dump parses OOM.
+  CI is unaffected — it invokes `ParseHeapDump.sh` without `-vmargs`.
 - In-progress machine states are untrusted: jobs are process-lifetime, never
   state. Crash recovery is `store.reconcile_all()` at kernel startup (kernel
   only — snapshot/CI stores must not reconcile). ERROR/CANCELLED components
