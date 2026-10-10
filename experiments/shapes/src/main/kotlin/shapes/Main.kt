@@ -10,6 +10,12 @@ shapes — exact structural collapse experiment (see backend/mat/SHAPES.md)
   generate --modules <N> --out <graph.txt>
   demo --modules <N> [--verify]          generate + analyze in memory
 
+real heap dumps (MAT library, needs pre-built indexes next to the hprof):
+  mat-info --hprof <file.hprof>
+  mat-histogram --hprof <file.hprof> [--top 30]
+  mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
+  analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
+
 graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line, '#' comments
 """
 
@@ -39,6 +45,26 @@ fun main(args: Array<String>) {
             println("synthetic heap: ${g.size} objects, ${roots.size} module roots")
             val t = ShapesAnalyzer(g).analyze(roots)
             printReport(t)
+            if (opts.flag("verify")) runVerify(g, roots, t)
+        }
+        "mat-info" -> shapes.mat.MatExtract.info(opts.require("hprof"))
+        "mat-histogram" -> shapes.mat.MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
+        "mat-extract" -> shapes.mat.MatExtract.extract(
+            opts.require("hprof"), opts.require("class"), Path.of(opts.require("out"))
+        )
+        "analyze-grph" -> {
+            val g = ObjectGraph.loadGrph(Path.of(opts.require("graph")))
+            val cls = opts.require("class")
+            val roots = g.instancesOf(cls)
+            println("loaded ${g.size} objects (source heap ${g.sourceObjectCount}), class $cls: ${roots.size} roots")
+            val t0 = System.nanoTime()
+            val t = ShapesAnalyzer(g).analyze(roots)
+            println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
+            printReport(t)
+            opts["out"]?.let {
+                ShapesEmit.write(t, Path.of(it))
+                println("artifact written: $it")
+            }
             if (opts.flag("verify")) runVerify(g, roots, t)
         }
         else -> {

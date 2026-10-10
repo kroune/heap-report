@@ -106,8 +106,8 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val (compOf, comps) = scc(inR, rList)
         val (shapes, shapeOfComp) = cons(compOf, comps)
         val shapeOfObj = IntArray(g.size) { -1 }
-        comps.forEachIndexed { c, members ->
-            for (o in members) shapeOfObj[o] = shapeOfComp[c]
+        comps.forEach { c, start, end ->
+            for (i in start until end) shapeOfObj[comps.members[i]] = shapeOfComp[c]
         }
         return aggregate(shapes, shapeOfObj, comps, roots, rList.size)
     }
@@ -118,28 +118,45 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val inR = BitSet(g.size)
         val stack = IntArray(g.size)
         var sp = 0
-        val rList = ArrayList<Int>()
+        val rList = IntArray(g.size)
+        var rCount = 0
         for (r in roots) if (!inR.get(r)) {
             inR.set(r); stack[sp++] = r
         }
         while (sp > 0) {
             val v = stack[--sp]
-            rList.add(v)
+            rList[rCount++] = v
             for (w in g.refs[v]) if (!inR.get(w)) {
                 inR.set(w); stack[sp++] = w
             }
         }
-        return inR to rList.toIntArray()
+        return inR to rList.copyOf(rCount)
     }
 
     // ---- phase 2: SCC, iterative Tarjan over R ----
 
-    private fun scc(inR: BitSet, rList: IntArray): Pair<IntArray, List<List<Int>>> {
+    /**
+     * Component members without per-component object lists (boxing kills the
+     * heap at 10M+ objects): CSR layout — members[start[c]..start[c+1]).
+     */
+    class Comps(
+        val count: Int,
+        val start: IntArray,   // count+1 offsets
+        val members: IntArray, // object ids grouped by component
+    ) {
+        inline fun forEach(block: (comp: Int, start: Int, end: Int) -> Unit) {
+            for (c in 0 until count) block(c, start[c], start[c + 1])
+        }
+    }
+
+    private fun scc(inR: BitSet, rList: IntArray): Pair<IntArray, Comps> {
         val n = g.size
         val index = IntArray(n) { -1 }
         val low = IntArray(n)
         val compOf = IntArray(n) { -1 }
-        val onStack = BitSet(n)
+        // ByteArray, NOT BitSet: BitSet.clear(i) calls recalculateWordsInUse()
+        // (O(words) scan) — that alone was ~99% of scc time on real heaps.
+        val onStack = ByteArray(n)
         val tarjanStack = IntArray(n)
         var tsp = 0
         val nodeStack = IntArray(n)
@@ -148,12 +165,11 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         var psp = 0
         var next = 0
         var compCount = 0
-        val comps = ArrayList<List<Int>>()
 
         for (s in rList) {
             if (index[s] >= 0) continue
             index[s] = next; low[s] = next++
-            tarjanStack[tsp++] = s; onStack.set(s)
+            tarjanStack[tsp++] = s; onStack[s] = 1
             nodeStack[nsp++] = s; ptrStack[psp++] = 0
             while (nsp > 0) {
                 val v = nodeStack[nsp - 1]
@@ -164,9 +180,9 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                     if (!inR.get(w)) continue          // unreachable from roots: outside scope
                     if (index[w] < 0) {
                         index[w] = next; low[w] = next++
-                        tarjanStack[tsp++] = w; onStack.set(w)
+                        tarjanStack[tsp++] = w; onStack[w] = 1
                         nodeStack[nsp++] = w; ptrStack[psp++] = 0
-                    } else if (onStack.get(w)) {
+                    } else if (onStack[w] != 0.toByte()) {
                         if (index[w] < low[v]) low[v] = index[w]
                     }
                 } else {
@@ -176,21 +192,29 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                         if (low[v] < low[u]) low[u] = low[v]
                     }
                     if (low[v] == index[v]) {
-                        val members = ArrayList<Int>()
                         while (true) {
                             val w = tarjanStack[--tsp]
-                            onStack.clear(w)
+                            onStack[w] = 0
                             compOf[w] = compCount
-                            members.add(w)
                             if (w == v) break
                         }
-                        comps.add(members)
                         compCount++
                     }
                 }
             }
         }
-        return compOf to comps
+
+        // CSR: group member ids by component (counting sort over rList)
+        val compStart = IntArray(compCount + 1)
+        for (o in rList) compStart[compOf[o] + 1]++
+        for (c in 0 until compCount) compStart[c + 1] += compStart[c]
+        val compMembers = IntArray(rList.size)
+        val cursor = compStart.copyOf()
+        for (o in rList) {
+            val c = compOf[o]
+            compMembers[cursor[c]++] = o
+        }
+        return compOf to Comps(compCount, compStart, compMembers)
     }
 
     // ---- phase 3: bottom-up cons over the condensation DAG ----
@@ -199,10 +223,10 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
     // is consed before c (level-synchronous processing in the spec collapses
     // to plain id order in a single-threaded v1).
 
-    private fun cons(compOf: IntArray, comps: List<List<Int>>): Pair<List<Shape>, IntArray> {
+    private fun cons(compOf: IntArray, comps: Comps): Pair<List<Shape>, IntArray> {
         val shapes = ArrayList<Shape>()
         val consMap = HashMap<Lk, Shape>()
-        val shapeOfComp = arrayOfNulls<Shape>(comps.size)
+        val shapeOfComp = arrayOfNulls<Shape>(comps.count)
 
         fun kidCmp(a: Kid, b: Kid): Int {
             val c = shapes[a.childId].digest.compareTo(shapes[b.childId].digest)
@@ -226,12 +250,14 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             }
         }
 
-        for (c in comps.indices) {
-            val members = comps[c]
+        for (c in 0 until comps.count) {
+            val mStart = comps.start[c]
+            val mEnd = comps.start[c + 1]
+            val memberCount = mEnd - mStart
             val shape: Shape
-            if (members.size == 1 && g.refs[members[0]].none { it == members[0] }) {
+            if (memberCount == 1 && g.refs[comps.members[mStart]].none { it == comps.members[mStart] }) {
                 // acyclic single node
-                val obj = members[0]
+                val obj = comps.members[mStart]
                 val cls = g.classes[obj]
                 if (g.refs[obj].isEmpty()) {
                     val lk = LeafLk(cls)
@@ -249,17 +275,17 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                     }
                 }
             } else {
+                val members = comps.members.copyOfRange(mStart, mEnd)
                 shape = consScc(members, compOf, shapeOfComp, shapes, consMap, ::kidCmp)
             }
             shapeOfComp[c] = shape
         }
-        @Suppress("UNCHECKED_CAST")
-        return shapes to IntArray(comps.size) { shapeOfComp[it]!!.internalId }
+        return shapes to IntArray(comps.count) { shapeOfComp[it]!!.internalId }
     }
 
     /** SHAPES.md "SCC node": color refinement; merge only on discretization. */
     private fun consScc(
-        members: List<Int>,
+        members: IntArray,
         compOf: IntArray,
         shapeOfComp: Array<Shape?>,
         shapes: ArrayList<Shape>,
@@ -285,7 +311,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
 
         fun unique(): Shape {
             // never merged: the SCC is its own unique node (SHAPES.md)
-            val sortedMembers = members.sorted()
+            val sortedMembers = members.sortedArray()
             val memPayload = sortedMembers.map { o ->
                 val i = local[o]!!
                 SccMember(
@@ -387,7 +413,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
     private fun aggregate(
         shapes: List<Shape>,
         shapeOfObj: IntArray,
-        comps: List<List<Int>>,
+        comps: Comps,
         roots: IntArray,
         reachableCount: Int,
     ): ShapeTable {
@@ -400,9 +426,10 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val isRoot = BitSet(g.size)
         for (r in roots) isRoot.set(r)
 
-        for (comp in comps) {
-            val sid = shapeOfObj[comp.first()]
-            for (o in comp) {
+        comps.forEach { _, start, end ->
+            val sid = shapeOfObj[comps.members[start]]
+            for (mi in start until end) {
+                val o = comps.members[mi]
                 count[sid]++
                 val sh = g.shallow[o]
                 shallowSum[sid] += sh

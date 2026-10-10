@@ -19,6 +19,8 @@ class ObjectGraph(
     val classes: Array<String>,
     val shallow: LongArray,
     val refs: Array<IntArray>,
+    /** object count of the source heap (GRPH from a real dump), else == size. */
+    val sourceObjectCount: Long = classes.size.toLong(),
 ) {
     val size: Int get() = classes.size
 
@@ -55,6 +57,28 @@ class ObjectGraph(
     }
 
     companion object {
+        /** GRPH binary, written by shapes.mat.MatExtract (dense ids, refs remapped). */
+        fun loadGrph(path: Path): ObjectGraph {
+            java.io.DataInputStream(java.nio.file.Files.newInputStream(path).buffered(1 shl 20)).use { d ->
+                require(d.readInt() == 0x47525048) { "bad GRPH magic in $path" }
+                val sourceN = d.readLong()
+                val classNames = Array(d.readInt()) {
+                    ByteArray(d.readInt()).also { d.readFully(it) }.toString(Charsets.UTF_8)
+                }
+                val n = d.readInt()
+                val cls = arrayOfNulls<String>(n)
+                val sh = LongArray(n)
+                val rf = arrayOfNulls<IntArray>(n)
+                for (i in 0 until n) {
+                    cls[i] = classNames[d.readInt()]
+                    sh[i] = d.readLong()
+                    rf[i] = IntArray(d.readInt()) { d.readInt() }
+                }
+                @Suppress("UNCHECKED_CAST")
+                return ObjectGraph(cls as Array<String>, sh, rf as Array<IntArray>, sourceN)
+            }
+        }
+
         fun load(path: Path): ObjectGraph {
             data class Row(val id: Int, val cls: String, val shallow: Long, val refs: IntArray)
 
