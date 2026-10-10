@@ -6,6 +6,7 @@
 import { COL_SEP_DX, LABEL_RANK_MAX } from "./layout.js";
 import { buildControls, savePins } from "./controls.js";
 import { defaultSide, nodeDetail } from "./detail.js";
+import { buildAnalyzePrompt } from "../common.js";
 
 const SVGNS = "http://www.w3.org/2000/svg"; // namespace for createElementNS
 
@@ -23,38 +24,19 @@ function wedgePath(cx, cy, r, f) {
 export function render(container, vm, ctx) {
   container.textContent = "";
   if (vm.notAnalyzed || vm.error) {
-    const d = document.createElement("div");
-    d.className = "gnote";
     if (vm.error) {
-      d.classList.add("gerr");
+      const d = document.createElement("div");
+      d.className = "gnote gerr";
       d.textContent = vm.error;
+      container.appendChild(d);
     } else {
-      d.textContent = "No anatomy extracted for this class yet — the flow graph is built from the anatomy " +
-        "extraction.";
-      if (ctx.analyze) {
-        const b = document.createElement("button");
-        b.className = "viz-anbtn";
-        b.textContent = "Analyze this class";
-        const status = document.createElement("div");
-        status.className = "viz-anstatus";
-        b.addEventListener("click", () => {
-          b.disabled = true;
-          ctx.analyze((text, isErr) => {
-            status.textContent = text;
-            status.classList.toggle("err", !!isErr);
-            if (isErr) b.disabled = false;
-          });
-        });
-        d.appendChild(b);
-        d.appendChild(status);
-      } else {
-        const hint = document.createElement("div");
-        hint.className = "hint";
-        hint.textContent = "Run the analysis with anatomy enabled, then reopen the flow graph.";
-        d.appendChild(hint);
-      }
+      container.appendChild(buildAnalyzePrompt(ctx, {
+        cls: "gnote",
+        text: "No anatomy extracted for this class yet — the flow graph is built from the anatomy " +
+          "extraction.",
+        fallback: "Run the analysis with anatomy enabled, then reopen the flow graph.",
+      }));
     }
-    container.appendChild(d);
     return;
   }
 
@@ -63,8 +45,9 @@ export function render(container, vm, ctx) {
   const G = () => scale === "global";
   const fxB = v => G() ? "≈ " + ctx.fmtB(v * vm.factor) : ctx.fmtB(v);
   const fxN = v => G() ? "≈ " + ctx.fmtN(v * vm.factor) : ctx.fmtN(v);
+  const fxR = v => G() ? "≈ " + ctx.fmtB(v * vm.rfactor) : ctx.fmtB(v);   // retained: anchored to the exact union
   const softWrap = s => s.replace(/\$/g, "$\u200b").replace(/([a-z])([A-Z])/g, "$1\u200b$2");
-  const fx = { fxB, fxN, G, softWrap };
+  const fx = { fxB, fxN, fxR, G, softWrap };
   const setPins = np => { savePins(np); refetch({ pins: np }); };
 
   // ---- shell: column with controls on top, canvas + side panel below ----

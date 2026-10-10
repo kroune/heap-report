@@ -52,7 +52,11 @@ recreate — the caller re-ingests/re-analyzes; no compat code.
       "compacted": true }          //     as "parts": { name: size })
   },
   "idx_manifest": { "<name>": 7 }, // index-set manifest persisted at commit —
-                                   //   later observations validate against THIS
+                                   //   later observations validate against THIS;
+                                   //   a local (re-)compact refreshes it to the
+                                   //   set it just created (MAT appends to
+                                   //   daemon.log.index on every open, so its
+                                   //   re-compressed size always differs)
   "indexes": "remote",             // how the index set was acquired (remote|local)
   "dump": "daemon.hprof",          // hprof filename
   "modules": 3010                  // DefaultScriptHandler instance count

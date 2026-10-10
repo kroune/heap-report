@@ -16,7 +16,7 @@
  * }
  */
 
-import { buildSeg, fmtB, fmtN, catOf, scaleFactor } from './common.js';
+import { buildSeg, buildSamplePicker, buildAnalyzePrompt, fmtB, fmtN, catOf, scaleFactor } from './common.js';
 
 export const kind = 'anatomy';
 
@@ -45,7 +45,15 @@ export function findClassStats(trees, className) {
   return out;
 }
 
-/* Row display model for one tree node. o = {G, Mf, K, totRet, objCount}.
+/* Row display model for one tree node. o = {G, Mf, K, objCount, root, sampleR,
+   rootExact}. Counts/shallow extrapolate per-instance (Mf = objCount/K).
+   Retained is NOT extrapolated: the extraction only contains objects the
+   sampled instances dominate — everything shared with unsampled instances is
+   invisible to ANY sample (all sharers would have to be sampled), and the
+   per-config private ownership that remains is too skewed for a per-instance
+   average to converge at realistic K. So: the root row is anchored to the
+   EXACT union retained set (rootExact = composition total, shared counted
+   once), child rows show raw bytes inside the K-sample set + % of it.
    The "(shared — held by others too)" bucket gets a dimmed "—" retained cell in
    global mode (not meaningful per-instance). "· N more" fold nodes carry their
    biggest overflow kids inside (up to the server's TREE_NODE_BUDGET — a giant
@@ -53,9 +61,9 @@ export function findClassStats(trees, className) {
 export function buildRowModel(n, o) {
   const prim = n.full === '(field)';
   const shared = n.full === '(external)';
+  const isRoot = n === o.root;
   const dimRet = o.G && shared;
-  const rv = n.r * o.Mf;
-  const pct = 100 * rv / o.totRet;
+  const pct = 100 * n.r / Math.max(1, o.sampleR);
   return {
     cls: prim ? 'prim' : shared ? 'shared' : (n.sk ? 'sk' : ''),
     cat: catOf(n.full || ''),
@@ -67,9 +75,16 @@ export function buildRowModel(n, o) {
     shallow: o.G ? `≈ ${fmtB(n.s * o.Mf)}` : fmtB(n.s),
     perInstance: fmtB(n.s / o.K),
     dimRet,
-    retained: dimRet ? '—' : o.G ? `≈ ${fmtB(rv)}` : fmtB(n.r),
-    retPct: !dimRet && o.G && pct >= 0.05 ? `${pct.toFixed(0)}%` : '',
+    retained: dimRet ? '—' : (o.G && isRoot && o.rootExact != null)
+      ? `≈ ${fmtB(o.rootExact)}` : fmtB(n.r),
+    retPct: !dimRet && !isRoot && pct >= 0.05 ? `${pct.toFixed(0)}%` : '',
     retPctTitle: pct.toFixed(1),
+    retTitle: dimRet ? ''
+      : (o.G && isRoot && o.rootExact != null)
+        ? `EXACT union retained set of all ${fmtN(o.objCount)} instances (shared objects counted once) — the composition total, not an extrapolation`
+        : o.G && !isRoot
+          ? `bytes inside the ${o.K}-sample set (${pct.toFixed(1)}% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average`
+          : '',
     skTitle: n.sk
       ? `held via a synthetic field (${n.name.split(':')[0]})` : '',
   };
@@ -81,7 +96,7 @@ export function untrackedSummary(g, o) {
     name: g.tree.name,
     objects: fmtN(g.n),
     shallow: o.G ? `≈ ${fmtB(g.s * o.Mf)}` : fmtB(g.s),
-    retained: o.G ? `≈ ${fmtB(g.r * o.Mf)}` : fmtB(g.r),
+    retained: fmtB(g.r),
   };
 }
 
@@ -162,7 +177,7 @@ function rowEl(n, o) {
     rc.textContent = m.retained;
     rc.title = 'shared objects — not meaningful when extrapolated per instance';
   } else {
-    if (o.G) rc.title = `estimated retained (${m.retPctTitle}% of class total)`;
+    if (m.retTitle) rc.title = m.retTitle;
     rc.textContent = m.retained;
     if (m.retPct) {
       rc.appendChild(document.createTextNode(' '));
@@ -192,31 +207,11 @@ function nodeEl(n, o, depth) {
 
 export function render(container, vm, ctx) {
   if (!vm.analyzed) {
-    const d = el('div', 'viz-empty');
-    d.appendChild(el('div', '', 'No anatomy extracted for this class yet.'));
-    if (ctx.analyze) {
-      // server mode: analyze in place — no trip to the classes tab
-      const b = el('button', 'viz-anbtn', 'Analyze this class');
-      const status = el('div', 'viz-anstatus');
-      b.addEventListener('click', () => {
-        b.disabled = true;
-        ctx.analyze((text, isErr) => {
-          status.textContent = text;
-          status.classList.toggle('err', !!isErr);
-          if (isErr) b.disabled = false;
-        });
-      });
-      d.appendChild(b);
-      d.appendChild(status);
-    } else {
-      const hint = el('div', 'hint');
-      hint.appendChild(document.createTextNode('Run an analysis with anatomy enabled — '));
-      hint.appendChild(el('b', '', 'Analyze button in the classes tab'));
-      hint.appendChild(document.createTextNode('.'));
-      d.appendChild(document.createElement('br'));
-      d.appendChild(hint);
-    }
-    container.appendChild(d);
+    container.appendChild(buildAnalyzePrompt(ctx, {
+      cls: 'viz-empty',
+      text: 'No anatomy extracted for this class yet.',
+      fallback: 'Run an analysis with anatomy enabled — the Analyze button in the classes tab.',
+    }));
     return;
   }
 
@@ -228,8 +223,11 @@ export function render(container, vm, ctx) {
     const K = a.samples;
     const G = view.scale === 'global';
     const Mf = scaleFactor(vm.objCount, K);
-    const totRet = Math.max(1, vm.compTotalShallow != null ? vm.compTotalShallow : a.tree.r * Mf);
-    const o = { G, Mf, K, totRet, objCount: vm.objCount };
+    // retained: root anchored to the EXACT union retained set (composition
+    // total, known for every analyzed class); children stay raw sample bytes —
+    // see buildRowModel for why child retained is never extrapolated
+    const o = { G, Mf, K, objCount: vm.objCount, root: a.tree, sampleR: a.tree.r,
+                rootExact: vm.compTotalShallow };
 
     // toolbar: scale + extraction picker
     const tools = el('div', 'viz-tools');
@@ -238,13 +236,14 @@ export function render(container, vm, ctx) {
       { value: 'global', label: `× ${fmtN(vm.objCount)} instances (estimated)` },
     ], view.scale, s => { view.scale = s; paint(); }));
     const avail = a.available || [];
-    if (avail.length > 1) {
+    if (avail.length > 1 || ctx.analyze) {
       const ex = el('span', 'viz-extract');
-      ex.appendChild(el('span', 'hint', 'extractions:'));
-      ex.appendChild(buildSeg(
-        avail.map(k => ({ value: k, label: `s${k}` })),
-        K,
-        k => { if (k !== K) ctx.refetch({ samples: k }); }));
+      ex.appendChild(el('span', 'hint', 'samples:'));
+      ex.appendChild(buildSamplePicker({
+        available: avail, current: K,
+        onSwitch: k => ctx.refetch({ samples: k }),
+        analyze: ctx.analyze,
+      }));
       tools.appendChild(ex);
     }
     container.appendChild(tools);
@@ -254,7 +253,7 @@ export function render(container, vm, ctx) {
     head.appendChild(el('div', '',
       'reference tree (full graph over the ' +
       `union retained set of ${K} samples)` +
-      (G ? ' — extrapolated to all instances' : '')));
+      (G ? ' — counts extrapolated to all instances; root retained = exact class total' : '')));
     head.appendChild(el('div', 'num', 'objects'));
     head.appendChild(el('div', 'num', 'shallow'));
     head.appendChild(el('div', 'num', 'per instance'));
@@ -297,7 +296,7 @@ export function render(container, vm, ctx) {
 
     const note = el('div', 'viz-note');
     note.textContent =
-      `Full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it). "· N more" folds the smaller kids of one node — click ▸ to expand. ×N = occurrences across the ${K} samples; "in k/K" = field non-null in k of the ${K} sampled instances (a field missing from some instances is normal — lazily created). "(shared)" = referenced but owned by someone else, so its bytes are not inside this class's retained set.`;
+      `Full object graph: complete outbounds ${a.fullEdges ? '(edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here)' : 'NOT extracted — re-run the analysis, big arrays still hide children!'}, depth cap ${a.depth}, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it). "· N more" folds the smaller kids of one node — click ▸ to expand. ×N = occurrences across the ${K} samples; "in k/K" = field non-null in k of the ${K} sampled instances (a field missing from some instances is normal — lazily created). "(shared)" = referenced but owned by someone else, so its bytes are not inside this class's retained set. In ×N mode objects/shallow extrapolate per-instance; retained is NOT extrapolated — the root row shows the EXACT union retained set of the whole class (the composition total, shared counted once), while child rows show raw bytes inside the sample set + % of it. Child retained can't be extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average — child shares varying with K is expected, not a bug.`;
     container.appendChild(note);
   };
 

@@ -1,6 +1,7 @@
 /* Flow viz — side panel (click detail): HTML builders only. The caller
    (render.js) sets innerHTML and wires the buttons/edge highlight. fx =
-   {fxB, fxN, G, softWrap} — scale-aware formatters owned by render.js.
+   {fxB, fxN, fxR, G, softWrap} — scale-aware formatters owned by render.js
+   (fxR for retained bytes: anchored to the exact union retained set).
    See index.js for the module map. */
 
 /* The default (nothing selected) summary. */
@@ -14,7 +15,7 @@ export function defaultSide(vm, ctx, G) {
     `${layout.dropCount ? ` · <b>${layout.dropCount} not shown</b> — not reachable downward from the root (their holders are cut by the top filter or sit outside the retained set)` : ""}` +
     `${vm.minR ? ` · filter: ≥ ${ctx.esc(ctx.fmtB(vm.minR))} retained` : ""}` +
     `${vm.split ? ` · <b>split</b>: one copy per distinct holder-class set` : ""}` +
-    `${G() ? ` · numbers extrapolated per-instance × ${ctx.esc(ctx.fmtN(vm.objCount))}` : ""}.</div>` +
+    `${G() ? ` · objects/shallow extrapolated per-instance × ${ctx.esc(ctx.fmtN(vm.objCount))}, retained scaled to the exact union retained set` : ""}.</div>` +
     `<div class="fnote">Click a node for its holder/held breakdown and to pin/unpin it. ` +
     `The <b>?</b> button in the toolbar explains how to read this graph.</div>`;
 }
@@ -27,7 +28,7 @@ export function nodeDetail(u, vm, ctx, fx) {
     return p >= 0.05 ? `${p >= 10 ? p.toFixed(0) : p.toFixed(1)}% of the retained set` : "<0.1% of the retained set"; })() : "";
   const row = l => `<div class="gref"><div class="gref-cls" title="${ctx.esc(l.cls)}">${fx.softWrap(ctx.esc(l.short))}</div>` +
     `<div class="gref-meta"><span class="f" title="${ctx.esc(l.f)}">${fx.softWrap(ctx.esc(l.f))}</span>` +
-    `<span class="n">×${ctx.esc(ctx.fmtN(l.n))} · ${ctx.esc(fx.fxB(l.b))}</span></div></div>`;
+    `<span class="n">×${ctx.esc(ctx.fmtN(l.n))} · ${ctx.esc(fx.fxR(l.b))}</span></div></div>`;
   const where = d.col ? "pinned column · outbound refs listed, not drawn · "
     : d.nestedIn >= 0 ? `nested in ${ctx.esc(vm.details[d.nestedIn].short)} (back-ref) · ` : "";
   const pinBtn = d.col ? `<button class="gpinb" data-act="unpin">unpin from column</button>`
@@ -36,11 +37,11 @@ export function nodeDetail(u, vm, ctx, fx) {
   // the dominator-retained number stays for reference. Pre-reach extractions
   // (no rincl columns) show the dominator number only.
   const retainedRows = vm.hasReach
-    ? `<div class="gmrow"><span>retained (incl. shared)</span><span class="v"><b>${ctx.esc(fx.fxB(d.rincl))}</b>${pctR ? ` · ${ctx.esc(pctR)}` : ""}</span></div>
-       <div class="gmrow"><span>exclusive</span><span class="v">${ctx.esc(fx.fxB(d.rincl - d.rsh))}</span></div>
-       <div class="gmrow"><span>shared (wedge)</span><span class="v">${ctx.esc(fx.fxB(d.rsh))}${d.rincl ? ` · ${(100 * d.rsh / d.rincl).toFixed(d.rsh * 10 >= d.rincl ? 0 : 1)}%` : ""}</span></div>
-       <div class="gmrow"><span>dominator retained</span><span class="v">${ctx.esc(fx.fxB(d.r))}</span></div>`
-    : `<div class="gmrow"><span>retained</span><span class="v"><b>${ctx.esc(fx.fxB(d.r))}</b>${pctR ? ` · ${ctx.esc(pctR)}` : ""}</span></div>`;
+    ? `<div class="gmrow"><span>retained (incl. shared)</span><span class="v"><b>${ctx.esc(fx.fxR(d.rincl))}</b>${pctR ? ` · ${ctx.esc(pctR)}` : ""}</span></div>
+       <div class="gmrow"><span>exclusive</span><span class="v">${ctx.esc(fx.fxR(d.rincl - d.rsh))}</span></div>
+       <div class="gmrow"><span>shared (wedge)</span><span class="v">${ctx.esc(fx.fxR(d.rsh))}${d.rincl ? ` · ${(100 * d.rsh / d.rincl).toFixed(d.rsh * 10 >= d.rincl ? 0 : 1)}%` : ""}</span></div>
+       <div class="gmrow"><span>dominator retained</span><span class="v">${ctx.esc(fx.fxR(d.r))}</span></div>`
+    : `<div class="gmrow"><span>retained</span><span class="v"><b>${ctx.esc(fx.fxR(d.r))}</b>${pctR ? ` · ${ctx.esc(pctR)}` : ""}</span></div>`;
   const holdersRow = vm.split && d.holders !== undefined
     ? `<div class="gmeta gdim">${d.holders === null ? "held by other holders (small copies folded into this residual)"
         : d.holders.length ? `held by ${ctx.esc(d.holders.map(h => ctx.shortClass(h)).join(", "))}`

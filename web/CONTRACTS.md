@@ -158,9 +158,15 @@ export function render(container, viewModel, ctx) -> void
 //   ^ dumb: no fetch, no data-repo imports, no mutation of shared state.
 //     ctx = {esc, fmtB, fmtN, catColor, catOf, shortClass, onOpenViz, refetch,
 //            analyze} (shared helpers from viz/common; analyze is null in
-//            INLINE mode, otherwise queues analysis for the popup's class,
-//            reports via onStatus(text, isErr) and reopens the viz when done —
-//            "not analyzed" states must offer it instead of pointing at tabs)
+//            INLINE mode, otherwise analyze(onStatus, samples?) queues
+//            analysis for the popup's class — optional sample count, a new
+//            size only runs the missing extractions — reports via
+//            onStatus(text, isErr) and reopens the viz on that extraction
+//            when done — "not analyzed" states must offer it instead of
+//            pointing at tabs, via buildAnalyzePrompt; switching between
+//            finished extractions and running new sample sizes (8/16/32/
+//            custom) goes through buildSamplePicker — ONE implementation
+//            each in viz/common.js, used by anatomy/graph/flow)
 
 // viz/common.js
 openViz(kind, dumpId, className)   // the ONLY way a viz opens; owns the popup

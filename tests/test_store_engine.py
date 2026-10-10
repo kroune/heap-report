@@ -5,6 +5,7 @@ State is the machine's business now: fixtures plant ARTIFACTS (hprof, the
 ingested data bundle, .dl parts) and let the store's observation/inference
 derive states — exactly like a restart would."""
 import os
+import shutil
 import tempfile
 import time
 import unittest
@@ -192,6 +193,35 @@ class TestStore(Fixture):
         self.assertFalse(os.path.exists(raw))
         self.assertTrue(os.path.exists(zst))
         self.assertTrue(os.path.exists(os.path.join(d, MARKER)))
+
+    @unittest.skipUnless(shutil.which("zstd"), "needs the zstd binary")
+    def test_compact_refreshes_idx_manifest(self):
+        """Regression: MAT appends to daemon.log.index on every dump open, so
+        the autocompact after a query re-compresses it (raw mtime != zst
+        mtime) and the new size contradicts the idx_manifest persisted at the
+        download commit — the next observation failed validation, demoted
+        indexes to NEW and re-downloaded the whole index tar, forever.
+        _compact re-points the manifest at the set it just created."""
+        d = self.make_dump()
+        raw = os.path.join(d, "daemon.log.index")
+        with open(raw, "wb") as f:
+            f.write(b"log line\n" * 100)
+        compact_dir(d)   # the download-commit compaction
+        zst = raw + ".zst"
+        self.store.update_meta("run-t", lambda m: m.update(
+            idx_manifest={"daemon.log.index.zst": os.path.getsize(zst)}))
+        # a MAT run restored + appended to the log: raw mtime != zst mtime
+        with open(raw, "wb") as f:
+            f.write(b"log line\n" * 100 + b"another session\n" * 100)
+        job = core.Job(id=1, kind=core.JobKind.COMPACT, dump_id="run-t",
+                       detail="")
+        self.store._compact(job, "run-t")
+        self.assertFalse(os.path.exists(raw))
+        man = self.store.read_meta("run-t")["idx_manifest"]
+        self.assertEqual(man["daemon.log.index.zst"], os.path.getsize(zst))
+        obs = self.store._observe("run-t")   # still validates: no demotion
+        self.assertTrue(obs.zsts)
+        self.assertIsNot(obs.zsts_valid, False)
 
 
 class TestCompactHold(unittest.TestCase):

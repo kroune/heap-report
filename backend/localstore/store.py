@@ -836,3 +836,28 @@ class FsDumpStore:
                     progress=lambda i, n: setattr(job, "progress",
                                                   {"done": i, "total": n}))
         job.progress = None
+        self._refresh_idx_manifest(dump_id)
+
+    def _refresh_idx_manifest(self, dump_id):
+        """Re-point the persisted trust basis at the set now on disk. A local
+        re-compression produces different bytes than the downloaded set the
+        manifest was persisted from — MAT appends to daemon.log.index on
+        every open, so the autocompact after each query re-packs at least
+        that one. Without the refresh the next observation fails validation,
+        demotes indexes to NEW and re-downloads the whole index tar, forever.
+        Re-compression is checksum-verified (zstd -t) before the raw is
+        dropped, so the new set is a sound trust basis; a genuinely missing
+        member keeps its old entry so validation still fails on it."""
+        d = self._dir(dump_id)
+
+        def mut(meta):
+            man = meta.get("idx_manifest")
+            if not isinstance(man, dict) or not man:
+                return
+            out = {}
+            for name, size in man.items():
+                p = os.path.join(d, name)
+                out[name] = os.path.getsize(p) if os.path.exists(p) else size
+            meta["idx_manifest"] = out
+
+        self.update_meta(dump_id, mut)

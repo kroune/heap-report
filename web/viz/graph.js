@@ -7,7 +7,7 @@
    draws the viewModel. Layout rationale (value lane, cycle edges, pair merging)
    is documented at computeLayout(). */
 
-import { fmtB, fmtN, catOf, shortClass, scaleFactor } from "./common.js";
+import { fmtB, fmtN, catOf, shortClass, scaleFactor, buildSamplePicker, buildAnalyzePrompt } from "./common.js";
 import { findClassStats } from "./anatomy.js";
 
 export const kind = "graph";
@@ -252,8 +252,17 @@ export async function prepare(repo, dumpId, className, params = {}) {
   const scale = params.scale === "sample" || !objCount ? "sample" : "global";
   const factor = objCount ? scaleFactor(objCount, a.samples) : 1;
 
+  // retained numbers get their own factor, anchored to the EXACT union
+  // retained set (the composition total): a raw per-instance extrapolation
+  // double-counts objects shared with unsampled instances — with heavy
+  // cross-instance sharing it overshoots the true total several-fold
+  const rc = await repo.composition(dumpId, className);
+  const compTotal = rc.ok && rc.data ? rc.data.totalShallow : null;
+  const rootRow = a.graph.nodes.find(n => n[0] === className) || a.graph.nodes[0];
+  const rfactor = compTotal && rootRow && rootRow[3] > 0 ? compTotal / rootRow[3] : factor;
+
   return { kind, dumpId, className, samples: a.samples, available: a.available || [],
-           objCount, scale, factor, cyc: params.cyc !== false,
+           objCount, scale, factor, rfactor, cyc: params.cyc !== false,
            top, maxNodes, layout, labels, details };
 }
 
@@ -262,38 +271,19 @@ export async function prepare(repo, dumpId, className, params = {}) {
 export function render(container, vm, ctx) {
   container.textContent = "";
   if (vm.notAnalyzed || vm.error) {
-    const d = document.createElement("div");
-    d.className = "gnote";
     if (vm.error) {
-      d.classList.add("gerr");
+      const d = document.createElement("div");
+      d.className = "gnote gerr";
       d.textContent = vm.error;
+      container.appendChild(d);
     } else {
-      d.textContent = "No anatomy extracted for this class yet — the graph is built from the anatomy " +
-        "extraction.";
-      if (ctx.analyze) {
-        const b = document.createElement("button");
-        b.className = "viz-anbtn";
-        b.textContent = "Analyze this class";
-        const status = document.createElement("div");
-        status.className = "viz-anstatus";
-        b.addEventListener("click", () => {
-          b.disabled = true;
-          ctx.analyze((text, isErr) => {
-            status.textContent = text;
-            status.classList.toggle("err", !!isErr);
-            if (isErr) b.disabled = false;
-          });
-        });
-        d.appendChild(b);
-        d.appendChild(status);
-      } else {
-        const hint = document.createElement("div");
-        hint.className = "hint";
-        hint.textContent = "Run the analysis with anatomy enabled, then reopen the graph.";
-        d.appendChild(hint);
-      }
+      container.appendChild(buildAnalyzePrompt(ctx, {
+        cls: "gnote",
+        text: "No anatomy extracted for this class yet — the graph is built from the anatomy " +
+          "extraction.",
+        fallback: "Run the analysis with anatomy enabled, then reopen the graph.",
+      }));
     }
-    container.appendChild(d);
     return;
   }
 
@@ -302,6 +292,7 @@ export function render(container, vm, ctx) {
   const G = () => scale === "global";
   const fxB = v => G() ? "≈ " + ctx.fmtB(v * vm.factor) : ctx.fmtB(v);
   const fxN = v => G() ? "≈ " + ctx.fmtN(v * vm.factor) : ctx.fmtN(v);
+  const fxR = v => G() ? "≈ " + ctx.fmtB(v * vm.rfactor) : ctx.fmtB(v);   // retained: anchored to the exact union
   const refetch = patch =>
     ctx.refetch({ top: vm.top, samples: vm.samples, scale, objCount: vm.objCount, cyc: cycOn, ...patch });
   const softWrap = s => s.replace(/\$/g, "$\u200b").replace(/([a-z])([A-Z])/g, "$1\u200b$2");
@@ -322,18 +313,14 @@ export function render(container, vm, ctx) {
   syncSeg();
   seg.appendChild(bSample); seg.appendChild(bGlobal);
   bar.appendChild(seg);
-  if (vm.available.length > 1) {
+  if (vm.available.length > 1 || ctx.analyze) {
     const hint = document.createElement("span"); hint.className = "hint"; hint.textContent = "samples";
     bar.appendChild(hint);
-    const kseg = document.createElement("div"); kseg.className = "anatseg";
-    for (const k of vm.available) {
-      const b = document.createElement("button");
-      b.textContent = `${k}`;
-      b.classList.toggle("on", k === vm.samples);
-      b.onclick = () => refetch({ samples: k });
-      kseg.appendChild(b);
-    }
-    bar.appendChild(kseg);
+    bar.appendChild(buildSamplePicker({
+      available: vm.available, current: vm.samples,
+      onSwitch: k => refetch({ samples: k }),
+      analyze: ctx.analyze,
+    }));
   }
   const hintTop = document.createElement("span"); hintTop.className = "hint"; hintTop.textContent = "top";
   const rng = document.createElement("input");
@@ -543,10 +530,10 @@ export function render(container, vm, ctx) {
     const d = vm.details[u];
     const row = l => `<tr><td title="${ctx.esc(l.cls)}">${softWrap(ctx.esc(l.short))}</td>` +
       `<td class="num" title="${ctx.esc(l.f)}">${ctx.esc(l.f === "[]" ? "[]" : l.f.length > 16 ? l.f.slice(0, 16) + "…" : l.f)}</td>` +
-      `<td class="num">×${ctx.esc(ctx.fmtN(l.n))}</td><td class="num">${ctx.esc(fxB(l.b))}</td></tr>`;
+      `<td class="num">×${ctx.esc(ctx.fmtN(l.n))}</td><td class="num">${ctx.esc(fxR(l.b))}</td></tr>`;
     side.innerHTML = `<h5>${ctx.esc(d.short)}</h5>
       <div class="gfull">${ctx.esc(d.cls)}</div>
-      <div class="gmeta">retained <b>${ctx.esc(fxB(d.r))}</b> · shallow ${ctx.esc(fxB(d.s))} · ${ctx.esc(fxN(d.n))} objects${G() ? ' <span class="hint">(est.)</span>' : ""}</div>
+      <div class="gmeta">retained <b>${ctx.esc(fxR(d.r))}</b> · shallow ${ctx.esc(fxB(d.s))} · ${ctx.esc(fxN(d.n))} objects${G() ? ' <span class="hint">(est.)</span>' : ""}</div>
       <div class="gmeta gdim">${d.lane ? "value lane · outbound refs listed, not drawn · " : ""}layer ${d.layer} · held by ${d.ins.length} class${d.ins.length !== 1 ? "es" : ""} · holds ${d.outs.length}</div>
       <div class="gopenrow"><button class="pri gopen">open class ▸</button></div>
       <div class="glab">held by (inbound refs — shared when many)</div><table>${d.ins.map(row).join("") || "<tr><td>—</td></tr>"}</table>

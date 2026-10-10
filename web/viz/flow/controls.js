@@ -4,6 +4,7 @@
    opts.onScale. See index.js for the module map. */
 
 import { MIN_TOP } from "./layout.js";
+import { buildSamplePicker } from "../common.js";
 
 const PINS_KEY = "heap-report.flow.pins.v1";    // localStorage key for the pin set
 
@@ -74,17 +75,13 @@ export function buildControls(col, cwrap, vm, ctx, opts) {
   syncSeg();
   seg.appendChild(bSample); seg.appendChild(bGlobal);
   gScale.appendChild(seg);
-  if (vm.available.length > 1) {
+  if (vm.available.length > 1 || ctx.analyze) {
     const gK = mkGroup("samples");
-    const kseg = document.createElement("div"); kseg.className = "anatseg";
-    for (const k of vm.available) {
-      const b = document.createElement("button");
-      b.textContent = `${k}`;
-      b.classList.toggle("on", k === vm.samples);
-      b.onclick = () => refetch({ samples: k });
-      kseg.appendChild(b);
-    }
-    gK.appendChild(kseg);
+    gK.appendChild(buildSamplePicker({
+      available: vm.available, current: vm.samples,
+      onSwitch: k => refetch({ samples: k }),
+      analyze: ctx.analyze,
+    }));
   }
   const gTop = mkGroup("top");
   const rng = document.createElement("input");

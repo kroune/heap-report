@@ -43,9 +43,18 @@ export async function prepare(repo, dumpId, className, params = {}) {
   const scale = params.scale === "sample" || !objCount ? "sample" : "global";
   const factor = objCount ? scaleFactor(objCount, a.samples) : 1;
 
+  // retained numbers get their own factor, anchored to the EXACT union
+  // retained set (the composition total): a raw per-instance extrapolation
+  // double-counts objects shared with unsampled instances — with heavy
+  // cross-instance sharing it overshoots the true total several-fold
+  const rc = await repo.composition(dumpId, className);
+  const compTotal = rc.ok && rc.data ? rc.data.totalShallow : null;
+  const rootRow = a.graph.nodes.find(n => n[0] === className) || a.graph.nodes[0];
+  const rfactor = compTotal && rootRow && rootRow[3] > 0 ? compTotal / rootRow[3] : factor;
+
   // the min-retained filter is entered in DISPLAYED numbers: global mode
-  // extrapolates r × factor, so the layout threshold is minR / factor
-  const effMinR = scale === "global" ? minR / factor : minR;
+  // scales retained × rfactor, so the layout threshold is minR / rfactor
+  const effMinR = scale === "global" ? minR / rfactor : minR;
   const layout = computeFlowLayout(gin, { top, root: className, pins, minR: effMinR });
   const nodes = layout.nodes;
   nodes.forEach(nd => { nd.cat = catOf(nd.cls); });
@@ -79,7 +88,7 @@ export async function prepare(repo, dumpId, className, params = {}) {
   });
 
   return { kind: "flow", dumpId, className, samples: a.samples, available: a.available || [],
-           objCount, scale, factor, cyc: params.cyc !== false, pinsOpen: !!params.pinsOpen,
+           objCount, scale, factor, rfactor, cyc: params.cyc !== false, pinsOpen: !!params.pinsOpen,
            top, maxNodes, pins, minR, split, hasSplit, hasReach,
            setBytes: layout.setBytes, layout, labels, details };
 }

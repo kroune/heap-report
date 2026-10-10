@@ -13,11 +13,16 @@
  *    and re-renders in place — the pinned path for interactive re-slicing that
  *    needs a fetch (e.g. the anatomy sample-count picker). Refetches of the
  *    same kind+class keep the body's scroll position.
- *  - ctx.analyze(onStatus): null in INLINE mode; otherwise queues server-side
- *    analysis for the popup's class, reports job progress through
- *    onStatus(text, isErr) and reopens the current viz when the job finishes.
- *    This is what makes "not analyzed yet" a working state instead of a dead
- *    end that sends you to the classes tab.
+ *  - ctx.analyze(onStatus, samples?): null in INLINE mode; otherwise queues
+ *    server-side analysis for the popup's class (optional sample count — a
+ *    new size only runs the missing extractions), reports job progress
+ *    through onStatus(text, isErr) and reopens the current viz on that
+ *    extraction when the job finishes. This is what makes "not analyzed yet"
+ *    a working state instead of a dead end that sends you to the classes tab.
+ *  - the sample-size picker (buildSamplePicker) + the not-analyzed prompt
+ *    (buildAnalyzePrompt): ONE implementation each, shared by every
+ *    anatomy-based viz (anatomy/graph/flow) — switch between finished
+ *    extractions in place, run 8/16/32/custom for a new one.
  *  - the shared helpers (catColor/shortClass/scaleFactor/buildSeg) — ONE
  *    implementation each; esc/fmtB/fmtN/catOf are delegated from data/http.js.
  *
@@ -92,6 +97,100 @@ export function buildSeg(options, current, onPick) {
     seg.appendChild(b);
   }
   return seg;
+}
+
+/* ====================== sample-size picker (shared) ====================== */
+
+export const SAMPLE_PRESETS = [8, 16, 32];
+export const MAX_SAMPLES = 1024;   // the backend clamps to this
+
+/* The ONE sample-size control for every anatomy-based viz: sizes with an
+   extraction switch in place (onSwitch), sizes without one run a new analysis
+   (analyze = ctx.analyze, null in INLINE mode — then only switching renders).
+   `current` is the K of the displayed payload, null when nothing is analyzed
+   yet (the not-analyzed prompt: every size is a run button). */
+export function buildSamplePicker({ available = [], current = null, onSwitch = null, analyze = null }) {
+  const wrap = document.createElement('span');
+  wrap.className = 'viz-samples';
+  const status = document.createElement('span');
+  status.className = 'viz-anstatus';
+  const onRun = analyze
+    ? k => analyze((t, isErr) => {
+        status.textContent = t;
+        status.classList.toggle('err', !!isErr);
+      }, k)
+    : null;
+  const seg = document.createElement('div');
+  seg.className = 'anatseg';
+  const mk = (k, run) => {
+    const b = document.createElement('button');
+    b.textContent = run ? `${k} ▸` : `${k}`;
+    if (run) {
+      b.classList.add('run');
+      b.title = `no ${k}-sample extraction yet — run a new analysis`;
+      b.addEventListener('click', () => onRun(k));
+    } else {
+      b.classList.toggle('on', k === current);
+      b.title = `extraction over ${k} sampled instances`;
+      b.addEventListener('click', () => { if (k !== current && onSwitch) onSwitch(k); });
+    }
+    seg.appendChild(b);
+  };
+  for (const k of available) mk(k, false);
+  if (onRun) for (const k of SAMPLE_PRESETS) if (!available.includes(k)) mk(k, true);
+  wrap.appendChild(seg);
+  if (onRun) {
+    const inp = document.createElement('input');
+    inp.className = 'viz-sampin';
+    inp.placeholder = 'custom';
+    inp.spellcheck = false;
+    inp.title = `custom sample count (1–${MAX_SAMPLES}) — runs a new analysis`;
+    const go = () => {
+      const v = inp.value.trim();
+      const k = parseInt(v, 10);
+      if (!/^\d+$/.test(v) || k < 1 || k > MAX_SAMPLES) {
+        inp.classList.add('err');
+        return;
+      }
+      inp.classList.remove('err');
+      if (available.includes(k)) { if (k !== current && onSwitch) onSwitch(k); }
+      else onRun(k);
+    };
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    inp.addEventListener('change', go);
+    inp.addEventListener('input', () => inp.classList.remove('err'));
+    wrap.appendChild(inp);
+    wrap.appendChild(status);
+  }
+  return wrap;
+}
+
+/* The "not analyzed yet" state, ONE implementation for every viz: the
+   explanation, then the sample picker doubling as the Analyze button (each
+   size queues the analysis; ctx.analyze reopens the viz when the job lands).
+   INLINE mode (ctx.analyze null) shows the caller's fallback hint instead. */
+export function buildAnalyzePrompt(ctx, { cls, text, fallback }) {
+  const d = document.createElement('div');
+  d.className = cls;
+  const msg = document.createElement('div');
+  msg.textContent = text;
+  d.appendChild(msg);
+  if (!ctx.analyze) {
+    const hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = fallback;
+    d.appendChild(hint);
+    return d;
+  }
+  const row = document.createElement('div');
+  row.className = 'viz-anrow';
+  const lab = document.createElement('span');
+  lab.className = 'hint';
+  lab.textContent = 'analyze this class — samples:';
+  row.appendChild(lab);
+  row.appendChild(buildSamplePicker({ available: [], current: null, analyze: ctx.analyze }));
+  d.appendChild(row);
+  return d;
 }
 
 /* ============================== popup host ============================== */
@@ -177,22 +276,29 @@ function paintNav(h, kind, dumpId, className) {
     k => { if (k !== kind) openViz(k, dumpId, className); }));
 }
 
-/* ctx.analyze implementation: queue the analysis job, report progress via
-   onStatus, reopen the same viz (same params) when the job finishes. */
+/* ctx.analyze implementation: queue the analysis job (optional sample count —
+   the backend reuses completed parts, so a new size only runs the missing
+   extractions), report progress via onStatus, reopen the same viz on the new
+   extraction when the job finishes. */
 function makeAnalyze(kind, dumpId, className, params) {
-  return (onStatus) => {
-    currentRepo().analyze(dumpId, className).then(r => {
+  return (onStatus, samples) => {
+    const next = samples != null ? { ...params, samples } : params;
+    currentRepo().analyze(dumpId, className, samples != null ? { samples } : {}).then(r => {
       if (!r.ok) { onStatus(`analyze failed: ${r.error || 'unknown error'}`, true); return; }
       const job = r.data;
+      const reopen = () => {
+        currentRepo().invalidate(dumpId);   // fresh payload: new extraction + available list
+        openViz(kind, dumpId, className, next);
+      };
       if (!job || job.id == null || job.state === 'done') {
-        openViz(kind, dumpId, className, params);
+        reopen();
         return;
       }
       onStatus(`analysis ${job.state} — waiting for the job to finish…`);
       const stop = pollJobs(jobs => {
         const j = (jobs || []).find(x => x.id === job.id);
         if (!j) return;
-        if (j.state === 'done') { stop(); openViz(kind, dumpId, className, params); }
+        if (j.state === 'done') { stop(); reopen(); }
         else if (j.state === 'failed') {
           stop();
           onStatus(`analysis failed: ${j.error || 'see the jobs panel'}`, true);
