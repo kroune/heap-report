@@ -103,11 +103,33 @@ Results (2 GB heap, single-threaded, idle machine):
 | org.gradle.util.Path                    | 1.59M   | 6.1M      | 13     | 0.6 s   |
 | java.io.File                            | 1.01M   | 3.0M      | 17     | 0.4 s   |
 | ...catalog.DependencyModel              | 105k    | 1.37M     | 9      | 0.3 s   |
+| ...util.PatternSet                      | 114k    | 256.9M    | —      | extract only |
+| ...DefaultLegacyConfiguration_Decorated | 201k    | 256.9M    | —      | extract only |
 
 `Path` roots histogram is the spec's headline view working on real data:
 927k root paths `(Path → String[]{String×3})`, 654k nested `(Path →
 parent + segments)`, plus a long tail of deeper chains — 1.59M instances
-in 7 root shapes, exact.
+in 7 root shapes, exact. `File` surfaces a real merged SCC:
+`scc[LinuxFileSystem, LinuxFileSystemProvider, UnixPath]` — 3 members,
+4 internal edges per instance (the parent↔child cycle of spec open
+point 4, discretized by class and merged exactly).
+
+Scale findings:
+- **Extraction** (MAT indexes, 2 GB) works at full-heap scale: BFS over
+  257M objects in 10–14 min (~0.5M obj/s), pass1 12–32 s, pass2 77–140 s
+  with popcount-rank O(1) id remap (binary search over a 1 GB ids array
+  OOM'd/would crawl at this scale). Output GRPH 6.5 GB.
+- **The reachable closure is one giant blob**: PatternSet (114k instances)
+  and DefaultLegacyConfiguration (201k) close over the *identical* set of
+  256,893,323 objects — 98.9% of the daemon heap. "Reachable scope" for
+  any service-graph anchor ≈ whole heap; only value/data classes give
+  bounded scopes. This shapes how the feature must be used (findings below).
+- **Analyzer memory**: measured ~35 B/object live (CSR graph + Tarjan
+  arrays) → 2 GB caps analysis at ~40–50M-object scopes. The 257M scope
+  needs ~9–10 GB (exactly the spec's planned 10 g MAT-JVM budget for
+  2·10⁸ objects) or the off-heap structures from spec phase 4.
+- **Analysis speed** is a non-issue wherever it fits: ≤1 s per phase at
+  16M objects, ~70M objects/min.
 
 Perf/memory, JFR-driven (in order of what profiles showed):
 1. `BitSet.clear(i)` O(words) — 98.6% of Tarjan → ByteArray (170 s → 1.5 s).
