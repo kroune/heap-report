@@ -40,31 +40,39 @@ class Shape internal constructor(
     val kind: ShapeKind,
     /** class for LEAF/NODE, null for SCC kinds. */
     val className: String?,
+    /** graph class-table index for LEAF/NODE (the cons key), -1 for SCC kinds. */
+    val clsIdx: Int,
     /**
-     * External edges. For LEAF/NODE and merged SCCs: per-member (every member
-     * holds exactly these). For SCC_UNIQUE: totals over all members (members
-     * are not isomorphic — that is why they were not merged).
+     * Per-member external edges, packed: (childInternalId shl 32) | mult,
+     * sorted by (child digest, childId) — the cons key for LEAF/NODE and the
+     * edge list for the emitted shape-DAG (empty for LEAF and SCC_UNIQUE).
      */
+    val packedKids: LongArray,
+    /** SCC_UNIQUE only: totals over all members (members are not isomorphic). */
     val edges: List<Edge>,
     /** SCC payload: canonical member list (SCC) or actual members (SCC_UNIQUE). */
     val members: List<SccMember>?,
     val digest: Digest128,
 )
 
-// ---- cons-map lookup keys: exact structural tuples, equality via interned ----
-// ---- child ids (Shape identity), never via the 128-bit digest.          ----
+// ---- cons: exact structural equality via interned child shape ids, never ----
+// ---- via the 128-bit digest. Open-addressed map over packed keys: at      ----
+// ---- 10M+ objects, per-lookup key allocations were the top cost (JFR).    ----
 
-private sealed interface Lk
+private const val PACK_EMPTY_MULT_MASK = 0xFFFFFFFFL
+
+private fun packKid(childId: Int, mult: Int): Long =
+    (childId.toLong() shl 32) or (mult.toLong() and PACK_EMPTY_MULT_MASK)
+
+private fun packChild(k: Long): Int = (k ushr 32).toInt()
+
+private fun packMult(k: Long): Int = k.toInt()
 
 private data class Kid(val childId: Int, val mult: Int)
 
-private data class LeafLk(val cls: String) : Lk
-
-private data class NodeLk(val cls: String, val kids: List<Kid>) : Lk
-
 private data class MemLk(val cls: String, val internalRanks: List<Int>, val ext: List<Kid>)
 
-private data class SccLk(val members: List<MemLk>) : Lk
+private data class SccLk(val members: List<MemLk>)
 
 // ---- public result ----
 
@@ -126,8 +134,10 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         while (sp > 0) {
             val v = stack[--sp]
             rList[rCount++] = v
-            for (w in g.refs[v]) if (!inR.get(w)) {
-                inR.set(w); stack[sp++] = w
+            g.forEachRef(v) { w ->
+                if (!inR.get(w)) {
+                    inR.set(w); stack[sp++] = w
+                }
             }
         }
         return inR to rList.copyOf(rCount)
@@ -174,9 +184,9 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             while (nsp > 0) {
                 val v = nodeStack[nsp - 1]
                 val p = ptrStack[psp - 1]
-                if (p < g.refs[v].size) {
+                if (g.refOffsets[v] + p < g.refOffsets[v + 1]) {
                     ptrStack[psp - 1] = p + 1
-                    val w = g.refs[v][p]
+                    val w = g.refs[g.refOffsets[v] + p]
                     if (!inR.get(w)) continue          // unreachable from roots: outside scope
                     if (index[w] < 0) {
                         index[w] = next; low[w] = next++
@@ -223,31 +233,88 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
     // is consed before c (level-synchronous processing in the spec collapses
     // to plain id order in a single-threaded v1).
 
+    /**
+     * Open-addressed cons-map: slot -> internal shape id. Lookup compares the
+     * full structural key (class-table index + packed kids) against the stored
+     * shape — zero allocation on hits, exactness is structural, never digest.
+     */
+    private class ConsMap {
+        private var slots = IntArray(1 shl 16) { -1 }
+        private var size = 0
+
+        private fun kidsEqual(stored: LongArray, kids: LongArray, n: Int): Boolean {
+            if (stored.size != n) return false
+            for (i in 0 until n) if (stored[i] != kids[i]) return false
+            return true
+        }
+
+        private fun hash(clsIdx: Int, kids: LongArray, n: Int): Int {
+            var h = clsIdx * -0x61C88647
+            for (i in 0 until n) {
+                val k = kids[i]
+                h = 31 * h + (k xor (k ushr 32)).toInt()
+                h *= -0x61C88647
+            }
+            return h
+        }
+
+        fun intern(shapes: ArrayList<Shape>, clsIdx: Int, clsName: String, kind: ShapeKind,
+                   kids: LongArray, nKids: Int): Shape {
+            if ((size + 1) * 4 >= slots.size * 3) {
+                val grown = IntArray(slots.size * 2) { -1 }
+                for (s in shapes) {
+                    var i = hash(s.clsIdx, s.packedKids, s.packedKids.size) and (grown.size - 1)
+                    while (grown[i] >= 0) i = (i + 1) and (grown.size - 1)
+                    grown[i] = s.internalId
+                }
+                slots = grown
+            }
+            var i = hash(clsIdx, kids, nKids) and (slots.size - 1)
+            while (true) {
+                val s = slots[i]
+                if (s < 0) {
+                    val packed = kids.copyOf(nKids)
+                    val shape = Shape(
+                        shapes.size, kind, clsName, clsIdx, packed, emptyList(), null,
+                        digestOf {
+                            tag(if (kind == ShapeKind.LEAF) 1 else 2)
+                            str(clsName)
+                            i32(packed.size)
+                            for (k in packed) {
+                                digest(shapes[packChild(k)].digest); i32(packMult(k))
+                            }
+                        },
+                    )
+                    shapes.add(shape)
+                    slots[i] = shape.internalId
+                    size++
+                    return shape
+                }
+                val cand = shapes[s]
+                if (cand.clsIdx == clsIdx && kidsEqual(cand.packedKids, kids, nKids)) return cand
+                i = (i + 1) and (slots.size - 1)
+            }
+        }
+    }
+
     private fun cons(compOf: IntArray, comps: Comps): Pair<List<Shape>, IntArray> {
         val shapes = ArrayList<Shape>()
-        val consMap = HashMap<Lk, Shape>()
+        val consMap = ConsMap()
+        val sccConsMap = HashMap<SccLk, Shape>()
         val shapeOfComp = arrayOfNulls<Shape>(comps.count)
 
+        // scratch buffers for kid building (reused; never returned)
+        var kidIds = IntArray(64)      // child internal ids per ref
+        var kidPacked = LongArray(64)
+
+        fun kidDigestCmp(a: Int, b: Int): Int {
+            val c = shapes[a].digest.compareTo(shapes[b].digest)
+            return if (c != 0) c else a.compareTo(b) // childId tiebreak: full determinism
+        }
+
         fun kidCmp(a: Kid, b: Kid): Int {
-            val c = shapes[a.childId].digest.compareTo(shapes[b.childId].digest)
+            val c = kidDigestCmp(a.childId, b.childId)
             return if (c != 0) c else a.mult.compareTo(b.mult)
-        }
-
-        fun groupedKids(memberRefs: IntArray): List<Kid> {
-            val byShape = LinkedHashMap<Shape, Int>()
-            for (w in memberRefs) {
-                val child = shapeOfComp[compOf[w]]
-                    ?: error("child comp ${compOf[w]} consed after parent — topo order violated")
-                byShape.merge(child, 1, Int::plus)
-            }
-            return byShape.map { (s, m) -> Kid(s.internalId, m) }.sortedWith(::kidCmp)
-        }
-
-        fun digestOfKids(tag: Int, cls: String, kids: List<Kid>): Digest128 = digestOf {
-            tag(tag); str(cls); i32(kids.size)
-            for (k in kids) {
-                digest(shapes[k.childId].digest); i32(k.mult)
-            }
         }
 
         for (c in 0 until comps.count) {
@@ -255,28 +322,56 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             val mEnd = comps.start[c + 1]
             val memberCount = mEnd - mStart
             val shape: Shape
-            if (memberCount == 1 && g.refs[comps.members[mStart]].none { it == comps.members[mStart] }) {
+            var selfLoop = false
+            if (memberCount == 1) g.forEachRef(comps.members[mStart]) { if (it == comps.members[mStart]) selfLoop = true }
+            if (memberCount == 1 && !selfLoop) {
                 // acyclic single node
                 val obj = comps.members[mStart]
-                val cls = g.classes[obj]
-                if (g.refs[obj].isEmpty()) {
-                    val lk = LeafLk(cls)
-                    shape = consMap.getOrPut(lk) {
-                        Shape(shapes.size, ShapeKind.LEAF, cls, emptyList(), null,
-                            digestOf { tag(1); str(cls) }).also { shapes.add(it) }
-                    }
+                val rc = g.refCount(obj)
+                if (rc == 0) {
+                    shape = consMap.intern(shapes, g.classIdx[obj], g.className(obj), ShapeKind.LEAF,
+                        kidPacked, 0)
                 } else {
-                    val kids = groupedKids(g.refs[obj])
-                    val lk = NodeLk(cls, kids)
-                    shape = consMap.getOrPut(lk) {
-                        Shape(shapes.size, ShapeKind.NODE, cls,
-                            kids.map { Edge(shapes[it.childId], it.mult) }, null,
-                            digestOfKids(2, cls, kids)).also { shapes.add(it) }
+                    if (rc > kidIds.size) {
+                        kidIds = IntArray(maxOf(rc, kidIds.size * 2))
+                        kidPacked = LongArray(kidIds.size)
                     }
+                    var m = 0
+                    g.forEachRef(obj) { w ->
+                        kidIds[m++] = (shapeOfComp[compOf[w]]
+                            ?: error("child comp ${compOf[w]} consed after parent — topo order violated")).internalId
+                    }
+                    // sort by (child digest, childId), then run-length to packed (id, mult)
+                    if (m <= 64) {
+                        for (i in 1 until m) {
+                            val v = kidIds[i]
+                            var j = i - 1
+                            while (j >= 0 && kidDigestCmp(kidIds[j], v) > 0) {
+                                kidIds[j + 1] = kidIds[j]; j--
+                            }
+                            kidIds[j + 1] = v
+                        }
+                    } else {
+                        val sorted = kidIds.copyOf(m).sortedWith(::kidDigestCmp)
+                        sorted.forEachIndexed { i, v -> kidIds[i] = v }
+                    }
+                    var nKids = 0
+                    var prev = -1
+                    var mult = 0
+                    for (i in 0 until m) {
+                        if (kidIds[i] == prev) mult++
+                        else {
+                            if (prev >= 0) kidPacked[nKids++] = packKid(prev, mult)
+                            prev = kidIds[i]; mult = 1
+                        }
+                    }
+                    if (prev >= 0) kidPacked[nKids++] = packKid(prev, mult)
+                    shape = consMap.intern(shapes, g.classIdx[obj], g.className(obj), ShapeKind.NODE,
+                        kidPacked, nKids)
                 }
             } else {
                 val members = comps.members.copyOfRange(mStart, mEnd)
-                shape = consScc(members, compOf, shapeOfComp, shapes, consMap, ::kidCmp)
+                shape = consScc(members, compOf, shapeOfComp, shapes, sccConsMap, ::kidCmp)
             }
             shapeOfComp[c] = shape
         }
@@ -289,7 +384,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         compOf: IntArray,
         shapeOfComp: Array<Shape?>,
         shapes: ArrayList<Shape>,
-        consMap: HashMap<Lk, Shape>,
+        consMap: HashMap<SccLk, Shape>,
         kidCmp: (Kid, Kid) -> Int,
     ): Shape {
         val n = members.size
@@ -301,7 +396,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val intNeigh = Array(n) { mutableListOf<Int>() }
         for (i in 0 until n) {
             val byShape = LinkedHashMap<Shape, Int>()
-            for (w in g.refs[members[i]]) {
+            g.forEachRef(members[i]) { w ->
                 val li = local[w]
                 if (li != null) intNeigh[i].add(li)
                 else byShape.merge(shapeOfComp[compOf[w]]!!, 1, Int::plus)
@@ -315,7 +410,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             val memPayload = sortedMembers.map { o ->
                 val i = local[o]!!
                 SccMember(
-                    g.classes[o],
+                    g.className(o),
                     internalCount = intNeigh[i].size,
                     internalRanks = emptyList(),
                     external = extKids[i].map { Edge(shapes[it.childId], it.mult) },
@@ -325,7 +420,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             for (kids in extKids) for (k in kids) totals.merge(shapes[k.childId], k.mult, Int::plus)
             val minId = sortedMembers.first()
             return Shape(
-                shapes.size, ShapeKind.SCC_UNIQUE, null,
+                shapes.size, ShapeKind.SCC_UNIQUE, null, -1, LongArray(0),
                 totals.map { (s, m) -> Edge(s, m) }.sortedWith { a, b ->
                     a.child.digest.compareTo(b.child.digest)
                 },
@@ -357,7 +452,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             return 0
         }
 
-        var colors = Array(n) { i -> Color(g.classes[members[i]], extKids[i], emptyList()) }
+        var colors = Array(n) { i -> Color(g.className(members[i]), extKids[i], emptyList()) }
         var ranks = IntArray(n)
         var prevDistinct = -1
         while (true) {
@@ -379,7 +474,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val order = (0 until n).sortedWith { a, b -> colorCmp(colors[a], colors[b]) }
         val canonical = order.map { i ->
             MemLk(
-                g.classes[members[i]],
+                g.className(members[i]),
                 intNeigh[i].map { ranks[it] }.sorted(),
                 extKids[i],
             )
@@ -391,8 +486,11 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                     m.ext.map { Edge(shapes[it.childId], it.mult) })
             }
             Shape(
-                shapes.size, ShapeKind.SCC, null,
-                memPayload.first().external, // identical for every member (part of the color)
+                shapes.size, ShapeKind.SCC, null, -1,
+                // per-member external edges, identical for every member (part of the color)
+                memPayload.first().external
+                    .map { packKid(it.child.internalId, it.mult) }.toLongArray(),
+                emptyList(),
                 memPayload,
                 digestOf {
                     tag(3); i32(canonical.size)
@@ -464,8 +562,16 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             )
         }
         val edges = ArrayList<EdgeEntry>()
-        for (s in shapes) for (e in s.edges) {
-            edges.add(EdgeEntry(finalId[s.internalId], finalId[e.child.internalId], e.mult.toLong()))
+        for (s in shapes) {
+            if (s.kind == ShapeKind.SCC_UNIQUE) {
+                for (e in s.edges) {
+                    edges.add(EdgeEntry(finalId[s.internalId], finalId[e.child.internalId], e.mult.toLong()))
+                }
+            } else {
+                for (k in s.packedKids) {
+                    edges.add(EdgeEntry(finalId[s.internalId], finalId[packChild(k)], packMult(k).toLong()))
+                }
+            }
         }
         val rootsHist = HashMap<Int, Long>()
         for (r in roots) {

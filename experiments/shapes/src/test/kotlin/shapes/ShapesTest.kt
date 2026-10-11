@@ -93,7 +93,7 @@ class ShapesTest {
     @Test
     fun `back-pointer scc collapses (discretized by class)`() {
         // two independent parent<->child cycles: common in Gradle heaps (SHAPES.md open point 4)
-        val g = ObjectGraph(
+        val g = ObjectGraph.of(
             classes = arrayOf("Child", "Parent", "Child", "Parent"),
             shallow = longArrayOf(5, 5, 5, 5),
             refs = arrayOf(intArrayOf(1), intArrayOf(0), intArrayOf(3), intArrayOf(2)),
@@ -112,7 +112,7 @@ class ShapesTest {
 
     @Test
     fun `self-loop objects merge via scc path`() {
-        val g = ObjectGraph(
+        val g = ObjectGraph.of(
             classes = arrayOf("N", "N"),
             shallow = longArrayOf(7, 7),
             refs = arrayOf(intArrayOf(0), intArrayOf(1)),
@@ -129,7 +129,7 @@ class ShapesTest {
     fun `symmetric same-class cycle does not discretize and never merges`() {
         // two identical directed 3-cycles, all members same class: color refinement
         // cannot tell members apart -> each SCC stays its own unique shape
-        val g = ObjectGraph(
+        val g = ObjectGraph.of(
             classes = Array(6) { "N" },
             shallow = LongArray(6) { 5 },
             refs = arrayOf(intArrayOf(1), intArrayOf(2), intArrayOf(0),
@@ -148,7 +148,7 @@ class ShapesTest {
         // cycle of 65 nodes, classes distinct per position -> would discretize,
         // but |SCC| > 64 forces the unique fallback
         val n = ShapesAnalyzer.MAX_SCC_MERGE + 1
-        val g = ObjectGraph(
+        val g = ObjectGraph.of(
             classes = Array(2 * n) { "C${it % n}" },
             shallow = LongArray(2 * n) { 5 },
             refs = Array(2 * n) { intArrayOf((it + 1) % n + if (it < n) 0 else n) },

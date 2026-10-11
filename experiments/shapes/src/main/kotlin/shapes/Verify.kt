@@ -32,9 +32,11 @@ fun verifyInvariants(g: ObjectGraph, roots: IntArray, t: ShapeTable): List<Strin
         val v = stack.removeLast()
         rCount++
         shallowSum += g.shallow[v]
-        refCount += g.refs[v].size
-        for (w in g.refs[v]) if (!inR.get(w)) {
-            inR.set(w); stack.add(w)
+        refCount += g.refCount(v)
+        g.forEachRef(v) { w ->
+            if (!inR.get(w)) {
+                inR.set(w); stack.add(w)
+            }
         }
     }
 

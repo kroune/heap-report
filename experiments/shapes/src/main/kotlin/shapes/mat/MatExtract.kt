@@ -74,14 +74,14 @@ object MatExtract {
             val n = s.snapshotInfo.numberOfObjects
             val visited = BitSet(n)
             val stack = IntStack()
-            val rIds = ArrayList<Int>(1 shl 20)
+            val rIds = IntStack() // no boxing: at 100M objects boxed Ints alone OOM a 2g heap
             for (root in roots) if (!visited.get(root)) {
                 visited.set(root); stack.push(root)
             }
             var progressAt = 1_000_000
             while (stack.sp > 0) {
                 val v = stack.pop()
-                rIds.add(v)
+                rIds.push(v)
                 for (w in s.getOutboundReferentIds(v)) {
                     // MAT's outbound index includes the pseudo-reference to the
                     // object's java.lang.Class: following it pulls in statics and
@@ -92,20 +92,19 @@ object MatExtract {
                         visited.set(w); stack.push(w)
                     }
                 }
-                if (rIds.size >= progressAt) {
+                if (rIds.sp >= progressAt) {
                     val el = (System.nanoTime() - t0) / 1_000_000_000.0
-                    println("  BFS: ${rIds.size} objects, ${"%.0f".format(rIds.size / el)}/s")
+                    println("  BFS: ${rIds.sp} objects, ${"%.0f".format(rIds.sp / el)}/s")
                     progressAt += 1_000_000
                 }
             }
             val t1 = System.nanoTime()
-            println("reachable: ${rIds.size} objects, BFS in ${(t1 - t0) / 1_000_000} ms")
-            if (rIds.isEmpty()) error("empty reachable set")
+            println("reachable: ${rIds.sp} objects, BFS in ${(t1 - t0) / 1_000_000} ms")
+            if (rIds.sp == 0) error("empty reachable set")
 
             // dense id := position in the sorted id list; remap = binary search
-            val ids = rIds.toIntArray()
+            val ids = rIds.a.copyOf(rIds.sp)
             ids.sort()
-            rIds.clear()
 
             // pass 1: class table + per-node class index
             val classNames = ArrayList<String>()
@@ -233,6 +232,8 @@ object MatExtract {
         }
         fun pop(): Int = a[--sp]
     }
+
+    // ids.size used below as rIds.sp equivalent
 
     private const val GRPH_MAGIC = 0x47525048 // "GRPH"
 }

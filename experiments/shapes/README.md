@@ -95,18 +95,29 @@ Findings on `run-jfr-38` (15.8 GB hprof, 259.8M objects, Gradle daemon,
    it was 98.6% of Tarjan time (JFR profile). ByteArray instead:
    170 s → 1.5 s on 15.8M objects.
 
-Results (2 GB heap, single-threaded):
+Results (2 GB heap, single-threaded, idle machine):
 
-| class                          | roots   | R objects | shapes | analyze |
-|--------------------------------|---------|-----------|--------|---------|
-| java.lang.String               | 8.0M    | 15.8M     | 2      | 1.5 s   |
-| org.gradle.util.Path           | 1.59M   | 6.1M      | 13     | 2.7 s   |
-| java.io.File                   | 1.01M   | 3.0M      | 17     | 5.0 s   |
+| class                                   | roots   | R objects | shapes | analyze |
+|-----------------------------------------|---------|-----------|--------|---------|
+| java.lang.String                        | 8.0M    | 15.8M     | 2      | 1.1 s   |
+| org.gradle.util.Path                    | 1.59M   | 6.1M      | 13     | 0.6 s   |
+| java.io.File                            | 1.01M   | 3.0M      | 17     | 0.4 s   |
+| ...catalog.DependencyModel              | 105k    | 1.37M     | 9      | 0.3 s   |
 
 `Path` roots histogram is the spec's headline view working on real data:
 927k root paths `(Path → String[]{String×3})`, 654k nested `(Path →
 parent + segments)`, plus a long tail of deeper chains — 1.59M instances
 in 7 root shapes, exact.
+
+Perf/memory, JFR-driven (in order of what profiles showed):
+1. `BitSet.clear(i)` O(words) — 98.6% of Tarjan → ByteArray (170 s → 1.5 s).
+2. Boxed `Int` member lists — OOM at 15.8M in 2 g → CSR comps + IntArrays.
+3. Per-node `IntArray` ref shells — ~40 B/node → CSR graph storage (flat
+   refs + offsets + class table); 15.8M objects now analyze in **1 g** heap.
+4. Per-lookup cons-key allocations + `LinkedHashMap` kid grouping — top of
+   cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
+   scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
+5. `DataInputStream` per-field reads dominated GRPH load → bulk reader.
 
 ## Known limitations / notes for review
 
