@@ -102,26 +102,39 @@ object MatExtract {
             println("reachable: ${rIds.sp} objects, BFS in ${(t1 - t0) / 1_000_000} ms")
             if (rIds.sp == 0) error("empty reachable set")
 
-            // dense id := position in the sorted id list; remap = binary search
-            val ids = rIds.a.copyOf(rIds.sp)
-            ids.sort()
+            // dense id := rank in the visited set. remap via popcount-prefix
+            // ranks over the visited bitmap: O(1) per ref, no ids array
+            // (at 200M+ objects the array alone is ~1 GB and binary search
+            // per ref is a cache-miss chain).
+            val words = visited.toLongArray()
+            val rank = IntArray(words.size + 1)
+            for (i in words.indices) rank[i + 1] = rank[i] + java.lang.Long.bitCount(words[i])
+            fun remap(w: Int): Int {
+                val word = w ushr 6
+                return rank[word] + java.lang.Long.bitCount(words[word] and ((1L shl (w and 63)) - 1))
+            }
+            val nR = rIds.sp
+            rIds.a = IntArray(1) // release the BFS buffer before the big allocations
 
-            // pass 1: class table + per-node class index
+            // pass 1: class table + per-node class index (iterate set bits — no ids array)
             val classNames = ArrayList<String>()
             val classIdxOf = HashMap<String, Int>()
-            val nodeClass = IntArray(ids.size)
-            for (i in ids.indices) {
-                val name = s.getClassOf(ids[i]).name
-                nodeClass[i] = classIdxOf.getOrPut(name) {
+            val nodeClass = IntArray(nR)
+            var oi = 0
+            var o = visited.nextSetBit(0)
+            while (o >= 0) {
+                val name = s.getClassOf(o).name
+                nodeClass[oi++] = classIdxOf.getOrPut(name) {
                     classNames.add(name)
                     classNames.size - 1
                 }
-                if (i > 0 && i % 5_000_000 == 0) println("  pass1: $i/${ids.size}")
+                if (oi % 5_000_000 == 0) println("  pass1: $oi/$nR")
+                o = visited.nextSetBit(o + 1)
             }
             val t2 = System.nanoTime()
             println("classes: ${classNames.size}, pass 1 in ${(t2 - t1) / 1_000_000} ms")
 
-            // pass 2: emit GRPH (ids ascending; refs remapped via binary search)
+            // pass 2: emit GRPH (set-bit order; refs remapped O(1) via rank)
             Files.newOutputStream(out).use { raw ->
                 val d = DataOutputStream(raw.buffered(1 shl 20))
                 d.writeInt(GRPH_MAGIC)
@@ -131,21 +144,23 @@ object MatExtract {
                     val b = name.toByteArray(Charsets.UTF_8)
                     d.writeInt(b.size); d.write(b)
                 }
-                d.writeInt(ids.size)
-                for (i in ids.indices) {
-                    d.writeInt(nodeClass[i])
-                    d.writeLong(s.getHeapSize(ids[i]))
-                    val refs = s.getOutboundReferentIds(ids[i])
+                d.writeInt(nR)
+                oi = 0
+                o = visited.nextSetBit(0)
+                while (o >= 0) {
+                    d.writeInt(nodeClass[oi++])
+                    d.writeLong(s.getHeapSize(o))
+                    val refs = s.getOutboundReferentIds(o)
                     var refCount = 0
                     for (w in refs) if (!s.isClass(w)) refCount++
                     d.writeInt(refCount)
                     for (w in refs) {
                         if (s.isClass(w)) continue
-                        val di = java.util.Arrays.binarySearch(ids, w)
-                        check(di >= 0) { "ref $w of ${ids[i]} escaped the reachable set" }
-                        d.writeInt(di)
+                        check(visited.get(w)) { "ref $w of $o escaped the reachable set" }
+                        d.writeInt(remap(w))
                     }
-                    if (i > 0 && i % 5_000_000 == 0) println("  pass2: $i/${ids.size}")
+                    if (oi % 5_000_000 == 0) println("  pass2: $oi/$nR")
+                    o = visited.nextSetBit(o + 1)
                 }
                 d.flush()
             }
