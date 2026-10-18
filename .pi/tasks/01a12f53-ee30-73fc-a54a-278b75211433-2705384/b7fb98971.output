@@ -1,0 +1,9 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+Exception in thread "main" java.lang.NoClassDefFoundError: shapes/ShapesAnalyzer
+	at shapes.MainKt.main(Main.kt:70)
+Caused by: java.lang.ClassNotFoundException: shapes.ShapesAnalyzer
+	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:580)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:502)
+	... 1 more
+=== artifact ===
+-rw-r--r-- 1 olowo olowo 152184021 Oct 17 15:46 /tmp/flat.shp1

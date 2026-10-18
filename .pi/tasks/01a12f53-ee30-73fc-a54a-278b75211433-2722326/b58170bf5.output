@@ -1,0 +1,8 @@
+Exception in thread "main" java.io.FileNotFoundException: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/daemon.index (No such file or directory)
+	at java.base/java.io.FileInputStream.open0(Native Method)
+	at java.base/java.io.FileInputStream.open(FileInputStream.java:185)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:139)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:109)
+	at shapes.mat.MatExtract.open(MatExtract.kt:224)
+	at shapes.mat.MatExtract.extract(MatExtract.kt:67)
+	at shapes.MainKt.main(Main.kt:53)

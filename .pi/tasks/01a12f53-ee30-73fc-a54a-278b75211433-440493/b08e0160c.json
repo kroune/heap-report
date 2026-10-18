@@ -1,0 +1,30 @@
+{
+  "id": "b08e0160c",
+  "name": "analyze 257M keyhash",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx8704m -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify && ls -la /tmp/flat.shp1",
+  "description": "analyze-grph 257M with keyHash precheck + truncated mega-SCC payload",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-440493/b08e0160c.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1791839034437,
+  "endTime": 1791839132736,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 739479,
+  "bytesWritten": 1511,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

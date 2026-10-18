@@ -1,0 +1,29 @@
+{
+  "id": "bcddfa7a2",
+  "name": "257M audit 11g",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx11g -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify-edges\necho \"=== artifact ===\"\nls -la /tmp/flat.shp1 2>/dev/null || echo \"no artifact\"",
+  "description": "257M analyze + audit at 11g heap",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/bcddfa7a2.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792246441017,
+  "endTime": 1792246539250,
+  "exitCode": null,
+  "signal": "SIGKILL",
+  "pid": 2727051,
+  "bytesWritten": 1018,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

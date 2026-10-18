@@ -1,0 +1,60 @@
+cons: 100663296/105898811 comps, 1171230 shapes, 8611 MB used, maxProbe=39
+cons: 1224057 shapes in 51536 ms
+aggregate: 5106 ms
+analyze: 85019 ms
+artifact written: /tmp/dlc2.shp1
+reachable objects : 256893059
+unique shapes     : 1224057
+collapse ratio    : 209.9x
+roots histogram   :
+  scc![java.lang.Thread,org.gradle.internal.service.DefaultServiceRegistry,org.gradle.internal.logging.services.DefaultLoggingManager,org.gradle.launcher.daemon.server.DaemonProcessState,org.gradle.internal.service.ScopedServiceRegistry,java.lang.invoke.DirectMethodHandle,java.lang.invoke.MethodType,java.lang.Class,+141486290 more] x 327035
+shapes (by shallowTotal):
+  #1069080 scc![java.lang.Thread,org.gradle.internal.service.De SCC_UNIQUE count=141486298 shallowTotal=4846275480  min=16      max=11534352 roots=327035
+        -> #0    org.gradle.api.tasks.util.PatternSet           mult=1 (total)
+        -> #4    org.gradle.api.internal.provider.AbstractColle mult=1 (total)
+        -> #8    com.google.common.cache.LocalCache$LocalManual mult=1 (total)
+        -> #11   org.gradle.api.tasks.util.PatternSet           mult=1 (total)
+        -> #22   java.util.LinkedHashSet                        mult=1 (total)
+        -> #26   com.google.common.cache.LocalCache$LocalManual mult=1 (total)
+        -> #30   org.gradle.api.internal.provider.AbstractColle mult=1 (total)
+        -> #39   org.gradle.api.tasks.util.PatternSet           mult=1 (total)
+        -> #40   org.gradle.api.tasks.util.PatternSet           mult=1 (total)
+        -> #49   org.gradle.api.tasks.util.PatternSet           mult=1 (total)
+        -> ... and 249808 more edges
+  #1128625 byte[]                                               LEAF      count=7690916 shallowTotal=679175032   min=16      max=23191568 roots=0
+  #619586 java.lang.String                                     NODE      count=7796503 shallowTotal=187116072   min=24      max=24      roots=0
+        -> #1128625 byte[]                                         mult=1 (per member)
+  #113042 java.util.ArrayList                                  NODE      count=5487361 shallowTotal=131696664   min=24      max=24      roots=0
+        -> #268337 java.lang.Object[]                             mult=1 (per member)
+  #1088507 scc[java.util.LinkedHashMap,java.util.LinkedHashMap$ SCC       count=2746998 shallowTotal=120867912   min=24      max=64      roots=0
+  #450767 java.util.HashMap$Node                               NODE      count=3319666 shallowTotal=106229312   min=32      max=32      roots=0
+        -> #580759 java.lang.Integer                              mult=1 (per member)
+        -> #1068873 org.gradle.internal.component.external.model.D mult=1 (per member)
+  #639961 scc[java.util.LinkedList,java.util.LinkedList$Node,j SCC       count=4563306 shallowTotal=105463072   min=16      max=32      roots=0
+        -> #102728 java.io.File                                   mult=1 (total)
+        -> #616434 org.gradle.api.internal.file.FileNotationConve mult=1 (total)
+        -> #619586 java.lang.String                               mult=1 (total)
+        -> #655938 org.gradle.api.internal.file.UriNotationConver mult=1 (total)
+        -> #765202 org.gradle.internal.typeconversion.ErrorHandli mult=1 (total)
+  #263855 java.util.LinkedHashMap                              LEAF      count=1200639 shallowTotal=76840896    min=64      max=64      roots=0
+  #211323 long[]                                               LEAF      count=54428   shallowTotal=52091400    min=16      max=524312  roots=0
+  #612743 java.util.HashMap                                    LEAF      count=1083177 shallowTotal=51992496    min=48      max=48      roots=0
+  #580759 java.lang.Integer                                    LEAF      count=3205715 shallowTotal=51291440    min=16      max=16      roots=0
+  #771832 java.lang.String[]                                   NODE      count=1581361 shallowTotal=50603552    min=32      max=32      roots=0
+        -> #619586 java.lang.String                               mult=3 (per member)
+  #402903 java.lang.Object[]                                   NODE      count=892086  shallowTotal=49956816    min=56      max=56      roots=0
+        -> #580759 java.lang.Integer                              mult=1 (per member)
+  #268337 java.lang.Object[]                                   LEAF      count=1113867 shallowTotal=44254704    min=16      max=84336   roots=0
+  #456630 java.util.concurrent.locks.ReentrantLock$NonfairSync LEAF      count=1375148 shallowTotal=44004736    min=32      max=32      roots=0
+  #97346 java.lang.ThreadLocal$SuppliedThreadLocal            NODE      count=1608487 shallowTotal=38603688    min=24      max=24      roots=0
+        -> #847303 org.gradle.api.internal.DefaultMutationGuard$$ mult=1 (per member)
+  #831793 int[]                                                LEAF      count=139554  shallowTotal=34654944    min=16      max=11534352 roots=0
+  #102728 java.io.File                                         NODE      count=986164  shallowTotal=31557248    min=32      max=32      roots=0
+        -> #619586 java.lang.String                               mult=1 (per member)
+  #849294 java.util.HashMap$Node                               NODE      count=960729  shallowTotal=30743328    min=32      max=32      roots=0
+        -> #450767 java.util.HashMap$Node                         mult=1 (per member)
+        -> #580759 java.lang.Integer                              mult=1 (per member)
+        -> #1068873 org.gradle.internal.component.external.model.D mult=1 (per member)
+  #1112067 org.gradle.util.Path                                 NODE      count=927096  shallowTotal=29667072    min=32      max=32      roots=0
+        -> #771832 java.lang.String[]                             mult=1 (per member)
+verify: all invariants hold

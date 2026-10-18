@@ -41,6 +41,15 @@ export const compare = (aId, bId) =>
   cached(aId, `compare|${bId}`, () =>
     api(`/api/compare?a=${encodeURIComponent(aId)}&b=${encodeURIComponent(bId)}`));
 
+/* exact structural-collapse payload (experimental); same 404 contract as composition */
+export const shapes = (id, className) =>
+  cached(id, `shapes|${className}`, () =>
+    api(`${dq(id)}/shapes?class=${encodeURIComponent(className)}`));
+
+/* starts a server-side shapes analysis (JobKind SHAPES); NOT cached */
+export const shapesAnalyze = (id, className) =>
+  apiPost(`${dq(id)}/shapes-analyze`, {"class": className});
+
 /* starts a server-side MAT analysis; the returned Job is NOT cached */
 export const analyze = (id, className, {samples = 8, anatomy = true} = {}) =>
   apiPost(`${dq(id)}/analyze`, {"class": className, samples, anatomy});

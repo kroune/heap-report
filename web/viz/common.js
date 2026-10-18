@@ -279,11 +279,18 @@ function paintNav(h, kind, dumpId, className) {
 /* ctx.analyze implementation: queue the analysis job (optional sample count —
    the backend reuses completed parts, so a new size only runs the missing
    extractions), report progress via onStatus, reopen the same viz on the new
-   extraction when the job finishes. */
+   extraction when the job finishes. The repo method comes from the viz module
+   (analyzeOp, default 'analyze' — the shapes viz queues 'shapesAnalyze'), so
+   each viz's analyze affordance runs the analysis that actually feeds it. */
 function makeAnalyze(kind, dumpId, className, params) {
+  const op = (VIZ.get(kind) || {}).analyzeOp || 'analyze';
   return (onStatus, samples) => {
     const next = samples != null ? { ...params, samples } : params;
-    currentRepo().analyze(dumpId, className, samples != null ? { samples } : {}).then(r => {
+    const repo = currentRepo();
+    const p = op === 'analyze'
+      ? repo.analyze(dumpId, className, samples != null ? { samples } : {})
+      : repo[op](dumpId, className);
+    Promise.resolve(p).then(r => {
       if (!r.ok) { onStatus(`analyze failed: ${r.error || 'unknown error'}`, true); return; }
       const job = r.data;
       const reopen = () => {

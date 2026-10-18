@@ -19,6 +19,7 @@ import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
 import * as graph from '../viz/graph.js';
 import * as flow from '../viz/flow/index.js';
+import * as shapes from '../viz/shapes/index.js';
 
 const TABS = [
   ['classes', classesTab],
@@ -35,6 +36,7 @@ export function boot() {
   registerViz(hierarchy);
   registerViz(graph);
   registerViz(flow);
+  registerViz(shapes);
 
   restoreDump();            // #dump=<id>, written by setDump()
   wireTabs(repo, !!payload);

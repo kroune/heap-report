@@ -1,0 +1,8 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+reach: 256893323 objects in 9092 ms
+scc: 105488584 components in 22712 ms
+Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+	at shapes.ShapesAnalyzer.consScc(Shapes.kt:527)
+	at shapes.ShapesAnalyzer.cons(Shapes.kt:417)
+	at shapes.ShapesAnalyzer.analyze(Shapes.kt:129)
+	at shapes.MainKt.main(Main.kt:68)

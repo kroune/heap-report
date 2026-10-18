@@ -1,0 +1,6 @@
+class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated: 1 class object(s), 327035 instances
+java.lang.ref.Reference subtypes: 58 classes — .discovered edges filtered
+primitive class objects outside the class table: 9 — also filtered
+reachable: 256892895 objects, BFS in 823303 ms
+classes: 7001, pass 1 in 18741 ms
+written: /home/olowo/dlc-clean.grph (6510 MB), pass 2 in 101971 ms

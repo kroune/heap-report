@@ -81,6 +81,8 @@ class JobKind(enum.Enum):
     DOWNLOAD = "download"    # download pool (default 2 workers)
     INDEX = "index"          # serial MAT queue
     ANALYZE = "analyze"      # serial MAT queue
+    SHAPES = "shapes"        # serial MAT queue (the shapes tool needs the
+                             # restored MAT index set, exclusively)
     COMPACT = "compact"      # serial MAT queue (touches index files)
 
 
@@ -321,6 +323,16 @@ class QueryEngine(Protocol):
         """Queue on-demand per-class MAT analysis.
         A failed extraction must surface as a FAILED job — never recorded
         in meta.json as if it succeeded."""
+        ...
+
+    def shapes(self, dump_id: DumpId, cls: str) -> Optional[dict]:
+        """Exact structural-collapse payload (SHAPES.md; experimental) for one
+        class. None = not analyzed yet (HTTP: 404 {"analyzed": false})."""
+        ...
+
+    def analyze_shapes(self, dump_id: DumpId, cls: str) -> Job:
+        """Queue the exact shapes analysis (mat-extract + analyze-grph via the
+        prebuilt shapes jar) for one class. Same rules as analyze()."""
         ...
 
 

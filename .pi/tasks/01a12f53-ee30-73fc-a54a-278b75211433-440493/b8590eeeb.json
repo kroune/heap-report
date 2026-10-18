@@ -1,0 +1,29 @@
+{
+  "id": "b8590eeeb",
+  "name": "heap-report e2e server",
+  "command": "python3 -m backend.kernel --port 8329 2>&1 | tail -30",
+  "description": "heap-report server on 8329 for shapes e2e",
+  "status": "killed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-440493/b8590eeeb.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1791797021346,
+  "endTime": 1791797846060,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 447263,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

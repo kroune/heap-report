@@ -1,0 +1,29 @@
+{
+  "id": "b765ec02f",
+  "name": "snapshot static server",
+  "command": "cd /tmp && python3 -m http.server 8339 --bind 127.0.0.1 2>&1 | tail -5",
+  "description": "Static server for the snapshot html test",
+  "status": "killed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-440493/b765ec02f.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1791797728181,
+  "endTime": 1791797843061,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 470009,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 1200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

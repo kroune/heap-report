@@ -1,0 +1,261 @@
+reachback from org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated: 1 seed instance(s)
+level  0:            1 referrers (cumulative            1)  [0s]
+                    1  org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated
+level  1:           12 referrers (cumulative           13)  [0s]
+                    3  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$$Lambda+0x0000000800ad9c28
+                    2  java.util.TreeMap$Entry
+                    1  org.gradle.api.internal.artifacts.DefaultDependencyConstraintSet
+                    1  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$ConfigurationResolutionAccess
+                    1  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$$Lambda+0x0000000800ada5d0
+                    1  org.gradle.api.internal.artifacts.DefaultDependencySet$MutationValidationAction
+                    1  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$ConfigurationResolvableDepende
+                    1  com.android.build.gradle.internal.lint.LintFromMaven
+level  2:           12 referrers (cumulative           25)  [0s]
+                    6  java.util.TreeMap$Entry
+                    4  org.gradle.internal.ImmutableActionSet$SingletonSet
+                    1  com.android.build.gradle.internal.services.ProjectServices
+                    1  org.gradle.api.internal.artifacts.configurations.ExtendedConfigurations
+level  3:           19 referrers (cumulative           44)  [0s]
+                    6  java.util.TreeMap$Entry
+                    3  org.gradle.api.internal.DefaultDomainObjectSet_Decorated
+                    2  com.android.build.gradle.internal.services.TaskCreationServicesImpl
+                    1  com.android.build.gradle.internal.services.VariantServicesImpl
+                    1  com.android.build.gradle.internal.services.VariantBuilderServicesImpl
+                    1  com.android.build.gradle.internal.services.BuiltInKotlinServicesKt$initBuiltInKotlinSupportIfRequire
+                    1  kotlin.SynchronizedLazyImpl
+                    1  com.android.build.gradle.internal.tasks.factory.BootClasspathConfigImpl
+level  4:          165 referrers (cumulative          209)  [0s]
+                   18  com.android.build.api.variant.impl.FlatSourceDirectoriesImpl
+                    8  com.android.build.api.variant.impl.LayeredSourceDirectoriesImpl
+                    8  java.util.TreeMap$Entry
+                    6  com.android.build.gradle.internal.dsl.CompileSdkDelegate
+                    4  com.android.build.api.component.impl.AnnotationProcessorImpl
+                    4  com.android.build.api.variant.impl.ManifestFilesImpl
+                    4  com.android.build.api.component.impl.features.InstrumentationCreationConfigImpl
+                    4  com.android.build.api.component.impl.OldVariantApiLegacySupportImpl
+level  5:          602 referrers (cumulative          811)  [0s]
+                   64  java.lang.Object[]
+                   29  kotlin.SynchronizedLazyImpl
+                   27  org.gradle.internal.instantiation.generator.ManagedObjectFactory$$Lambda+0x0000000800371ae0
+                   24  java.util.TreeMap$Entry
+                   16  java.util.LinkedHashMap$Entry
+                   13  kotlin.UnsafeLazyImpl
+                   12  com.android.build.gradle.internal.dependency.SourceSetManager$$Lambda+0x0000000801c63bc8
+                   11  com.android.build.gradle.internal.tasks.factory.features.AndroidResourcesTaskCreationActionImpl
+level  6:          521 referrers (cumulative        1,332)  [0s]
+                   98  com.android.build.gradle.internal.tasks.factory.TaskConfigurationActions
+                   64  java.util.ArrayList
+                   57  kotlin.SynchronizedLazyImpl
+                   44  kotlin.UnsafeLazyImpl
+                   27  org.gradle.internal.serialization.Cached$Deferred
+                   18  java.util.TreeMap$Entry
+                   15  org.gradle.api.internal.provider.DefaultProvider
+                   13  org.gradle.api.internal.DefaultMutationGuard$1
+level  7:          410 referrers (cumulative        1,742)  [0s]
+                  113  org.gradle.api.internal.DefaultMutationGuard$1
+                   57  com.android.build.gradle.internal.api.DefaultAndroidSourceDirectorySet
+                   38  kotlin.SynchronizedLazyImpl
+                   30  java.util.TreeMap$Entry
+                   27  org.gradle.internal.instantiation.generator.ManagedObjectFactory$RootManagedPropertyName
+                   17  com.android.build.gradle.internal.tasks.factory.TaskConfigurationActions
+                   12  org.gradle.api.internal.plugins.DefaultPluginManager$2
+                    8  org.gradle.api.internal.provider.TransformBackedProvider
+level  8:          383 referrers (cumulative        2,125)  [0s]
+                  118  org.gradle.api.internal.DefaultMutationGuard$1
+                   57  com.android.build.gradle.internal.api.DefaultAndroidSourceDirectorySet$directories$1
+                   48  java.util.TreeMap$Entry
+                   32  org.gradle.internal.code.DefaultUserCodeApplicationContext$CurrentApplication$1
+                   24  org.gradle.api.internal.provider.DefaultProperty
+                   16  org.gradle.api.internal.provider.Collectors$ElementFromProvider
+                   11  java.util.LinkedHashMap$Entry
+                    7  com.android.build.gradle.internal.api.DefaultAndroidLibrarySourceSet_Decorated
+level  9:          720 referrers (cumulative        2,845)  [0s]
+                  111  com.android.build.gradle.internal.api.DefaultAndroidSourceDirectorySet
+                  100  org.gradle.internal.code.DefaultUserCodeApplicationContext$CurrentApplication$1
+                   74  java.util.TreeMap$Entry
+                   35  org.gradle.api.internal.artifacts.dsl.dependencies.DefaultDependencyHandler$$Lambda+0x00000008017e7b
+                   32  org.gradle.api.internal.DefaultCollectionCallbackActionDecorator$BuildOperationEmittingAction
+                   30  com.android.build.api.artifact.impl.ArtifactsImpl$3$1
+                   22  org.gradle.api.internal.plugins.DefaultPluginManager$2
+                   20  java.lang.Object[]
+level 10:        5,403 referrers (cumulative        8,248)  [1s]
+                2,451  org.gradle.api.internal.provider.ValueState$NonFinalizedValue
+                  410  org.gradle.api.internal.provider.ValueState$NonFinalizedValueWithCopier
+                  409  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection
+                  400  org.gradle.internal.instantiation.generator.ManagedObjectFactory$$Lambda+0x0000000800371ae0
+                  197  org.gradle.api.internal.tasks.DefaultTaskContainer$TaskCreatingProvider_Decorated
+                  166  org.gradle.api.internal.file.DefaultFileCollectionFactory
+                  132  java.util.TreeMap$Entry
+                  111  com.android.build.gradle.internal.api.DefaultAndroidSourceDirectorySet$directories$1
+level 11:        8,857 referrers (cumulative       17,105)  [1s]
+                  931  org.gradle.api.internal.provider.DefaultProperty
+                  924  org.gradle.api.internal.tasks.DefaultTaskDependency
+                  736  org.gradle.api.internal.file.DefaultFilePropertyFactory$DefaultDirectoryVar
+                  541  java.lang.Object[]
+                  511  java.util.LinkedHashMap$Entry
+                  409  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection$PathSet
+                  400  org.gradle.internal.serialization.Cached$Deferred
+                  396  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$$Lambda+0x0000000800ad9c28
+level 12:        7,688 referrers (cumulative       24,793)  [1s]
+                  830  com.android.build.api.artifact.impl.SinglePropertyAdapter
+                  417  org.gradle.internal.ImmutableActionSet$SingletonSet
+                  400  org.gradle.internal.instantiation.generator.ManagedObjectFactory$RootManagedPropertyName
+                  325  org.gradle.api.internal.provider.AbstractCollectionProperty$EmptySupplier
+                  314  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection$UnresolvedItemsCollector
+                  300  org.gradle.api.internal.provider.AbstractCollectionProperty$NoValueSupplier
+                  285  java.util.LinkedHashMap$Entry
+                  278  com.android.build.api.artifact.impl.TypedStorageProvider$$Lambda+0x0000000801cca4d0
+level 13:        4,861 referrers (cumulative       29,654)  [1s]
+                  395  org.gradle.api.internal.DefaultDomainObjectSet_Decorated
+                  328  org.gradle.internal.instantiation.generator.ManagedObjectFactory$$Lambda+0x0000000800371ae0
+                  320  java.util.LinkedHashMap$Entry
+                  296  java.lang.Object[]
+                  272  com.android.build.api.artifact.impl.SingleArtifactContainer
+                  218  org.gradle.api.internal.artifacts.DefaultPublishArtifactSet$ArtifactsFileCollection
+                  218  org.gradle.api.internal.artifacts.DefaultPublishArtifactSet$$Lambda+0x0000000800ada0e8
+                  200  java.util.LinkedHashSet
+level 14:        3,693 referrers (cumulative       33,347)  [1s]
+                  402  org.gradle.api.internal.DefaultDomainObjectCollection$$Lambda+0x00000008007f9d08
+                  328  org.gradle.internal.serialization.Cached$Deferred
+                  288  java.util.LinkedHashMap$Entry
+                  276  org.gradle.api.internal.tasks.DefaultTaskDependency$VisitBehavior
+                  252  java.util.ArrayList
+                  193  org.gradle.internal.instantiation.generator.ManagedObjectFactory
+                  152  org.gradle.api.internal.DefaultMutationGuard$1
+                  146  java.util.HashMap$Node[]
+level 15:       32,649 referrers (cumulative       65,996)  [2s]
+                6,027  org.gradle.api.internal.artifacts.configurations.DefaultConfigurationServicesBundle
+                6,027  org.gradle.api.internal.artifacts.transform.DefaultTransformInvocationFactory
+                6,002  org.gradle.internal.cc.impl.CrossProjectConfigurationReportingTaskExecutionGraph
+                3,011  org.gradle.api.internal.artifacts.DefaultProjectDependencyFactory
+                3,009  org.gradle.api.internal.project.DefaultProjectState
+                3,009  org.gradle.plugins.ide.idea.IdeaPlugin_Decorated
+                3,009  org.gradle.plugins.ide.internal.DefaultIdeArtifactRegistry
+                  405  org.gradle.api.internal.collections.IterationOrderRetainingSetElementSource
+level 16:    1,841,622 referrers (cumulative    1,907,618)  [15s]
+              401,925  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$$Lambda+0x0000000800ada5d0
+              398,912  org.gradle.internal.model.DefaultCalculatedModelValue
+              326,926  org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated
+              239,909  org.gradle.api.internal.artifacts.ivyservice.moduleconverter.dependencies.DefaultLocalVariantGraphRe
+              182,992  org.gradle.api.internal.artifacts.transform.TransformStep
+               71,990  org.gradle.api.internal.artifacts.configurations.DefaultDependencyScopeConfiguration_Decorated
+               31,349  org.gradle.api.internal.artifacts.dependencies.DefaultProjectDependency_Decorated
+               29,997  org.gradle.api.internal.artifacts.ivyservice.moduleconverter.dependencies.DefaultLocalVariantGraphRe
+level 17:    9,339,009 referrers (cumulative   11,246,627)  [40s]
+            1,205,775  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$$Lambda+0x0000000800ad9c28
+              767,858  java.util.TreeMap$Entry
+              585,039  org.gradle.api.internal.tasks.DefaultTaskContainer$TaskCreatingProvider_Decorated
+              503,820  com.android.build.gradle.internal.api.DefaultAndroidSourceDirectorySet
+              401,953  org.gradle.api.internal.artifacts.DefaultDependencySet
+              401,953  org.gradle.api.internal.artifacts.DefaultDependencySet$MutationValidationAction
+              401,935  org.gradle.api.internal.artifacts.DefaultDependencyConstraintSet
+              401,925  org.gradle.api.internal.artifacts.configurations.DefaultConfiguration$ConfigurationResolutionAccess
+level 18:   24,926,819 referrers (cumulative   36,173,446)  [53s]
+            7,351,247  org.gradle.api.internal.provider.ValueState$NonFinalizedValue
+            2,777,289  org.gradle.api.internal.tasks.DefaultTaskDependency
+            1,273,132  org.gradle.internal.ImmutableActionSet$SingletonSet
+            1,241,710  org.gradle.internal.instantiation.generator.ManagedObjectFactory$$Lambda+0x0000000800371ae0
+            1,229,755  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection
+            1,229,751  org.gradle.api.internal.provider.ValueState$NonFinalizedValueWithCopier
+            1,124,973  java.util.LinkedHashMap$Entry
+              684,640  java.lang.Object[]
+level 19:   24,131,880 referrers (cumulative   60,305,326)  [65s]
+            2,885,381  org.gradle.api.internal.provider.DefaultProperty
+            2,219,407  org.gradle.api.internal.file.DefaultFilePropertyFactory$DefaultDirectoryVar
+            1,241,711  org.gradle.internal.serialization.Cached$Deferred
+            1,229,755  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection$PathSet
+            1,202,773  org.gradle.api.internal.DefaultDomainObjectSet_Decorated
+            1,091,786  org.gradle.api.internal.file.DefaultFilePropertyFactory$DefaultRegularFileVar
+              950,794  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection$UnresolvedItemsCollector
+              881,864  java.util.LinkedHashMap$Entry
+level 20:   22,129,192 referrers (cumulative   82,434,518)  [77s]
+            2,501,298  com.android.build.api.artifact.impl.SinglePropertyAdapter
+            1,241,710  org.gradle.internal.instantiation.generator.ManagedObjectFactory$RootManagedPropertyName
+            1,208,790  org.gradle.api.internal.DefaultDomainObjectCollection$$Lambda+0x00000008007f9d08
+            1,189,254  java.util.LinkedHashMap$Entry
+              974,740  org.gradle.api.internal.provider.AbstractCollectionProperty$EmptySupplier
+              899,755  org.gradle.api.internal.provider.AbstractCollectionProperty$NoValueSupplier
+              845,933  org.gradle.api.internal.DefaultMutationGuard$1
+              833,766  com.android.build.api.artifact.impl.TypedStorageProvider$$Lambda+0x0000000801cca4d0
+level 21:   14,878,008 referrers (cumulative   97,312,526)  [85s]
+            1,202,775  org.gradle.api.internal.collections.IterationOrderRetainingSetElementSource
+            1,019,792  org.gradle.internal.instantiation.generator.ManagedObjectFactory$$Lambda+0x0000000800371ae0
+              830,748  org.gradle.api.internal.tasks.DefaultTaskDependency$VisitBehavior
+              819,070  java.lang.Object[]
+              815,915  org.gradle.api.internal.DefaultMutationGuard$1
+              686,918  java.util.LinkedHashMap$Entry
+              645,715  java.util.HashMap$Node[]
+              584,896  java.util.LinkedHashSet
+level 22:   10,726,959 referrers (cumulative  108,039,485)  [95s]
+            1,019,793  org.gradle.internal.serialization.Cached$Deferred
+              830,748  com.google.common.collect.SingletonImmutableSet
+              737,909  org.gradle.internal.code.DefaultUserCodeApplicationContext$CurrentApplication$1
+              725,877  java.util.ArrayList
+              578,940  org.gradle.internal.instantiation.generator.ManagedObjectFactory
+              521,878  java.util.LinkedHashMap$Entry
+              375,054  java.lang.Object[]
+              342,144  org.gradle.api.internal.artifacts.DefaultResolvedDependency
+level 23:    8,567,207 referrers (cumulative  116,606,692)  [100s]
+            1,920,936  java.util.LinkedHashMap$Entry
+            1,104,405  java.lang.Object[]
+            1,019,792  org.gradle.internal.instantiation.generator.ManagedObjectFactory$RootManagedPropertyName
+              737,909  org.gradle.api.internal.DefaultCollectionCallbackActionDecorator$BuildOperationEmittingAction
+              389,877  org.gradle.api.internal.provider.AppendOnceList
+              320,919  java.util.ArrayList
+              227,924  java.util.HashSet
+              220,102  org.gradle.internal.collect.PersistentArray1
+level 24:    4,615,086 referrers (cumulative  121,221,778)  [105s]
+              643,705  java.util.HashMap$Node[]
+              642,294  java.util.LinkedHashMap
+              437,929  com.google.common.collect.RegularImmutableSet
+              374,885  org.gradle.api.internal.provider.AbstractCollectionProperty$CollectingSupplier
+              222,434  java.util.ArrayList
+              197,970  org.gradle.api.internal.collections.IterationOrderRetainingSetElementSource
+              138,146  org.gradle.internal.instantiation.generator.ManagedObjectFactory$RootManagedPropertyName
+              125,930  org.gradle.internal.component.local.model.LocalVariantMetadata
+level 25:    2,766,265 referrers (cumulative  123,988,043)  [109s]
+              561,260  java.util.LinkedHashSet
+              437,929  org.gradle.internal.ImmutableActionSet$SetWithManyActions
+              191,919  org.gradle.api.internal.DefaultDomainObjectSet_Decorated
+              143,970  org.gradle.api.internal.CompositeDomainObjectSet$$Lambda+0x000000080184df88
+              129,098  org.gradle.api.internal.provider.DefaultProperty
+               81,034  org.gradle.api.internal.artifacts.dsl.DefaultComponentMetadataProcessor
+               81,034  org.gradle.internal.verifier.HttpRedirectVerifierFactory$$Lambda+0x00000008014d99b8
+               81,034  org.gradle.internal.resource.transport.http.HttpResourceLister
+level 26:      923,244 referrers (cumulative  124,911,287)  [112s]
+              173,924  org.gradle.api.internal.DefaultDomainObjectCollection$$Lambda+0x00000008007f9d08
+               81,034  org.gradle.internal.resource.transfer.ProgressLoggingExternalResourceUploader
+               81,034  org.gradle.internal.resource.transfer.ProgressLoggingExternalResourceAccessor
+               81,034  org.gradle.internal.resource.transfer.ProgressLoggingExternalResourceLister
+               60,007  java.lang.Object[]
+               41,996  org.gradle.api.internal.provider.AppendOnceList
+               39,015  org.gradle.internal.model.CalculatedValueContainer
+               39,012  org.gradle.api.internal.artifacts.transform.DefaultTransformUpstreamDependenciesResolver$$Lambda+0x0
+level 27:   40,676,615 referrers (cumulative  165,587,902)  [120s]
+            2,481,513  org.gradle.api.internal.provider.Providers$FixedValueProvider
+            2,148,296  org.gradle.internal.Describables$TwoPartDescribable
+            1,608,489  org.gradle.api.internal.DefaultMutationGuard
+            1,587,582  org.gradle.util.Path
+            1,578,382  org.gradle.api.internal.collections.DefaultCollectionEventRegister
+            1,423,695  org.gradle.api.internal.provider.ValidatingValueCollector
+            1,230,177  org.gradle.api.internal.file.collections.DefaultConfigurableFileCollection$EmptyCollector
+            1,140,203  org.gradle.internal.typeconversion.NotationConverterToNotationParserAdapter
+level 28:   19,071,181 referrers (cumulative  184,659,083)  [136s]
+            3,195,502  org.gradle.api.internal.artifacts.ivyservice.resolveengine.artifact.VariantResolvingArtifactSet
+            1,608,509  java.lang.ThreadLocal$SuppliedThreadLocal
+            1,392,532  java.lang.Object[]
+            1,059,608  java.util.LinkedList$Node
+              690,965  org.gradle.api.internal.artifacts.DefaultModuleIdentifier
+              635,992  org.gradle.api.internal.artifacts.dependencies.DefaultImmutableVersionConstraint
+              597,007  org.gradle.internal.component.external.model.DefaultModuleComponentSelector
+              585,597  java.util.LinkedHashMap$Entry
+level 29:   13,403,000 referrers (cumulative  198,062,083)  [145s]
+            5,038,710  java.util.HashMap$Node
+            2,587,120  com.android.tools.idea.gradle.model.impl.IdeDependencyCoreImpl
+            1,293,557  java.util.ArrayList
+              552,174  java.util.LinkedList
+              443,900  java.util.HashMap$Node[]
+              425,694  java.lang.Object[]
+              412,995  java.util.LinkedHashMap
+              391,754  com.android.tools.idea.gradle.model.impl.FileImpl
+reachback total: 200366773 objects reach org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated instances

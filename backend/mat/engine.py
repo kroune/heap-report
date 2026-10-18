@@ -36,6 +36,7 @@ from .. import core, machine
 from ..localstore import drop_index_set, raws_zsts
 from . import db as dbmod
 from . import reach as reachmod
+from . import shapes as shapesmod
 from .parsing import _merge_fams, _read_csv
 from .payloads import (PROXIES, _anatomy_build, _anatomy_diff,
                        _class_table_build, _composition_build, _stats_build,
@@ -386,6 +387,19 @@ class MatQueryEngine:
             samples = max(1, min(1024, int(samples)))
         except (TypeError, ValueError):
             samples = SAMPLES
+        hprof = self._prepare_analysis(dump_id, cls)
+
+        def fn(job):
+            self._with_indexes(job, dump_id, lambda: self._analyze_class(
+                job, dump_id, hprof, cls, samples, with_anatomy))
+
+        return self._jobs.submit(core.JobKind.ANALYZE, dump_id, cls, fn)
+
+    def _prepare_analysis(self, dump_id, cls):
+        """Shared entry validation of the per-class analysis endpoints:
+        READY gate, class must be in the histogram, hprof must exist; kicks
+        the machine's (sticky) index acquisition so it overlaps the queue
+        wait. Returns the hprof path."""
         info = self._store.get(dump_id)
         if info.state is not core.DumpState.READY:
             raise core.ApiError("bad_state",
@@ -397,25 +411,62 @@ class MatQueryEngine:
         hprof = self._hprof(dump_id)
         if not hprof:
             raise core.ApiError("bad_state", "hprof not found in the dump dir", 400)
-        self._store.request_indexes(dump_id)   # sticky: acquisition starts now,
-        # overlaps the queue wait, and a mid-analysis corruption re-drives it
+        self._store.request_indexes(dump_id)
+        return hprof
+
+    def _with_indexes(self, job, dump_id, fn):
+        """Run fn with the MAT index set guaranteed present: wait for the
+        machine's acquisition (remote download / local parse) when missing;
+        on a corrupt compacted index drop the set, hand the component back
+        to the machine (re-acquire), and retry fn once — a second corruption
+        fails the job for real."""
+        if not self._has_indexes(dump_id):
+            self._store.await_indexes(dump_id, job)
+        try:
+            fn()
+        except CorruptIndexError as e:
+            self._jobs.log(job, f"  {e}")
+            drop_index_set(self._store.dir_of(dump_id),
+                           lambda m: self._jobs.log(job, m))
+            self._store.note_indexes_corrupt(dump_id)
+            self._store.await_indexes(dump_id, job)
+            fn()
+
+    # ---------------------------------------------------------- shapes (experimental)
+
+    def shapes(self, dump_id, cls):
+        """Exact structural-collapse payload for one class (SHAPES.md;
+        experimental). None = not analyzed yet. Served from the SHP1 artifact
+        the SHAPES job landed at data/shapes/; fp-cached on its mtime."""
+        data = self._data_dir(dump_id)
+        p = shapesmod.artifact_path(data, cls)
+        if not os.path.exists(p):
+            return None
+        return self._cached((dump_id, "shapes", cls),
+                            self._fp(dump_id, [p]),
+                            lambda: shapesmod.parse_shp1(p))
+
+    def analyze_shapes(self, dump_id, cls):
+        """Queue the exact shapes analysis for one class (experimental): the
+        prebuilt shapes jar (SHAPES_JAR) runs mat-extract + analyze-grph on
+        the serial MAT queue — it reads the MAT indexes directly, so it needs
+        the same acquisition/restore discipline as MAT itself."""
+        shapesmod.shapes_jar()   # fail fast at request time, not inside the job
+        hprof = self._prepare_analysis(dump_id, cls)
 
         def fn(job):
-            if not self._has_indexes(dump_id):
-                self._store.await_indexes(dump_id, job)
-            try:
-                self._analyze_class(job, dump_id, hprof, cls, samples, with_anatomy)
-            except CorruptIndexError as e:
-                self._jobs.log(job, f"  {e}")
-                drop_index_set(self._store.dir_of(dump_id),
-                               lambda m: self._jobs.log(job, m))
-                self._store.note_indexes_corrupt(dump_id)
-                self._store.await_indexes(dump_id, job)
-                # the set is whole again — retry once; a second corruption
-                # fails the job for real
-                self._analyze_class(job, dump_id, hprof, cls, samples, with_anatomy)
+            dump_dir = self._store.dir_of(dump_id)
+            data = os.path.join(dump_dir, "data")
+            dst = shapesmod.artifact_path(data, cls)
+            self._jobs.log(job, f"shapes analysis of {cls} (exact structural "
+                                "collapse, experimental)")
+            self._with_indexes(job, dump_id, lambda: shapesmod.analyze_class(
+                job, self._jobs, self._runner, dump_dir, hprof, cls, dst,
+                abort=self._store.abort_event(dump_id)))
+            self.invalidate(dump_id)
+            self._jobs.log(job, f"done: {cls}")
 
-        return self._jobs.submit(core.JobKind.ANALYZE, dump_id, cls, fn)
+        return self._jobs.submit(core.JobKind.SHAPES, dump_id, cls, fn)
 
     def _has_indexes(self, dump_id):
         raws, zsts = raws_zsts(self._store.dir_of(dump_id))

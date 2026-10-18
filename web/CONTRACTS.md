@@ -100,7 +100,8 @@ invalidate(id=null)                        // drop one dump's or all cached entr
 // data/inlinerepo.js — same functions, same result shapes, reading the
 // inlined snapshot payload (window.__INLINE__). Ops that need the server
 // (analyze, downloads) return {ok:false, code:'snapshot', error:'static snapshot'}.
-makeInlineRepo(payload) -> {trees, classes, composition, anatomy, compare, analyze, invalidate}
+makeInlineRepo(payload) -> {trees, classes, composition, anatomy, shapes, compare,
+                            analyze, shapesAnalyze, invalidate}
 ```
 
 ## App shell

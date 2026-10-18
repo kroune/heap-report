@@ -1,0 +1,13 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+cons: 8388608/105488584 comps, 1819775 shapes, 8659 MB used, maxProbe=35
+cons: 16777216/105488584 comps, 2023926 shapes, 9089 MB used, maxProbe=35
+cons: 25165824/105488584 comps, 2227839 shapes, 9380 MB used, maxProbe=35
+cons: 33554432/105488584 comps, 2431662 shapes, 8842 MB used, maxProbe=35
+cons: 41943040/105488584 comps, 2635878 shapes, 9295 MB used, maxProbe=35
+cons: 50331648/105488584 comps, 2839475 shapes, 9163 MB used, maxProbe=39
+cons: 58720256/105488584 comps, 3044532 shapes, 9272 MB used, maxProbe=39
+cons: 67108864/105488584 comps, 3250512 shapes, 9547 MB used, maxProbe=39
+cons: 75497472/105488584 comps, 3449388 shapes, 9325 MB used, maxProbe=39
+cons: 83886080/105488584 comps, 3645394 shapes, 9541 MB used, maxProbe=39
+cons: 92274688/105488584 comps, 3889569 shapes, 9785 MB used, maxProbe=39
+cons: 100663296/105488584 comps, 4159970 shapes, 9658 MB used, maxProbe=39

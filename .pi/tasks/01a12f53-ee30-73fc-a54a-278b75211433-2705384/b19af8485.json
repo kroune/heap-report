@@ -1,0 +1,30 @@
+{
+  "id": "b19af8485",
+  "name": "257M audit+artifact rerun",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx9728m -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify-edges 2>&1 | tail -6\necho \"=== artifact ===\"\nls -la /tmp/flat.shp1 2>/dev/null || echo \"no artifact\"",
+  "description": "257M analyze + edge audit + artifact after merge fix",
+  "status": "killed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2705384/b19af8485.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792245909603,
+  "endTime": 1792246014692,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 2719893,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Killed during Pi session shutdown (quit)",
+  "notified": false,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

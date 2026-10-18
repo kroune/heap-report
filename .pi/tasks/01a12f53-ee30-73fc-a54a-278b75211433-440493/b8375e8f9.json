@@ -1,0 +1,30 @@
+{
+  "id": "b8375e8f9",
+  "name": "analyze 257M lean comps",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx8704m -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify && ls -la /tmp/flat.shp1",
+  "description": "analyze-grph 257M with lean Comps (singleton inline, multi CSR)",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-440493/b8375e8f9.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1791834077014,
+  "endTime": 1791834149627,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 655609,
+  "bytesWritten": 1052,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

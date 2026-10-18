@@ -1,0 +1,2 @@
+terminal: done
+{"shapes": [{"id": 0, "digest": "819d38153a6af11f6a6f0a6cc36e3ecb", "kind": "node", "label": "java.lang.String", "count": 8001125, "shallowTotal": 192027000, "shallowMin": 24, "shallowMax": 24, "roots": 8001125, "sccSize": 1, "internalEdges": 0, "edgesPerMember": true}, {"id": 1, "digest": "ec064538

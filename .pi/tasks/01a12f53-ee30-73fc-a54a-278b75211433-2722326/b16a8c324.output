@@ -1,0 +1,18 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+cons: 8388608/105488584 comps, 71004 shapes, 9053 MB used, maxProbe=31
+cons: 16777216/105488584 comps, 164053 shapes, 8878 MB used, maxProbe=31
+cons: 25165824/105488584 comps, 256942 shapes, 8721 MB used, maxProbe=32
+cons: 33554432/105488584 comps, 349142 shapes, 8591 MB used, maxProbe=32
+cons: 41943040/105488584 comps, 442182 shapes, 8489 MB used, maxProbe=32
+cons: 50331648/105488584 comps, 532580 shapes, 8241 MB used, maxProbe=36
+cons: 58720256/105488584 comps, 625537 shapes, 8198 MB used, maxProbe=36
+cons: 67108864/105488584 comps, 719420 shapes, 8197 MB used, maxProbe=36
+cons: 75497472/105488584 comps, 810463 shapes, 9305 MB used, maxProbe=42
+cons: 83886080/105488584 comps, 899885 shapes, 9273 MB used, maxProbe=42
+cons: 92274688/105488584 comps, 1067979 shapes, 8486 MB used, maxProbe=42
+cons: 100663296/105488584 comps, 1323396 shapes, 8914 MB used, maxProbe=42
+analyze: 64444 ms
+artifact written: /tmp/flat.shp1
+verify-edges: edge accounting exact
+EXIT=0
+-rw-r--r-- 1 olowo olowo 152207109 Oct 17 17:22 /tmp/flat.shp1

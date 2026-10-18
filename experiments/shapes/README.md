@@ -62,6 +62,8 @@ gradle build                                            # tests (14)
 gradle run --args="demo --modules 3000 --verify"        # in-memory demo
 gradle run --args="generate --modules 3000 --out heap.txt"
 gradle run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
+./gradlew fatJar   # build/libs/shapes-experiment-all.jar — what the heap-report
+                   # backend runs (SHAPES_JAR; mat-extract + analyze-grph)
 ```
 
 Headline result on the synthetic 3000-module heap: 18001 objects collapse
@@ -75,8 +77,17 @@ single-threaded.
 snapshot into GRPH binary (dense ids, refs remapped — see "Known
 limitations"), `analyze-grph` runs the pipeline on it. Opening bypasses the
 OSGi-dependent `SnapshotFactory` (deserializes `daemon.index` + private
-`SnapshotImpl` ctor via reflection + stub `IObjectReader`; everything used
-is index-backed).
+`SnapshotImpl` ctor via reflection; everything used is index-backed except
+named field reads, which use a standalone `HprofHeapObjectReader` subclass
+that skips the OSGi preferences). `java.lang.ref.Reference.discovered`
+edges are filtered in the BFS and in GRPH emission — VM bookkeeping, not
+program structure (SHAPES.md "Definitions"). Diagnostic commands:
+`mat-fields` (per-instance outbound refs with field names) and
+`mat-ref-targets` (histogram of reference-typed field targets),
+`mat-isclass` (class-filter sanity: finds java.lang.Class instances
+missing from the class table — the 9 primitive class objects),
+`mat-reachback` (reverse BFS over the inbound index — quantifies which
+classes carry back-paths into the mega-SCC).
 
 Findings on `run-jfr-38` (15.8 GB hprof, 259.8M objects, Gradle daemon,
 2 GB analyzer heap):
@@ -124,10 +135,13 @@ Scale findings:
   256,893,323 objects — 98.9% of the daemon heap. "Reachable scope" for
   any service-graph anchor ≈ whole heap; only value/data classes give
   bounded scopes. This shapes how the feature must be used (findings below).
-- **Analyzer memory**: measured ~35 B/object live (CSR graph + Tarjan
-  arrays) → 2 GB caps analysis at ~40–50M-object scopes. The 257M scope
-  needs ~9–10 GB (exactly the spec's planned 10 g MAT-JVM budget for
-  2·10⁸ objects) or the off-heap structures from spec phase 4.
+- **Analyzer memory**: measured ~26 B/object live (CSR graph: 2 B class idx
+  + 4 B packed shallow + 4 B offsets + 4 B/ref; Tarjan: index+compOf 8 B,
+  per-frame low/dfs stacks sized by depth not n, bitset on-stack) → min
+  workable -Xmx on the 15.8M-object String scope is 544 MB (~34 B/object
+  incl. JVM/GC overhead; was 768 MB before the footprint pass). The 257M
+  scope needs ~8–9 GB — under the spec's planned 10 g MAT-JVM budget — or
+  the off-heap structures from spec phase 4.
 - **Analysis speed** is a non-issue wherever it fits: ≤1 s per phase at
   16M objects, ~70M objects/min.
 
@@ -140,6 +154,36 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
    scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
 5. `DataInputStream` per-field reads dominated GRPH load → bulk reader.
+6. `consScc` built boxed per-member refinement structures (~200 B/member)
+   BEFORE the `|SCC| > 64 → SCC_UNIQUE` early exit — a 2.6M-member
+   service-graph SCC (54k-instance AGP class closing over 98.9% of the heap)
+   OOM'd the analyzer after an hour of GC thrash. Now mega-SCCs go straight
+   to a lean totals path (sorted members + binary-search membership, no
+   boxed lists), and SCC_UNIQUE labels are bounded to 8 member classes.
+7. Footprint pass over the whole pipeline (driven by the 256.9M-object
+   FlatSourceDirectoriesImpl scope — 98.9% of the heap, 105M components):
+   CharArray class idx (2 B), packed shallow (4 B + overflow side-table),
+   Tarjan `low[n]` → per-frame stack, index/compOf merged into one sign-coded
+   array, dynamic 1.5× dfs stacks, identity iteration for whole-graph reach,
+   singleton components inlined out of the members CSR, lean Comps
+   (8 B/component), mega-SCC member payload truncated to the label's needs.
+   Result: the full pipeline (extract 16 min + load + analyze) completes on
+   that scope at ~9 GB heap: reach 8 s, scc 23 s, cons 84 s, aggregate 15 s
+   — 256.9M objects → 1.37M shapes (187.5×) in 130 s of analysis.
+8. ConsMap: multiply-only hash mixed weakly in the LOW bits the probe uses →
+   2M-slot probe walks (25+ min in `intern`, caught by jstack + a maxProbe
+   counter). Fixed with an fmix32 finalizer + double hashing + a per-shape
+   keyHash precheck (maxProbe 350k → 42).
+9. **Correctness (verify-edges audit):** merged SCCs emitted `first member`'s
+   external edges for ALL members; a non-uniform SCC (LinkedHashMap ⇄ its
+   entrySet: map→table, entrySet→entries) got mults inflated by the
+   × instanceCount expansion (inv3 over-count 0.15%). Fix: non-uniform SCCs
+   still merge (the isomorphism is real) but emit per-INSTANCE totals —
+   `edgesPerMember=false` now means "× collapsedInstances" (SCC_UNIQUE has
+   one). Routing them to SCC_UNIQUE instead was tried first and REJECTED:
+   it tripled the shape count (1.3M → 4.2M) and OOM'd the aggregate.
+   `verifyEdgeAccounting` (Main `--verify-edges`) re-derives every ref
+   against the artifact: 600,058,408 refs, exact.
 
 ## Known limitations / notes for review
 
@@ -155,6 +199,8 @@ Perf/memory, JFR-driven (in order of what profiles showed):
   index reads (~80–300k objects/s depending on page cache); pass 1/2 run
   in sorted id order and are fast. Parallelism + bulk index reads are the
   spec's frontier-split BFS upgrade.
-- Analyzer memory ≈ 60–70 B per R object (dominated by per-node IntArray
-  ref shells): ~25–30M objects fit in 2 GB. CSR graph storage (flat refs +
-  offsets) is the obvious next step and roughly doubles capacity.
+- Analyzer footprint after the footprint pass: ~26 B per R object live
+  (breakdown above); the 15.8M-object String scope analyzes with -Xmx544m
+  (was -Xmx768m). Next step when it matters: off-heap graph storage (spec
+  phase 4) — the remaining floor is Tarjan's per-node index/component
+  arrays, which are algorithmic working set, not representation waste.

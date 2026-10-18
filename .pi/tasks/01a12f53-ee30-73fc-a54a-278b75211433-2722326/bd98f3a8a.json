@@ -1,0 +1,29 @@
+{
+  "id": "bd98f3a8a",
+  "name": "extract DLC clean",
+  "command": "flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-extract --hprof dumps/run-jfr-38/daemon.hprof --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --out /home/olowo/dlc-clean.grph 2>&1 | grep -v \"BFS:\\|pass1:\\|pass2:\"",
+  "description": "DLC extract with guard + primitive-class fix, keep GRPH",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/bd98f3a8a.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792314630928,
+  "endTime": 1792315575589,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2987478,
+  "bytesWritten": 422,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

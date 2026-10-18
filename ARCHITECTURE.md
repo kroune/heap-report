@@ -147,7 +147,12 @@ MAT subprocesses exist), `parsing.py` (raw extract parsing helpers, pure),
 markers, readers, the precomputed anatomy payload blobs), `reach.py` (the
 reachability pass → derived inclusive-retained / split-copy tables),
 `payloads.py` (structures → JSON, pure and unit-tested; fold overflow is
-budget-bounded so payload size can't grow with the object count).
+budget-bounded so payload size can't grow with the object count),
+`shapes.py` (EXPERIMENTAL: the exact structural collapse, SHAPES.md — runs
+the prebuilt shapes jar from `experiments/shapes` (SHAPES_JAR) as a
+subprocess: mat-extract over the MAT index set under the shared index lock,
+then analyze-grph → SHP1 artifact at `data/shapes/<class>.shp1`; parses SHP1
+into the served JSON).
 Temp workspaces always cleaned up; MAT output streamed to job log, not
 buffered whole.
 
@@ -228,6 +233,8 @@ DELETE /api/dumps/{id}
 GET    /api/dumps/{id}/stats|trees|classes
 GET    /api/dumps/{id}/composition?class=…
 GET    /api/dumps/{id}/anatomy?class=…&samples=…
+GET    /api/dumps/{id}/shapes?class=…        (experimental, SHAPES.md)
+POST   /api/dumps/{id}/shapes-analyze        {class} → Job (serial MAT queue)
 GET    /api/compare?a=…&b=…
 GET    /api/jobs                       all jobs w/ state, progress, log tail
 ```

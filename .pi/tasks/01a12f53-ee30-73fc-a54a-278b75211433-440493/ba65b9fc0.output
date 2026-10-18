@@ -1,0 +1,15 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+reach: 256893323 objects in 8115 ms
+scc: 105488584 components in 22179 ms
+cons: 8388608/105488584 comps, 71004 shapes, 9018 MB used
+cons: 16777216/105488584 comps, 164053 shapes, 9059 MB used
+cons: 25165824/105488584 comps, 256942 shapes, 9115 MB used
+cons: 33554432/105488584 comps, 349142 shapes, 9098 MB used
+cons: 41943040/105488584 comps, 442182 shapes, 9120 MB used
+Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.HashMap.resize(HashMap.java:736)
+	at java.base/java.util.HashMap.merge(HashMap.java:1397)
+	at shapes.ShapesAnalyzer.consScc(Shapes.kt:484)
+	at shapes.ShapesAnalyzer.cons(Shapes.kt:420)
+	at shapes.ShapesAnalyzer.analyze(Shapes.kt:129)
+	at shapes.MainKt.main(Main.kt:68)

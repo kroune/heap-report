@@ -1,0 +1,29 @@
+{
+  "id": "b648674af",
+  "name": "watch FSDI job 5",
+  "command": "while true; do curl -s http://127.0.0.1:8321/api/jobs | python3 -c \"\nimport json,sys\njs = {j['id']: j for j in json.load(sys.stdin)}\nj = js.get(5,{})\nst = j.get('state','?')\nprint('job5:', st, (j.get('error') or '')[:150])\nexit(0 if st in ('done','error','cancelled') else 1)\" && exit 0; sleep 90; done",
+  "description": "watch FSDI shapes job 5 until terminal",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b648674af.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792310845891,
+  "endTime": 1792312196666,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2953508,
+  "bytesWritten": 237,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 7200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

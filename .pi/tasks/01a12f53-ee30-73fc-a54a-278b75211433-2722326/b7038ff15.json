@@ -1,0 +1,29 @@
+{
+  "id": "b7038ff15",
+  "name": "heap-report server 8321",
+  "command": "python3 -m backend.kernel --port 8321",
+  "description": "heap-report dev server for visual verification",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b7038ff15.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792305363643,
+  "endTime": 1792305363774,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 2904893,
+  "bytesWritten": 1102,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": false,
+  "notifyOnCompletion": false,
+  "triggerOnCompletion": false,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

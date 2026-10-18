@@ -1,0 +1,154 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - heading "Heap report Gradle sync-OOM benchmark · Eclipse MAT extracts" [level=1] [ref=e3]
+    - button "choose heap dump" [ref=e4] [cursor=pointer]
+  - navigation [ref=e5]:
+    - button "Classes" [ref=e6] [cursor=pointer]
+    - button "Treemap" [ref=e7] [cursor=pointer]
+    - button "Compare" [ref=e8] [cursor=pointer]
+  - main [ref=e9]:
+    - generic [ref=e11]:
+      - generic [ref=e12]:
+        - textbox "filter classes, e.g. CachePolicy or com.android…" [ref=e13]
+        - generic [ref=e14]: retained/per-instance appear once a class is analyzed (click Analyze or open a viz). Lambda specializations are merged into $$Lambda* families.
+        - generic [ref=e15]:
+          - generic [ref=e16]: …
+          - button "‹" [ref=e17] [cursor=pointer]
+          - button "›" [ref=e18] [cursor=pointer]
+      - table [ref=e20]:
+        - rowgroup:
+          - row "class objects shallow ▾ per inst retained per inst analysis":
+            - columnheader "class"
+            - columnheader "objects"
+            - columnheader "shallow ▾"
+            - columnheader "per inst"
+            - columnheader "retained"
+            - columnheader "per inst"
+            - columnheader "analysis"
+            - columnheader
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+          - row:
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+            - cell
+  - generic [ref=e22]:
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: compact
+        - generic [ref=e26]: run-jfr-38
+        - generic [ref=e27]: queued
+      - button "×" [ref=e28] [cursor=pointer]
+      - button "cancel" [ref=e29] [cursor=pointer]
+    - generic [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e32]: shapes
+        - generic [ref=e33]: run-jfr-38 — com.android.build.api.variant.impl.FlatSourceDirectoriesImpl
+        - generic [ref=e34]: running
+      - button "×" [ref=e35] [cursor=pointer]
+      - button "cancel" [ref=e36] [cursor=pointer]
+      - generic [ref=e37]: "BFS: 1000000 objects, 132096/s BFS: 2000000 objects, 161532/s BFS: 3000000 objects, 181486/s BFS: 4000000 objects, 108650/s BFS: 5000000 objects, 104479/s BFS: 6000000 objects, 124451/s BFS: 7000000 objects, 118287/s BFS: 8000000 objects, 131349/s BFS: 9000000 objects, 142680/s BFS: 10000000 objects, 139278/s"
+      - group [ref=e38]:
+        - generic "full log (14 lines)" [ref=e39] [cursor=pointer]

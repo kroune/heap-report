@@ -13,6 +13,9 @@ dumps/<id>/
   data/
     meta.json             # store-owned state (see below)
     analysis.db           # SQLite: every extract, ingested at landing (see below)
+    shapes/<cls>-<sha>.shp1  # EXPERIMENTAL exact structural collapse (SHAPES.md),
+                          #   written atomically by the SHAPES job; deterministic
+                          #   name from the class (no index file)
   *.index.zst             # compacted Eclipse MAT indexes
   .dl/                    # in-flight download parts (shared by the component
                           #   stages; removed only by the store's quiescent sweep)

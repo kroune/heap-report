@@ -1,0 +1,29 @@
+{
+  "id": "b6cf88469",
+  "name": "extract DLC discovered-filtered",
+  "command": "java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-extract --hprof dumps/run-jfr-38/daemon.hprof --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --out /tmp/dlc2.grph",
+  "description": "mat-extract DefaultLegacyConfiguration with discovered filter",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b6cf88469.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792303817372,
+  "endTime": 1792304760472,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2890914,
+  "bytesWritten": 12111,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

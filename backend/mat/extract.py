@@ -36,6 +36,7 @@ import time
 import zipfile
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 from .. import core
 
@@ -245,6 +246,30 @@ class MatRunner:
                 log(f"  removed stale parse debris: {os.path.basename(p)}")
         finally:
             f.close()
+
+    @contextmanager
+    def index_read_hold(self, dump_dir, log):
+        """Restore the compacted indexes, then hold .matindex.lock SHARED for the
+        caller's whole read — for NON-MAT index readers (the shapes extractor):
+        compact/restore (LOCK_EX) must wait for a live reader instead of
+        deleting the raws underneath it. Same restore+recheck dance as run(),
+        without the MAT-specific hprof mtime pin."""
+        lock = None
+        for _ in range(3):
+            self.restore_indexes(dump_dir, log)
+            lock = open(os.path.join(dump_dir, ".matindex.lock"), "a")
+            fcntl.flock(lock, fcntl.LOCK_SH)
+            if all(os.path.exists(z[:-4])
+                   for z in glob.glob(os.path.join(dump_dir, "*.index.zst"))):
+                break
+            lock.close()
+        else:
+            raise RuntimeError(f"MAT indexes in {dump_dir} keep vanishing under a "
+                               "concurrent compact — giving up")
+        try:
+            yield
+        finally:
+            lock.close()
 
     def run(self, job, hprof, outdir, sfx, command, keep_name, limit=2000000,
             abort=None):

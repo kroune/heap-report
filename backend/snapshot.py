@@ -38,7 +38,7 @@ _check_style's docstring.
 Snapshot payload shape (window.__INLINE__) — pinned by the header comment of
 web/data/inlinerepo.js (that module owns the shape):
 
-  {name, stats, trees, classes, comps, anats}
+  {name, stats, trees, classes, comps, anats, shapes}
     name     dump id
     stats    engine.trees(id)["stats"]
     trees    engine.trees(id)["trees"]
@@ -47,6 +47,7 @@ web/data/inlinerepo.js (that module owns the shape):
              lams = [[name,c,s],...]|null
     comps    {className: composition payload}        — analyzed classes only
     anats    {className: anatomy payload}            — analyzed classes only
+    shapes   {className: shapes payload}             — classes with a SHP1 artifact
 """
 from __future__ import annotations
 
@@ -108,7 +109,7 @@ def collect_payload(engine, dump_id):
         page += 1
         if page >= res["pages"]:
             break
-    comps, anats = {}, {}
+    comps, anats, shapes = {}, {}, {}
     for row in rows:
         disp = row["disp"]
         if row.get("comp"):
@@ -119,6 +120,9 @@ def collect_payload(engine, dump_id):
             a = engine.anatomy(dump_id, disp)
             if a is not None:
                 anats[disp] = a
+        s = engine.shapes(dump_id, disp)   # deterministic artifact path; None when absent
+        if s is not None:
+            shapes[disp] = s
     classes = [[r["disp"], r["c"], r["s"], r["r"], 1 if r["comp"] else 0,
                 r["anat"], r["lams"]] for r in rows]
     return {"name": dump_id,
@@ -126,7 +130,8 @@ def collect_payload(engine, dump_id):
             "trees": trees_payload["trees"],
             "classes": classes,
             "comps": comps,
-            "anats": anats}
+            "anats": anats,
+            "shapes": shapes}
 
 
 # ---------------------------------------------------------------- module graph

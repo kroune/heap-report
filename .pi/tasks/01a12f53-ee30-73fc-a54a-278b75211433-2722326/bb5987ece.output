@@ -1,0 +1,10 @@
+	at java.base/java.lang.StringBuilder.append(StringBuilder.java:91)
+	at kotlin.text.StringsKt__AppendableKt.appendElement(Appendable.kt:92)
+	at kotlin.collections.CollectionsKt___CollectionsKt.joinTo(_Collections.kt:3805)
+	at kotlin.collections.CollectionsKt___CollectionsKt.joinToString(_Collections.kt:3824)
+	at kotlin.collections.CollectionsKt___CollectionsKt.joinToString$default(_Collections.kt:3823)
+	at shapes.ShapesAnalyzer.aggregate(Shapes.kt:746)
+	at shapes.ShapesAnalyzer.analyzeDebug(Shapes.kt:162)
+	at shapes.MainKt.main(Main.kt:70)
+=== artifact ===
+no artifact

@@ -1,0 +1,29 @@
+{
+  "id": "ba26bbe1e",
+  "name": "extract FSDI filtered",
+  "command": "flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-extract --hprof dumps/run-jfr-38/daemon.hprof --class org.gradle.api.internal.file.collections.FlatSourceDirectoriesImpl_Decorated --out /tmp/fsdi2.grph 2>&1 | grep -v \"BFS:\\|pass1:\\|pass2:\" | tail -8",
+  "description": "extract FlatSourceDirectoriesImpl_Decorated with discovered filter under shared index lock",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/ba26bbe1e.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792305332208,
+  "endTime": 1792305332302,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2904633,
+  "bytesWritten": 591,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

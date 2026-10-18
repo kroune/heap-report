@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/backend/kernel.py", line 112, in <module>
+    main()
+    ~~~~^^
+  File "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/backend/kernel.py", line 108, in main
+    http.serve(app, args.port)
+    ~~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/backend/http.py", line 351, in serve
+    srv = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+  File "/usr/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/usr/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/usr/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+OSError: [Errno 98] Address already in use

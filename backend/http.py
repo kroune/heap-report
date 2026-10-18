@@ -312,6 +312,21 @@ class _Handler(BaseHTTPRequestHandler):
                 if res is None:
                     return self._json(404, {"analyzed": False})
                 return self._json(200, res)
+            if action == "shapes" and method == "GET":
+                cls = qs.get("class", [""])[0]
+                if not cls:
+                    raise core.ApiError("bad_request", "class required", 400)
+                res = app.engine.shapes(dump_id, cls)
+                if res is None:
+                    return self._json(404, {"analyzed": False})
+                return self._json(200, res)
+            if action == "shapes-analyze" and method == "POST":
+                cls = str(self._body().get("class", ""))
+                if not CLASS_RE.match(cls):
+                    raise core.ApiError("bad_request",
+                                        f"invalid class name: {cls!r}", 400)
+                job = app.engine.analyze_shapes(dump_id, cls)
+                return self._json(200, _job_json(job))
             if action == "analyze" and method == "POST":
                 body = self._body()
                 cls = str(body.get("class", ""))

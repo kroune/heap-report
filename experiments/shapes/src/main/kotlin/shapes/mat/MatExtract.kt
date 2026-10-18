@@ -61,7 +61,10 @@ object MatExtract {
     }
 
     fun extract(hprof: String, className: String, out: Path) {
-        val s = open(hprof)
+        // withReader: filtering java.lang.ref.Reference.discovered needs field
+        // names, and those need the real hprof object reader (standalone
+        // subclass — HprofHeapObjectReader.open drags in OSGi preferences)
+        val s = open(hprof, withReader = true)
         try {
             val t0 = System.nanoTime()
             val classes = s.getClassesByName(className, false)
@@ -69,6 +72,32 @@ object MatExtract {
             check(classes.isNotEmpty()) { "class not found: $className" }
             val roots = classes.flatMap { it.objectIds.asIterable() }.distinct()
             println("class $className: ${classes.size} class object(s), ${roots.size} instances")
+
+            // java.lang.ref.Reference.discovered is the GC's discovered-list
+            // linkage — VM bookkeeping captured mid-flight, not program
+            // structure. It also poisons the exact collapse: a ~100k-link
+            // list makes every list depth a distinct shape (30k layers for
+            // 1 MB of actual data). Filtered here, at the source of truth.
+            val refClassIds = (s.getClassesByName("java.lang.ref.Reference", true) ?: emptyList())
+                .mapTo(HashSet()) { it.objectId }
+            println("java.lang.ref.Reference subtypes: ${refClassIds.size} classes — .discovered edges filtered")
+
+            // java.lang.Class instances MISSING from the class table: the 9
+            // primitive class objects (int.class..void.class) have no
+            // ClassImpl entry, so isClass() misses them and they slip past
+            // the class filter via real fields (MethodType.rtype ->
+            // int.class). Class objects don't belong to R regardless.
+            var leaks = IntArray(0)
+            for (cl in s.getClassesByName("java.lang.Class", false) ?: emptyList())
+                for (id in cl.objectIds)
+                    if (!s.isClass(id)) leaks = leaks.plus(id)
+            if (leaks.isNotEmpty())
+                println("primitive class objects outside the class table: ${leaks.size} — also filtered")
+            fun isExcludedClass(w: Int): Boolean {
+                if (s.isClass(w)) return true
+                for (id in leaks) if (id == w) return true
+                return false
+            }
 
             // phase 1: BFS over outbound refs, visited bitmap over MAT id space
             val n = s.snapshotInfo.numberOfObjects
@@ -82,14 +111,24 @@ object MatExtract {
             while (stack.sp > 0) {
                 val v = stack.pop()
                 rIds.push(v)
-                for (w in s.getOutboundReferentIds(v)) {
-                    // MAT's outbound index includes the pseudo-reference to the
-                    // object's java.lang.Class: following it pulls in statics and
-                    // (via the class loader) most of the heap. SHAPES.md's
-                    // "dependencies in code" view is instance fields/array
-                    // elements only, so class objects never enter R here.
-                    if (w >= 0 && !visited.get(w) && !s.isClass(w)) {
-                        visited.set(w); stack.push(w)
+                if (refClassIds.contains(s.getClassOf(v).objectId)) {
+                    for (ref in s.getObject(v).outboundReferences) {
+                        if (ref.name == "discovered") continue
+                        val w = ref.objectId
+                        if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
+                            visited.set(w); stack.push(w)
+                        }
+                    }
+                } else {
+                    for (w in s.getOutboundReferentIds(v)) {
+                        // MAT's outbound index includes the pseudo-reference to the
+                        // object's java.lang.Class: following it pulls in statics and
+                        // (via the class loader) most of the heap. SHAPES.md's
+                        // "dependencies in code" view is instance fields/array
+                        // elements only, so class objects never enter R here.
+                        if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
+                            visited.set(w); stack.push(w)
+                        }
                     }
                 }
                 if (rIds.sp >= progressAt) {
@@ -101,6 +140,16 @@ object MatExtract {
             val t1 = System.nanoTime()
             println("reachable: ${rIds.sp} objects, BFS in ${(t1 - t0) / 1_000_000} ms")
             if (rIds.sp == 0) error("empty reachable set")
+
+            // correctness guard: class objects must never enter R (their
+            // outbound statics would drag in most of the heap). Cheap:
+            // iterate the class table, not the visited bitmap.
+            for (cl in s.classes) check(!visited.get(cl.objectId)) {
+                "class object leaked into R: ${cl.name} @${cl.objectId}"
+            }
+            for (id in leaks) check(!visited.get(id)) {
+                "primitive class object leaked into R: @$id"
+            }
 
             // dense id := rank in the visited set. remap via popcount-prefix
             // ranks over the visited bitmap: O(1) per ref, no ids array
@@ -119,15 +168,18 @@ object MatExtract {
             // pass 1: class table + per-node class index (iterate set bits — no ids array)
             val classNames = ArrayList<String>()
             val classIdxOf = HashMap<String, Int>()
+            val refClassIdxs = HashSet<Int>()   // class-table indices of Reference subtypes
             val nodeClass = IntArray(nR)
             var oi = 0
             var o = visited.nextSetBit(0)
             while (o >= 0) {
-                val name = s.getClassOf(o).name
-                nodeClass[oi++] = classIdxOf.getOrPut(name) {
-                    classNames.add(name)
+                val cl = s.getClassOf(o)
+                val cidx = classIdxOf.getOrPut(cl.name) {
+                    classNames.add(cl.name)
                     classNames.size - 1
                 }
+                if (refClassIds.contains(cl.objectId)) refClassIdxs.add(cidx)
+                nodeClass[oi++] = cidx
                 if (oi % 5_000_000 == 0) println("  pass1: $oi/$nR")
                 o = visited.nextSetBit(o + 1)
             }
@@ -148,16 +200,30 @@ object MatExtract {
                 oi = 0
                 o = visited.nextSetBit(0)
                 while (o >= 0) {
-                    d.writeInt(nodeClass[oi++])
+                    val nc = nodeClass[oi++]
+                    d.writeInt(nc)
                     d.writeLong(s.getHeapSize(o))
-                    val refs = s.getOutboundReferentIds(o)
-                    var refCount = 0
-                    for (w in refs) if (!s.isClass(w)) refCount++
-                    d.writeInt(refCount)
-                    for (w in refs) {
-                        if (s.isClass(w)) continue
-                        check(visited.get(w)) { "ref $w of $o escaped the reachable set" }
-                        d.writeInt(remap(w))
+                    if (refClassIdxs.contains(nc)) {
+                        // Reference subtype: named refs, .discovered filtered
+                        val outs = s.getObject(o).outboundReferences
+                        var refCount = 0
+                        for (ref in outs) if (ref.name != "discovered" && !isExcludedClass(ref.objectId)) refCount++
+                        d.writeInt(refCount)
+                        for (ref in outs) {
+                            if (ref.name == "discovered" || isExcludedClass(ref.objectId)) continue
+                            check(visited.get(ref.objectId)) { "ref ${ref.objectId} of $o escaped the reachable set" }
+                            d.writeInt(remap(ref.objectId))
+                        }
+                    } else {
+                        val refs = s.getOutboundReferentIds(o)
+                        var refCount = 0
+                        for (w in refs) if (!isExcludedClass(w)) refCount++
+                        d.writeInt(refCount)
+                        for (w in refs) {
+                            if (isExcludedClass(w)) continue
+                            check(visited.get(w)) { "ref $w of $o escaped the reachable set" }
+                            d.writeInt(remap(w))
+                        }
                     }
                     if (oi % 5_000_000 == 0) println("  pass2: $oi/$nR")
                     o = visited.nextSetBit(o + 1)
@@ -179,7 +245,7 @@ object MatExtract {
      * deserialize daemon.index ourselves, stub the object reader and call
      * the (private) SnapshotImpl constructor by reflection.
      */
-    private fun open(hprof: String): ISnapshot {
+    private fun open(hprof: String, withReader: Boolean = false): ISnapshot {
         val heapFile = File(hprof)
         val prefix = heapFile.absolutePath.removeSuffix(".hprof") + "."
         ObjectInputStream(BufferedInputStream(FileInputStream(prefix + "index"))).use { ois ->
@@ -212,11 +278,190 @@ object MatExtract {
                 BitField::class.java, IndexManager::class.java,
             )
             ctor.isAccessible = true
+            val reader: org.eclipse.mat.parser.IObjectReader =
+                if (withReader) StandaloneReader() else NoopObjectReader
             @Suppress("UNCHECKED_CAST")
-            return ctor.newInstance(
-                info, NoopObjectReader, classes, roots, rootsPerThread,
+            val snap = ctor.newInstance(
+                info, reader, classes, roots, rootsPerThread,
                 loaderLabels, arrayObjects, indexManager,
             ) as ISnapshot
+            if (withReader) reader.open(snap)
+            return snap
+        }
+    }
+
+    /**
+     * Sanity probe for the BFS class filter: print isClass() and the class
+     * name for the first `limit` java.lang.Class instances (class objects).
+     * If isClass is false for them, the extract BFS class filter is broken
+     * and class objects (with their statics) leak into R.
+     */
+    fun isClassCheck(hprof: String, maxScan: Int) {
+        val s = open(hprof, withReader = true)
+        try {
+            val classes = s.getClassesByName("java.lang.Class", false) ?: error("no Class")
+            var n = 0
+            var bad = 0
+            for (clazz in classes) for (id in clazz.objectIds) {
+                n++
+                if (!s.isClass(id)) {
+                    bad++
+                    if (bad <= 20) println("  LEAK id=$id isClass=false classOf=${s.getClassOf(id).name}")
+                }
+            }
+            println("checked $n java.lang.Class instances, isClass=false: $bad")
+        } finally {
+            s.dispose()
+        }
+    }
+
+    /**
+     * Reverse BFS over the inbound-reference index from instances of a
+     * class: the set of objects that can REACH the class's instances. For a
+     * member of the mega-SCC this must explode toward ~141M objects (every
+     * SCC member reaches every member) — a quantitative check of the
+     * mega-SCC, and the per-level referrer histogram shows WHICH classes
+     * carry the back-paths (the "absorption channels").
+     */
+    fun reachBack(hprof: String, className: String, limit: Int, maxLevel: Int, maxObjs: Int) {
+        val s = open(hprof)
+        try {
+            val t0 = System.nanoTime()
+            val classes = s.getClassesByName(className, false) ?: error("class not found: $className")
+            check(classes.isNotEmpty()) { "class not found: $className" }
+            val roots = classes.flatMap { it.objectIds.asIterable() }.distinct().take(limit)
+            println("reachback from $className: ${roots.size} seed instance(s)")
+
+            val n = s.snapshotInfo.numberOfObjects
+            val visited = BitSet(n)
+            var frontier = IntArray(roots.size)
+            var fSize = 0
+            for (r in roots) if (!visited.get(r)) { visited.set(r); frontier[fSize++] = r }
+            var next = IntArray(1 shl 16)
+            var nSize = 0
+            var total = fSize.toLong()
+            var level = 0
+            while (fSize > 0 && level <= maxLevel && total < maxObjs) {
+                val hist = HashMap<String, Int>()
+                for (i in 0 until fSize) {
+                    hist.merge(s.getClassOf(frontier[i]).name, 1, Int::plus)
+                }
+                val el = (System.nanoTime() - t0) / 1_000_000_000.0
+                println("level %2d: %,12d referrers (cumulative %,12d)  [%.0fs]".format(level, fSize, total, el))
+                hist.entries.sortedByDescending { it.value }.take(8)
+                    .forEach { (c, cnt) -> println("         %,12d  %s".format(cnt, c.take(100))) }
+                nSize = 0
+                for (i in 0 until fSize) {
+                    for (w in s.getInboundRefererIds(frontier[i])) {
+                        if (w >= 0 && !visited.get(w)) {
+                            visited.set(w)
+                            if (nSize == next.size) next = next.copyOf(next.size * 2)
+                            next[nSize++] = w
+                        }
+                    }
+                }
+                val tmp = frontier; frontier = next; next = tmp
+                fSize = nSize
+                level++
+                total += fSize
+            }
+            println("reachback total: $total objects reach $className instances")
+        } finally {
+            s.dispose()
+        }
+    }
+
+    /**
+     * Histogram of (field name -> target class) over all instance refs that
+     * point at java.lang.ref.* objects (excluding the .queue ->
+     * ReferenceQueue$Null noise). Answers "which field forms reference
+     * chains" without dumping every instance.
+     */
+    fun refTargets(hprof: String, className: String, maxScan: Int) {
+        val s = open(hprof, withReader = true)
+        try {
+            val classes = s.getClassesByName(className, false) ?: error("class not found: $className")
+            val hist = java.util.TreeMap<String, Int>()
+            var scanned = 0
+            for (clazz in classes) for (id in clazz.objectIds) {
+                if (scanned >= maxScan) break
+                scanned++
+                val obj = s.getObject(id)
+                for (ref in obj.outboundReferences) {
+                    if (s.isClass(ref.objectId)) continue
+                    val tc = s.getObject(ref.objectId).clazz.name
+                    if (tc.startsWith("java.lang.ref.ReferenceQueue")) continue
+                    if (!tc.contains("Reference")) continue
+                    hist.merge("${ref.name} -> $tc", 1, Int::plus)
+                }
+                if (scanned % 20000 == 0) println("  scanned $scanned...")
+            }
+            println("scanned $scanned instances of $className")
+            hist.entries.sortedByDescending { it.value }.take(20).forEach { println("  %,8d  %s".format(it.value, it.key)) }
+        } finally {
+            s.dispose()
+        }
+    }
+
+    /**
+     * HprofHeapObjectReader.open() drags in Eclipse preferences + the OSGi
+     * extension registry (HprofPlugin.getDefault() NPEs standalone). This
+     * subclass re-implements open() with the default strictness and no
+     * enhancers — everything it needs is the hprof file + o2hprof index.
+     */
+    private class StandaloneReader : org.eclipse.mat.hprof.HprofHeapObjectReader() {
+        override fun open(snapshot: ISnapshot) {
+            val info = snapshot.snapshotInfo
+            val version = org.eclipse.mat.hprof.describer.Version.valueOf(
+                info.getProperty(VERSION_PROPERTY) as String)
+            val olen = info.getProperty(HPROF_LENGTH_PROPERTY) as? Long
+            val dump = org.eclipse.mat.hprof.HprofRandomAccessParser(
+                java.io.File(info.path), info.prefix, version, info.identifierSize,
+                olen ?: -1,
+                org.eclipse.mat.hprof.ui.HprofPreferences.HprofStrictness.STRICTNESS_STOP)
+            val o2h = org.eclipse.mat.parser.index.IndexReader.LongIndexReader(
+                java.io.File(info.prefix + "o2hprof.index"))
+            fun set(name: String, v: Any?) {
+                val f = org.eclipse.mat.hprof.HprofHeapObjectReader::class.java.getDeclaredField(name)
+                f.isAccessible = true
+                f.set(this, v)
+            }
+            set("snapshot", snapshot)
+            set("hprofDump", dump)
+            set("o2hprof", o2h)
+            set("enhancers", ArrayList<Any>())
+        }
+    }
+
+    /**
+     * Field-level view of a few instances: outbound references WITH field
+     * names (ObjectReference.getName). Needs the real HprofHeapObjectReader
+     * (getObject reads the heap file); open() otherwise stays index-only.
+     */
+    fun fields(hprof: String, className: String, limit: Int, onlyRefTargets: Boolean) {
+        val s = open(hprof, withReader = true)
+        try {
+            val classes = s.getClassesByName(className, false) ?: error("class not found: $className")
+            var shown = 0
+            var scanned = 0
+            for (clazz in classes) {
+                for (id in clazz.objectIds) {
+                    if (shown >= limit) break
+                    val obj = s.getObject(id)
+                    val outs = obj.outboundReferences.filter { !s.isClass(it.objectId) }
+                    if (onlyRefTargets && outs.none {
+                            s.getObject(it.objectId).clazz.name.contains("Reference") }) { scanned++; continue }
+                    println("0x${obj.objectAddress.toString(16)} ${obj.clazz.name}")
+                    for (ref in outs) {
+                        val t = s.getObject(ref.objectId)
+                        println("    .${ref.name} -> ${t.clazz.name} @0x${t.objectAddress.toString(16)}")
+                    }
+                    shown++; scanned++
+                }
+            }
+            println("shown $shown instances of $className (scanned $scanned)")
+        } finally {
+            s.dispose()
         }
     }
 
@@ -246,6 +491,85 @@ object MatExtract {
             a[sp++] = v
         }
         fun pop(): Int = a[--sp]
+    }
+
+    /**
+     * BFS level-by-level from all instances of [className]; prints per-level
+     * size + top classes (shows where the reachable set explodes) and the
+     * shortest path from a root to the first object matching any [targets]
+     * substring (the "hub" — build-root-ish class). Answers "why does
+     * reachable-from-X become the whole heap" with actual heap data.
+     */
+    fun trace(hprof: String, className: String, targets: List<String>, maxLevel: Int, maxObjs: Int) {
+        val s = open(hprof)
+        try {
+            val t0 = System.nanoTime()
+            val classes = s.getClassesByName(className, false) ?: error("class not found: $className")
+            check(classes.isNotEmpty()) { "class not found: $className" }
+            val roots = classes.flatMap { it.objectIds.asIterable() }.distinct()
+            println("class $className: ${roots.size} instances (roots), targets=$targets")
+
+            val n = s.snapshotInfo.numberOfObjects
+            val visited = BitSet(n)
+            val parent = IntArray(n) { -1 } // ~1 GB at 260M objects; -2 = root sentinel
+            var frontier = IntArray(roots.size)
+            var fSize = 0
+            for (r in roots) if (!visited.get(r)) {
+                visited.set(r); frontier[fSize++] = r; parent[r] = -2
+            }
+            var next = IntArray(1 shl 16)
+            var nSize = 0
+            var total = fSize.toLong()
+            var hub = -1
+            var hubLevel = -1
+            var level = 0
+            while (fSize > 0 && level <= maxLevel && total < maxObjs) {
+                val hist = HashMap<String, Int>()
+                for (i in 0 until fSize) {
+                    val v = frontier[i]
+                    val cn = s.getClassOf(v).name
+                    hist.merge(cn, 1, Int::plus)
+                    if (hub < 0 && targets.any { cn.contains(it) }) {
+                        hub = v; hubLevel = level
+                    }
+                }
+                val el = (System.nanoTime() - t0) / 1_000_000_000.0
+                println("level %2d: %,12d objects (cumulative %,12d)  [%.0fs]".format(level, fSize, total, el))
+                hist.entries.sortedByDescending { it.value }.take(6)
+                    .forEach { (c, cnt) -> println("         %,12d  %s".format(cnt, c.take(100))) }
+                nSize = 0
+                for (i in 0 until fSize) {
+                    val v = frontier[i]
+                    for (w in s.getOutboundReferentIds(v)) {
+                        if (w >= 0 && !visited.get(w) && !s.isClass(w)) {
+                            visited.set(w); parent[w] = v
+                            if (nSize == next.size) next = next.copyOf(next.size * 2)
+                            next[nSize++] = w
+                        }
+                    }
+                }
+                val tmp = frontier; frontier = next; next = tmp
+                fSize = nSize
+                total += fSize
+                level++
+            }
+            println("stopped: level=$level cumulative=%,d".format(total))
+            if (hub >= 0) {
+                println("\nshortest path root -> hub (hub at level $hubLevel):")
+                val path = ArrayList<Int>()
+                var v = hub
+                while (v >= 0) { path.add(v); v = parent[v] }
+                path.reverse()
+                for ((i, id) in path.withIndex()) {
+                    val out = s.getOutboundReferentIds(id).size
+                    println("  %2d: %-90s out=%d".format(i, s.getClassOf(id).name.take(90), out))
+                }
+            } else {
+                println("\nno target hub found within $maxLevel levels / $maxObjs objects")
+            }
+        } finally {
+            s.dispose()
+        }
     }
 
     // ids.size used below as rIds.sp equivalent

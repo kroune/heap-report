@@ -1,0 +1,30 @@
+{
+  "id": "b7aba1a00",
+  "name": "watch FSDI job 2",
+  "command": "while true; do curl -s http://127.0.0.1:8321/api/jobs | python3 -c \"\nimport json,sys\njs = {j['id']: j for j in json.load(sys.stdin)}\nj3 = js.get(3,{})\nst = j3.get('state','?')\nprint('job3:', st, (j3.get('error') or '')[:200])\nexit(0 if st in ('done','error','cancelled') else 1)\" && exit 0; sleep 60; done",
+  "description": "watch FSDI shapes job 3 until terminal",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b7aba1a00.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792309413695,
+  "endTime": 1792316613699,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 2940470,
+  "bytesWritten": 23143,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Timed out after 7200s",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 7200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

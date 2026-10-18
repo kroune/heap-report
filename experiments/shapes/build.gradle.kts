@@ -32,3 +32,16 @@ application {
     // experiment budget: both the MAT extractor and the analyzer run capped
     applicationDefaultJvmArgs = listOf("-Xmx2g")
 }
+
+// Fat jar for the heap-report backend integration (SHAPES_JAR): the MAT jars
+// are signed (bouncycastle), so signatures must be stripped on repack.
+tasks.register<Jar>("fatJar") {
+    archiveBaseName.set("shapes-experiment")
+    archiveClassifier.set("all")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest { attributes("Main-Class" to "shapes.MainKt") }
+    from({ configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) } })
+    from(sourceSets.main.get().output)
+    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
+    exclude("META-INF/versions/**/module-info.class", "module-info.class")
+}

@@ -1,0 +1,35 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+cons: 8388608/105488584 comps, 71004 shapes, 8584 MB used, maxProbe=31
+cons: 16777216/105488584 comps, 164053 shapes, 8360 MB used, maxProbe=31
+cons: 25165824/105488584 comps, 256942 shapes, 8168 MB used, maxProbe=32
+cons: 33554432/105488584 comps, 349142 shapes, 9263 MB used, maxProbe=32
+cons: 41943040/105488584 comps, 442182 shapes, 9093 MB used, maxProbe=32
+cons: 50331648/105488584 comps, 532580 shapes, 8235 MB used, maxProbe=36
+cons: 58720256/105488584 comps, 625537 shapes, 9334 MB used, maxProbe=36
+cons: 67108864/105488584 comps, 719420 shapes, 9238 MB used, maxProbe=36
+cons: 75497472/105488584 comps, 810463 shapes, 9143 MB used, maxProbe=42
+cons: 83886080/105488584 comps, 899885 shapes, 9072 MB used, maxProbe=42
+cons: 92274688/105488584 comps, 1067979 shapes, 8476 MB used, maxProbe=42
+cons: 100663296/105488584 comps, 1323396 shapes, 8891 MB used, maxProbe=42
+analyze: 133647 ms
+verify-edges: MISMATCHES:
+  - edge #605554 -> #605548: emitted 4 != true 2
+  - edge #1035300 -> #1035266: emitted 4 != true 2
+  - edge #75716 -> #75759: emitted 2 != true 1
+  - edge #1009007 -> #1008976: emitted 4 != true 2
+  - edge #48367 -> #48336: emitted 2 != true 1
+  - edge #855972 -> #856049: emitted 2 != true 1
+  - edge #115221 -> #115267: emitted 4 != true 2
+  - edge #387217 -> #387296: emitted 4 != true 2
+  - edge #1232732 -> #1232680: emitted 4 != true 2
+  - edge #585444 -> #585318: emitted 4 != true 2
+  - edge #959248 -> #959363: emitted 4 != true 2
+  - edge #87306 -> #87443: emitted 2 != true 1
+  - edge #1205517 -> #1205724: emitted 4 != true 2
+  - edge #982436 -> #982338: emitted 2 != true 1
+  - edge #834478 -> #834374: emitted 2 != true 1
+  - edge #747767 -> #748012: emitted 4 != true 2
+  - edge #16099 -> #16293: emitted 4 != true 2
+  - edge #140416 -> #140749: emitted 2 != true 1
+  - edge #913545 -> #913912: emitted 4 != true 2
+  - edge #301718 -> #301842: emitted 2 != true 1

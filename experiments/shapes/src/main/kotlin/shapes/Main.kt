@@ -14,6 +14,7 @@ real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
   mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
+  mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
   analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
 
 graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line, '#' comments
@@ -52,19 +53,62 @@ fun main(args: Array<String>) {
         "mat-extract" -> shapes.mat.MatExtract.extract(
             opts.require("hprof"), opts.require("class"), Path.of(opts.require("out"))
         )
+        "mat-trace" -> shapes.mat.MatExtract.trace(
+            opts.require("hprof"), opts.require("class"),
+            (opts["targets"] ?: "DefaultGradleBuild,DefaultGradle,BuildState,DefaultProject").split(","),
+            (opts["maxlevel"] ?: "15").toInt(),
+            (opts["maxobjs"] ?: "80000000").toInt(),
+        )
+        "mat-fields" -> shapes.mat.MatExtract.fields(
+            opts.require("hprof"), opts.require("class"),
+            (opts["limit"] ?: "5").toInt(), !opts.flag("all"),
+        )
+        "mat-ref-targets" -> shapes.mat.MatExtract.refTargets(
+            opts.require("hprof"), opts.require("class"),
+            (opts["maxscan"] ?: "1000000000").toInt(),
+        )
+        "mat-isclass" -> shapes.mat.MatExtract.isClassCheck(
+            opts.require("hprof"),
+            (opts["limit"] ?: "5").toInt(),
+        )
+        "mat-reachback" -> shapes.mat.MatExtract.reachBack(
+            opts.require("hprof"), opts.require("class"),
+            (opts["limit"] ?: "3").toInt(),
+            (opts["maxlevel"] ?: "30").toInt(),
+            (opts["maxobjs"] ?: "150000000").toInt(),
+        )
         "analyze-grph" -> {
             val g = ObjectGraph.loadGrph(Path.of(opts.require("graph")))
             val cls = opts.require("class")
             val roots = g.instancesOf(cls)
             println("loaded ${g.size} objects (source heap ${g.sourceObjectCount}), class $cls: ${roots.size} roots")
             val t0 = System.nanoTime()
-            val t = ShapesAnalyzer(g).analyze(roots)
+            if (opts.flag("verify-edges")) {
+                // inv3 audit: analyze once, then check every ref against the artifact
+                val dbg = ShapesAnalyzer(g).apply { progress = ::println }.analyzeDebug(roots)
+                println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
+                opts["out"]?.let {
+                    ShapesEmit.write(dbg.table, Path.of(it))
+                    println("artifact written: $it")
+                }
+                val problems = verifyEdgeAccounting(g, dbg)
+                if (problems.isEmpty()) println("verify-edges: edge accounting exact")
+                else {
+                    println("verify-edges: MISMATCHES:")
+                    problems.forEach { println("  - $it") }
+                    exitProcess(1)
+                }
+                return
+            }
+            val t = ShapesAnalyzer(g).apply { progress = ::println }.analyze(roots)
             println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
-            printReport(t)
+            // artifact FIRST: printReport of a mega-SCC_UNIQUE shape can emit
+            // a million edge lines — the report must never cost the artifact
             opts["out"]?.let {
                 ShapesEmit.write(t, Path.of(it))
                 println("artifact written: $it")
             }
+            printReport(t)
             if (opts.flag("verify")) runVerify(g, roots, t)
         }
         else -> {
@@ -102,7 +146,7 @@ private fun printReport(t: ShapeTable) {
                 e.shallowMin, e.shallowMax, e.rootCount
             )
         )
-        for (edge in t.edgesOf(e.id)) {
+        for (edge in t.edgesOf(e.id).take(10)) {
             val child = t.entries[edge.childShapeId]
             println(
                 "        -> #%-4d %-46s mult=%d%s".format(
@@ -111,6 +155,8 @@ private fun printReport(t: ShapeTable) {
                 )
             )
         }
+        val more = t.edgesOf(e.id).size - 10
+        if (more > 0) println("        -> ... and $more more edges")
     }
 }
 

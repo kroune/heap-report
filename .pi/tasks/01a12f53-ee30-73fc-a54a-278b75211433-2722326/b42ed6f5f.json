@@ -1,0 +1,29 @@
+{
+  "id": "b42ed6f5f",
+  "name": "257M evidence run",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx9728m -verbose:gc -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify-edges\necho \"EXIT=$?\"\nls -la /tmp/flat.shp1 2>/dev/null || echo \"no artifact\"",
+  "description": "257M run at 9728m with FULL output + GC log to capture the real exception",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b42ed6f5f.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792246550191,
+  "endTime": 1792246690545,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2727983,
+  "bytesWritten": 37358,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

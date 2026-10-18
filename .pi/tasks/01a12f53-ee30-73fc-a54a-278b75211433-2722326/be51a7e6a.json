@@ -1,0 +1,29 @@
+{
+  "id": "be51a7e6a",
+  "name": "grab GRPH intermediate",
+  "command": "while true; do g=$(ls dumps/run-jfr-38/data/shapes/.*.grph 2>/dev/null | head -1); if [ -n \"$g\" ]; then sz1=$(stat -c%s \"$g\"); sleep 5; sz2=$(stat -c%s \"$g\" 2>/dev/null || echo 0); if [ \"$sz1\" = \"$sz2\" ] && [ \"$sz1\" -gt 1000000000 ]; then cp \"$g\" /home/olowo/dlc-capab.grph && echo \"COPIED $g -> /home/olowo/dlc-capab.grph ($sz1 bytes)\" && exit 0; fi; fi; sleep 20; done",
+  "description": "grab GRPH intermediate when extract finishes writing it",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/be51a7e6a.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792312484935,
+  "endTime": 1792313881383,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2969231,
+  "bytesWritten": 4100,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

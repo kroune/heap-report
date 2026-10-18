@@ -1,0 +1,29 @@
+{
+  "id": "b3704d909",
+  "name": "Watch MAT analyze retry",
+  "command": "while :; do s=$(curl -fsS --max-time 10 http://127.0.0.1:8321/api/jobs/8 | python3 -c 'import json,sys; print(json.load(sys.stdin)[\"state\"])' 2>/dev/null) || exit 2; case \"$s\" in done|failed|cancelled) echo \"job 8 terminal: $s\"; exit 0;; esac; sleep 30; done",
+  "description": "Watch MAT analyze retry",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b3704d909.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792317960785,
+  "endTime": 1792318092109,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3017943,
+  "bytesWritten": 21,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 7200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

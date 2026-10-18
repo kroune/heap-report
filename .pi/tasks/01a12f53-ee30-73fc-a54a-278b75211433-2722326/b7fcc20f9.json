@@ -1,0 +1,29 @@
+{
+  "id": "b7fcc20f9",
+  "name": "analyze DLC filtered",
+  "command": "java -Xmx10g -jar experiments/shapes/build/libs/shapes-experiment-all.jar analyze-grph --graph /tmp/dlc2.grph --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --out /tmp/dlc2.shp1 --verify 2>&1 | tail -60",
+  "description": "analyze-grph DLC discovered-filtered + verify",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b7fcc20f9.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792304821154,
+  "endTime": 1792304929397,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2899615,
+  "bytesWritten": 5841,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

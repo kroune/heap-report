@@ -1,0 +1,29 @@
+{
+  "id": "b12c257be",
+  "name": "watch shapes jobs",
+  "command": "while true; do st=$(curl -s http://127.0.0.1:8321/api/jobs | python3 -c \"\nimport json,sys\njs = {j['id']: j for j in json.load(sys.stdin)}\nj1, j3 = js.get(1,{}).get('state'), js.get(3,{}).get('state')\nprint(j1, j3)\nif j1 in ('done','error') and j3 in ('done','error'): exit(0)\nexit(1)\"); echo \"$(date +%H:%M:%S) job1/job3: $st\"; echo \"$st\" | grep -qE \"done|error\" && exit 0; sleep 60; done",
+  "description": "watch shapes jobs 1 and 3 until terminal",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/b12c257be.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792307779222,
+  "endTime": 1792308860072,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 2926699,
+  "bytesWritten": 663,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 10800,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

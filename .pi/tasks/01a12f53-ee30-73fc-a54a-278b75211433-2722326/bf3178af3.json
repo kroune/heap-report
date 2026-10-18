@@ -1,0 +1,29 @@
+{
+  "id": "bf3178af3",
+  "name": "reachback from config",
+  "command": "flock -s dumps/run-jfr-38/.matindex.lock java -Xmx4g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-reachback --hprof dumps/run-jfr-38/daemon.hprof --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --limit 1 --maxlevel 40 --maxobjs 200000000 2>&1 | grep -v \"^         \" | tail -50",
+  "description": "reverse-BFS from one mega-SCC member; levels only",
+  "status": "killed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-2722326/bf3178af3.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792311798539,
+  "endTime": 1792311812440,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 2961690,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

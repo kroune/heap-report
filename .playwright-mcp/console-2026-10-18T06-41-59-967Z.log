@@ -1,0 +1,2 @@
+[   12639ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8321/api/dumps/run-jfr-38/anatomy?class=org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated:0
+[   12649ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8321/api/dumps/run-jfr-38/composition?class=org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated:0

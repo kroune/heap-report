@@ -126,9 +126,11 @@ class ShapesTest {
     }
 
     @Test
-    fun `symmetric same-class cycle does not discretize and never merges`() {
-        // two identical directed 3-cycles, all members same class: color refinement
-        // cannot tell members apart -> each SCC stays its own unique shape
+    fun `symmetric same-class cycles merge via WL-fixpoint signature`() {
+        // two identical directed 3-cycles, all members same class: color
+        // refinement cannot tell members apart (no discretization), but the
+        // fixpoint signature is automorphism-invariant -> the cycles merge
+        // (the old discretize-or-unique rule kept them as 2 unique shapes)
         val g = ObjectGraph.of(
             classes = Array(6) { "N" },
             shallow = LongArray(6) { 5 },
@@ -137,10 +139,10 @@ class ShapesTest {
         )
         val t = analyze(g, intArrayOf(0, 3))
 
-        val sccs = t.entries.filter { it.kind == ShapeKind.SCC_UNIQUE }
-        assertEquals(2, sccs.size)
-        assertEquals(3, sccs[0].instanceCount)
-        assertNotEquals(sccs[0].digest, sccs[1].digest)
+        val s = t.entries.single { it.kind == ShapeKind.SCC }
+        assertEquals(6, s.instanceCount)   // member objects (2 instances × 3)
+        assertEquals(3, s.sccInstanceSize)
+        assertEquals(3, s.internalEdgesPerInstance)
     }
 
     @Test

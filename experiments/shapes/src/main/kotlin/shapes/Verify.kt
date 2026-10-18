@@ -31,7 +31,7 @@ fun verifyInvariants(g: ObjectGraph, roots: IntArray, t: ShapeTable): List<Strin
     while (stack.isNotEmpty()) {
         val v = stack.removeLast()
         rCount++
-        shallowSum += g.shallow[v]
+        shallowSum += g.shallowOf(v)
         refCount += g.refCount(v)
         g.forEachRef(v) { w ->
             if (!inR.get(w)) {
@@ -61,11 +61,70 @@ fun verifyInvariants(g: ObjectGraph, roots: IntArray, t: ShapeTable): List<Strin
     for (e in t.entries) {
         val ext = edgesByShape[e.id].orEmpty().sumOf { it.mult }
         val collapsedInstances = e.instanceCount / e.sccInstanceSize
-        accounted += if (e.edgesPerMember) ext * e.instanceCount else ext
+        accounted += if (e.edgesPerMember) ext * e.instanceCount else ext * collapsedInstances
         accounted += e.internalEdgesPerInstance * collapsedInstances
     }
     if (accounted != refCount) {
         problems += "inv3: expanded edges + internal ($accounted) != Σ refs in R ($refCount)"
     }
     return problems
+}
+
+/**
+ * Per-shape edge-accounting audit (inv3 debugging): re-derives object ->
+ * shape from the analyzer internals and checks EVERY ref in R against the
+ * emitted shape-DAG. Full pass over all refs — minutes at 10⁸ objects.
+ * Returns up to 20 mismatch lines; empty = exact.
+ */
+fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult): List<String> {
+    val t = dbg.table
+    val pubByDigest = HashMap<Digest128, Int>()
+    for (e in t.entries) pubByDigest[e.digest] = e.id
+    val pubOfInternal = IntArray(dbg.shapes.size) { pubByDigest.getValue(dbg.shapes[it].digest) }
+    val shapeOfObj = IntArray(g.size) { -1 }
+    for (c in 0 until dbg.comps.count) {
+        val sid = pubOfInternal[dbg.shapeOfComp[c]]
+        dbg.comps.forEachMember(c) { o -> shapeOfObj[o] = sid }
+    }
+    // same shape <=> same component (a cross-comp same-shape ref would be a
+    // shape-DAG cycle, which the condensation forbids)
+    val extTruth = HashMap<Long, Long>()
+    val intTruth = HashMap<Int, Long>()
+    for (o in 0 until g.size) {
+        val so = shapeOfObj[o]
+        if (so < 0) continue   // outside R (partial-reach text graphs)
+        g.forEachRef(o) { w ->
+            val sw = shapeOfObj[w]
+            if (sw == so) intTruth.merge(so, 1L, Long::plus)
+            else extTruth.merge((so.toLong() shl 32) or (sw.toLong() and 0xffffffffL), 1L, Long::plus)
+        }
+    }
+    val problems = mutableListOf<String>()
+    val entries = t.entries.associateBy { it.id }
+    for (e in t.entries) {
+        val collapsed = e.instanceCount / e.sccInstanceSize
+        val intEmitted = e.internalEdgesPerInstance * collapsed
+        val intTrue = intTruth[e.id] ?: 0L
+        if (intEmitted != intTrue) {
+            problems += "shape #${e.id} ${e.kind} ${e.label.take(50)}: " +
+                "internal emitted $intEmitted != true $intTrue"
+        }
+    }
+    val extEmitted = HashMap<Long, Long>()
+    for (edge in t.edges) {
+        val src = entries.getValue(edge.shapeId)
+        val m = if (src.edgesPerMember) edge.mult * src.instanceCount
+            else edge.mult * (src.instanceCount / src.sccInstanceSize)
+        extEmitted.merge((edge.shapeId.toLong() shl 32) or
+            (edge.childShapeId.toLong() and 0xffffffffL), m, Long::plus)
+    }
+    for ((k, v) in extEmitted) {
+        val tv = extTruth[k] ?: 0L
+        if (tv != v) problems += "edge #${k shr 32} -> #${k and 0xffffffff}: emitted $v != true $tv"
+    }
+    for ((k, v) in extTruth) {
+        if (!extEmitted.containsKey(k))
+            problems += "edge #${k shr 32} -> #${k and 0xffffffff}: true $v missing from artifact"
+    }
+    return problems.take(20)
 }

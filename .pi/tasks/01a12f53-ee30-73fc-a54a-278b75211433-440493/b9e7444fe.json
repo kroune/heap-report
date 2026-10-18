@@ -1,0 +1,30 @@
+{
+  "id": "b9e7444fe",
+  "name": "analyze 257M final",
+  "command": "JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar\njava -Xmx9728m -jar $JAR analyze-grph --graph /tmp/flat.grph --class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl --out /tmp/flat.shp1 --verify && ls -la /tmp/flat.shp1",
+  "description": "analyze-grph 257M final attempt at 9728m",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-440493/b9e7444fe.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1791839390953,
+  "endTime": 1791839542155,
+  "exitCode": null,
+  "signal": "SIGTERM",
+  "pid": 743367,
+  "bytesWritten": 20971595,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Output exceeded cap of 20.0MB; terminating task",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

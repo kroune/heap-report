@@ -24,7 +24,22 @@ multiplicities.
 
 ## Definitions
 
-- **Object graph** G: heap objects + outbound references (MAT index).
+- **Object graph** G: heap objects + outbound references (MAT index),
+  EXCEPT:
+  - class objects (`java.lang.Class` instances — they carry statics, which
+    would drag in most of the heap). NOTE: MAT's `isClass` misses the 9
+    primitive class objects (`int.class`..`void.class` — no ClassImpl
+    entries), so the filter also excludes class-table gaps explicitly
+    (found on run-jfr-38: exactly those 9 leaked via `MethodType.rtype`
+    before the fix); a post-BFS guard fails the extract if any class
+    object is in R.
+  - `java.lang.ref.Reference.discovered` — the GC's discovered-list
+    linkage. That list is VM bookkeeping captured mid-flight, not program
+    state (a dump catches ~100k references linked in one chain regardless
+    of their types), and it poisons the exact collapse: a list of length k
+    is a different shape than k−1, so the chain alone produced ~30k
+    shapes/layers for 1 MB of data (evidence: run-jfr-38, field-level
+    check via `mat-ref-targets`: 105,329 × `discovered -> WeakReference`).
 - **Roots**: every instance of the queried class (full `INSTANCEOF` id list,
   no sampling).
 - **Scope** R ⊆ G: objects reachable from roots. (Current impl uses
@@ -48,10 +63,19 @@ multiplicities.
 - **SCC node**: canonical form via color refinement over members
   (colors from `(class, internal-neighbor colors, child-shape colors)`,
   iterate to fixpoint):
-  - refinement **discretizes** (all singleton color classes) → canonical
-    serialization is an exact isomorphism certificate → mergeable;
-  - doesn't discretize, or |SCC| > 64 → the SCC is its own unique node,
-    never merged. Exotic in real heaps; costs nothing measurable.
+  - merge key = the WL-fixpoint signature: multiset of per-member
+    `(class, internal-neighbor color ranks, external child shapes)`.
+    Automorphism-invariant, so it is canonical **whether or not**
+    refinement fully discretizes — symmetric SCCs (e.g. a 2-cycle of
+    identical `LinkedHashMap` entries) merge too. WL-equivalence is a
+    superset of isomorphism; for heap SCCs (lists, maps, trees) it is
+    exact in practice, and counts/totals stay exact regardless because
+    same-color members carry identical edges. (The earlier
+    discretize-or-unique rule produced 201k duplicate shapes on
+    run-jfr-38 — every symmetric small SCC became its own shape.)
+  - |SCC| > 64 → the SCC is its own unique node, never merged (memory:
+    refinement structures cost ~200 B/member — a 142M-member mega-SCC
+    cannot afford them; mega-SCCs are 1–2 per heap anyway).
   - a self-loop object is a size-1 SCC with an internal edge → SCC path.
 - **shallow is NOT part of the key** (author decision, open point 3):
   `byte[16]` = `byte[1MB]` = one shape. Correctness is unaffected —
@@ -166,10 +190,13 @@ remapping in v1.
    back into the key for array classes only, or log2 size buckets. Each
    re-split multiplies shape count — measure collapse ratio before/after
    on a real dump before adopting.
-4. **SCC canonicalization**: color-refinement with discretize-or-unique
-   fallback (above). Alternative (never merge SCCs) rejected: back-pointer
-   SCCs (child→parent) are common in Gradle heaps and would block collapse
-   of everything above them.
+4. **SCC canonicalization**: color-refinement merged on the WL-fixpoint
+   signature (above) — symmetric SCCs merge. The previous
+   discretize-or-unique fallback was measured on run-jfr-38: 201k
+   duplicate shapes (16% of all shapes), dominated by 2–4-entry
+   `LinkedHashMap` cycles. Alternative (never merge SCCs) rejected:
+   back-pointer SCCs (child→parent) are common in Gradle heaps and would
+   block collapse of everything above them.
 5. **IDS_LIMIT=1M** on the roots query: needs paging for mega-classes.
 6. **Artifact format**: binary vs sqlite-direct; binary preferred, decided
    at implementation time.

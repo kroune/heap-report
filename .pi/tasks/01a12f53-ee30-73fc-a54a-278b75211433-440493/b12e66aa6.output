@@ -1,0 +1,25 @@
+loaded 256893323 objects (source heap 259806476), class com.android.build.api.variant.impl.FlatSourceDirectoriesImpl: 53998 roots
+reach: 256893323 objects in 10134 ms
+scc: 105488584 components in 32265 ms
+cons: 8388608/105488584 comps, 71004 shapes, 8097 MB used, maxProbe=296
+cons: 16777216/105488584 comps, 164053 shapes, 8344 MB used, maxProbe=2646
+cons: 25165824/105488584 comps, 256942 shapes, 8165 MB used, maxProbe=2646
+cons: 33554432/105488584 comps, 349142 shapes, 8399 MB used, maxProbe=6450
+cons: 41943040/105488584 comps, 442182 shapes, 8220 MB used, maxProbe=6450
+cons: 50331648/105488584 comps, 532580 shapes, 8460 MB used, maxProbe=6450
+cons: 58720256/105488584 comps, 625537 shapes, 8283 MB used, maxProbe=6450
+cons: 67108864/105488584 comps, 719420 shapes, 8532 MB used, maxProbe=6450
+cons: 75497472/105488584 comps, 810463 shapes, 8325 MB used, maxProbe=6450
+cons: 83886080/105488584 comps, 899885 shapes, 8523 MB used, maxProbe=6450
+cons: 92274688/105488584 comps, 1067979 shapes, 8475 MB used, maxProbe=32792
+LONGPROBE 50000: size=1037556 slots=2097152 cls=java.util.HashMap$Node[](34) nKids=1 kids=1259258x3
+LONGPROBE 100000: size=1037556 slots=2097152 cls=java.util.HashMap$Node[](34) nKids=1 kids=1259258x3
+cons: 100663296/105488584 comps, 1323396 shapes, 8477 MB used, maxProbe=145105
+Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.lang.Object.clone(Native Method)
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3589)
+	at kotlin.collections.ArraysKt___ArraysKt.sortedArray(_Arrays.kt:7545)
+	at shapes.ShapesAnalyzer.consScc(Shapes.kt:512)
+	at shapes.ShapesAnalyzer.cons(Shapes.kt:482)
+	at shapes.ShapesAnalyzer.analyze(Shapes.kt:124)
+	at shapes.MainKt.main(Main.kt:68)
