@@ -446,11 +446,12 @@ class MatQueryEngine:
                             self._fp(dump_id, [p]),
                             lambda: shapesmod.parse_shp1(p))
 
-    def analyze_shapes(self, dump_id, cls):
+    def analyze_shapes(self, dump_id, cls, scope="retained", normalize_maps=True):
         """Queue the exact shapes analysis for one class (experimental): the
         prebuilt shapes jar (SHAPES_JAR) runs mat-extract + analyze-grph on
         the serial MAT queue — it reads the MAT indexes directly, so it needs
         the same acquisition/restore discipline as MAT itself."""
+        shapesmod.analysis_options(scope, normalize_maps)
         shapesmod.shapes_jar()   # fail fast at request time, not inside the job
         hprof = self._prepare_analysis(dump_id, cls)
 
@@ -462,7 +463,8 @@ class MatQueryEngine:
                                 "collapse, experimental)")
             self._with_indexes(job, dump_id, lambda: shapesmod.analyze_class(
                 job, self._jobs, self._runner, dump_dir, hprof, cls, dst,
-                abort=self._store.abort_event(dump_id)))
+                abort=self._store.abort_event(dump_id),
+                scope=scope, normalize_maps=normalize_maps))
             self.invalidate(dump_id)
             self._jobs.log(job, f"done: {cls}")
 

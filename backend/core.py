@@ -330,7 +330,8 @@ class QueryEngine(Protocol):
         class. None = not analyzed yet (HTTP: 404 {"analyzed": false})."""
         ...
 
-    def analyze_shapes(self, dump_id: DumpId, cls: str) -> Job:
+    def analyze_shapes(self, dump_id: DumpId, cls: str, scope: str = "retained",
+                       normalize_maps: bool = True) -> Job:
         """Queue the exact shapes analysis (mat-extract + analyze-grph via the
         prebuilt shapes jar) for one class. Same rules as analyze()."""
         ...

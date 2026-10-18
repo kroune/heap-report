@@ -284,12 +284,13 @@ function paintNav(h, kind, dumpId, className) {
    each viz's analyze affordance runs the analysis that actually feeds it. */
 function makeAnalyze(kind, dumpId, className, params) {
   const op = (VIZ.get(kind) || {}).analyzeOp || 'analyze';
-  return (onStatus, samples) => {
-    const next = samples != null ? { ...params, samples } : params;
+  return (onStatus, samples, analysisOptions = {}) => {
+    const next = op === 'shapesAnalyze' ? { ...params, ...analysisOptions }
+      : samples != null ? { ...params, samples } : params;
     const repo = currentRepo();
     const p = op === 'analyze'
       ? repo.analyze(dumpId, className, samples != null ? { samples } : {})
-      : repo[op](dumpId, className);
+      : repo[op](dumpId, className, analysisOptions);
     Promise.resolve(p).then(r => {
       if (!r.ok) { onStatus(`analyze failed: ${r.error || 'unknown error'}`, true); return; }
       const job = r.data;

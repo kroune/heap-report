@@ -1,0 +1,28 @@
+{
+  "id": "bb1693f2d",
+  "name": "Find physical root witnesses",
+  "command": "SHAPES_MAX_SCC_MERGE=1000000 java -Xmx6g -cp /tmp:experiments/shapes/build/libs/shapes-experiment-all.jar InspectRetainedWitnesses /home/olowo/dlc-retained.grph org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated /tmp/retained-physical-witnesses.tsv",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bb1693f2d.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792324669253,
+  "endTime": 1792324727678,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3060803,
+  "bytesWritten": 139,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 240,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

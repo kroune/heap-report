@@ -14,8 +14,10 @@ real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
   mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
+      [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>]
   mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
   analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
+      [--whole-graph]  include all preselected objects, preserving original roots
 
 graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line, '#' comments
 """
@@ -51,7 +53,9 @@ fun main(args: Array<String>) {
         "mat-info" -> shapes.mat.MatExtract.info(opts.require("hprof"))
         "mat-histogram" -> shapes.mat.MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
         "mat-extract" -> shapes.mat.MatExtract.extract(
-            opts.require("hprof"), opts.require("class"), Path.of(opts.require("out"))
+            opts.require("hprof"), opts.require("class"), Path.of(opts.require("out")),
+            opts["scope"] ?: "reachable", opts.flag("normalize-maps"),
+            opts["stats"]?.let { Path.of(it) },
         )
         "mat-trace" -> shapes.mat.MatExtract.trace(
             opts.require("hprof"), opts.require("class"),
@@ -85,7 +89,7 @@ fun main(args: Array<String>) {
             val t0 = System.nanoTime()
             if (opts.flag("verify-edges")) {
                 // inv3 audit: analyze once, then check every ref against the artifact
-                val dbg = ShapesAnalyzer(g).apply { progress = ::println }.analyzeDebug(roots)
+                val dbg = ShapesAnalyzer(g).apply { progress = ::println }.analyzeDebug(roots, opts.flag("whole-graph"))
                 println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
                 opts["out"]?.let {
                     ShapesEmit.write(dbg.table, Path.of(it))
@@ -100,7 +104,7 @@ fun main(args: Array<String>) {
                 }
                 return
             }
-            val t = ShapesAnalyzer(g).apply { progress = ::println }.analyze(roots)
+            val t = ShapesAnalyzer(g).apply { progress = ::println }.analyze(roots, opts.flag("whole-graph"))
             println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
             // artifact FIRST: printReport of a mega-SCC_UNIQUE shape can emit
             // a million edge lines — the report must never cost the artifact
@@ -109,7 +113,7 @@ fun main(args: Array<String>) {
                 println("artifact written: $it")
             }
             printReport(t)
-            if (opts.flag("verify")) runVerify(g, roots, t)
+            if (opts.flag("verify")) runVerify(g, roots, t, opts.flag("whole-graph"))
         }
         else -> {
             System.err.println(USAGE)
@@ -118,8 +122,8 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun runVerify(g: ObjectGraph, roots: IntArray, t: ShapeTable) {
-    val problems = verifyInvariants(g, roots, t)
+private fun runVerify(g: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph: Boolean = false) {
+    val problems = verifyInvariants(g, roots, t, wholeGraph)
     if (problems.isEmpty()) println("verify: all invariants hold")
     else {
         println("verify: VIOLATIONS:")

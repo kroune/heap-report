@@ -189,6 +189,19 @@ class ShapesTest {
     }
 
     @Test
+    fun `preselected scope keeps disconnected objects without making them roots`() {
+        val g = ObjectGraph.of(
+            arrayOf("Root", "Detached"), longArrayOf(8, 24),
+            arrayOf(intArrayOf(), intArrayOf()),
+        )
+        val t = ShapesAnalyzer(g).analyze(intArrayOf(0), wholeGraph = true)
+        assertEquals(2, t.reachableCount)
+        assertEquals(32, t.entries.sumOf { it.shallowTotal })
+        assertEquals(1, t.entries.sumOf { it.rootCount })
+        assertEquals(0, t.entry("Detached").rootCount)
+    }
+
+    @Test
     fun `unreachable objects are out of scope`() {
         val b = ObjectGraph.Builder()
         val stray = b.add("Stray", 1000)

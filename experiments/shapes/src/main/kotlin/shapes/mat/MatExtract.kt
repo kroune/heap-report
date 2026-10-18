@@ -60,7 +60,15 @@ object MatExtract {
         }
     }
 
-    fun extract(hprof: String, className: String, out: Path) {
+    fun extract(
+        hprof: String, className: String, out: Path,
+        scope: String = "reachable", normalizeMaps: Boolean = false, statsOut: Path? = null,
+    ) {
+        require(scope == "reachable" || scope == "retained") { "scope must be retained or reachable" }
+        // MAT's old marker initializes the Eclipse platform even for index-only
+        // reads. The supported new marker works in our standalone snapshot.
+        if (scope == "retained") System.setProperty(
+            "org.eclipse.mat.parser.internal.snapshot.ObjectMarkerFactory.useOldMarker", "false")
         // withReader: filtering java.lang.ref.Reference.discovered needs field
         // names, and those need the real hprof object reader (standalone
         // subclass — HprofHeapObjectReader.open drags in OSGi preferences)
@@ -104,7 +112,18 @@ object MatExtract {
             val visited = BitSet(n)
             val stack = IntStack()
             val rIds = IntStack() // no boxing: at 100M objects boxed Ints alone OOM a 2g heap
-            for (root in roots) if (!visited.get(root)) {
+            var retainedCount = 0
+            if (scope == "retained") {
+                val retained = s.getRetainedSet(roots.toIntArray(), VoidProgressListener())
+                retainedCount = retained.size
+                for (id in retained) if (!isExcludedClass(id)) visited.set(id)
+                var retainedId = visited.nextSetBit(0)
+                while (retainedId >= 0) {
+                    rIds.push(retainedId)
+                    retainedId = visited.nextSetBit(retainedId + 1)
+                }
+                println("retained: $retainedCount MAT objects, ${visited.cardinality()} non-class objects")
+            } else for (root in roots) if (!visited.get(root)) {
                 visited.set(root); stack.push(root)
             }
             var progressAt = 1_000_000
@@ -138,8 +157,9 @@ object MatExtract {
                 }
             }
             val t1 = System.nanoTime()
-            println("reachable: ${rIds.sp} objects, BFS in ${(t1 - t0) / 1_000_000} ms")
-            if (rIds.sp == 0) error("empty reachable set")
+            val nR = visited.cardinality()
+            println("scope $scope: $nR objects in ${(t1 - t0) / 1_000_000} ms")
+            if (nR == 0) error("empty $scope set")
 
             // correctness guard: class objects must never enter R (their
             // outbound statics would drag in most of the heap). Cheap:
@@ -162,13 +182,11 @@ object MatExtract {
                 val word = w ushr 6
                 return rank[word] + java.lang.Long.bitCount(words[word] and ((1L shl (w and 63)) - 1))
             }
-            val nR = rIds.sp
             rIds.a = IntArray(1) // release the BFS buffer before the big allocations
 
             // pass 1: class table + per-node class index (iterate set bits — no ids array)
             val classNames = ArrayList<String>()
             val classIdxOf = HashMap<String, Int>()
-            val refClassIdxs = HashSet<Int>()   // class-table indices of Reference subtypes
             val nodeClass = IntArray(nR)
             var oi = 0
             var o = visited.nextSetBit(0)
@@ -178,13 +196,29 @@ object MatExtract {
                     classNames.add(cl.name)
                     classNames.size - 1
                 }
-                if (refClassIds.contains(cl.objectId)) refClassIdxs.add(cidx)
                 nodeClass[oi++] = cidx
                 if (oi % 5_000_000 == 0) println("  pass1: $oi/$nR")
                 o = visited.nextSetBit(o + 1)
             }
             val t2 = System.nanoTime()
             println("classes: ${classNames.size}, pass 1 in ${(t2 - t1) / 1_000_000} ms")
+
+            // Scope is selected BEFORE projection. Raw counts remain available
+            // even though projected refs intentionally hide map implementation links.
+            fun sourceRefs(id: Int): IntArray =
+                if (refClassIds.contains(s.getClassOf(id).objectId))
+                    s.getObject(id).outboundReferences.filter { it.name != "discovered" }
+                        .map { it.objectId }.toIntArray()
+                else s.getOutboundReferentIds(id)
+            val projection = if (normalizeMaps) MapProjection(
+                { id -> s.getClassOf(id).name }, ::sourceRefs,
+                { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
+            ) else null
+            var sourceEdges = 0L
+            var boundaryEdges = 0L
+            var projectedEdges = 0L
+            var shallowTotal = 0L
+            var projectedBoundaryEdges = 0L
 
             // pass 2: emit GRPH (set-bit order; refs remapped O(1) via rank)
             Files.newOutputStream(out).use { raw ->
@@ -202,29 +236,25 @@ object MatExtract {
                 while (o >= 0) {
                     val nc = nodeClass[oi++]
                     d.writeInt(nc)
-                    d.writeLong(s.getHeapSize(o))
-                    if (refClassIdxs.contains(nc)) {
-                        // Reference subtype: named refs, .discovered filtered
-                        val outs = s.getObject(o).outboundReferences
-                        var refCount = 0
-                        for (ref in outs) if (ref.name != "discovered" && !isExcludedClass(ref.objectId)) refCount++
-                        d.writeInt(refCount)
-                        for (ref in outs) {
-                            if (ref.name == "discovered" || isExcludedClass(ref.objectId)) continue
-                            check(visited.get(ref.objectId)) { "ref ${ref.objectId} of $o escaped the reachable set" }
-                            d.writeInt(remap(ref.objectId))
-                        }
-                    } else {
-                        val refs = s.getOutboundReferentIds(o)
-                        var refCount = 0
-                        for (w in refs) if (!isExcludedClass(w)) refCount++
-                        d.writeInt(refCount)
-                        for (w in refs) {
-                            if (isExcludedClass(w)) continue
-                            check(visited.get(w)) { "ref $w of $o escaped the reachable set" }
-                            d.writeInt(remap(w))
+                    val shallow = s.getHeapSize(o)
+                    shallowTotal += shallow
+                    d.writeLong(shallow)
+                    val original = sourceRefs(o)
+                    for (w in original) if (w >= 0 && !isExcludedClass(w)) {
+                        if (visited.get(w)) sourceEdges++ else {
+                            check(scope == "retained") { "ref $w of $o escaped the reachable set" }
+                            boundaryEdges++
                         }
                     }
+                    val refs = projection?.refs(o) ?: original
+                    var refCount = 0
+                    for (w in refs) if (w >= 0 && !isExcludedClass(w)) {
+                        if (visited.get(w)) refCount++ else projectedBoundaryEdges++
+                    }
+                    projectedEdges += refCount
+                    d.writeInt(refCount)
+                    for (w in refs) if (w >= 0 && !isExcludedClass(w) && visited.get(w))
+                        d.writeInt(remap(w))
                     if (oi % 5_000_000 == 0) println("  pass2: $oi/$nR")
                     o = visited.nextSetBit(o + 1)
                 }
@@ -232,6 +262,10 @@ object MatExtract {
             }
             val t3 = System.nanoTime()
             println("written: $out (${Files.size(out) / 1_000_000} MB), pass 2 in ${(t3 - t2) / 1_000_000} ms")
+            println("edges: source=$sourceEdges projected=$projectedEdges outside-scope=$boundaryEdges")
+            statsOut?.let { path ->
+                Files.writeString(path, """{"scope":"$scope","mapProjection":"${if (normalizeMaps) "unordered-entries-v1" else "raw"}","objects":$nR,"roots":${roots.size},"shallowTotal":$shallowTotal,"sourceEdges":$sourceEdges,"scopeBoundaryEdges":$boundaryEdges,"projectedEdges":$projectedEdges,"projectedBoundaryEdges":$projectedBoundaryEdges,"matRetainedObjects":$retainedCount}""")
+            }
         } finally {
             s.dispose()
         }

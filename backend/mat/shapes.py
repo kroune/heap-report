@@ -19,6 +19,7 @@ suffix), so the query path needs no index file.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import struct
@@ -36,6 +37,17 @@ _DEFAULT_JAR = os.path.join(_REPO, "experiments", "shapes", "build", "libs",
 SHAPES_XMX = os.environ.get("SHAPES_XMX", "2g")   # extractor heap (index-backed, 2g works at full-heap scale)
 # analyzer heap is SIZED from the extracted graph (below); this is the override
 SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE")
+SHAPES_XMX_RETAINED = os.environ.get("SHAPES_XMX_RETAINED", "8g")
+PIPELINE_VERSION = 2
+_METADATA_MAGIC = b"SMD1"
+
+
+def analysis_options(scope="retained", normalize_maps=True):
+    if scope not in ("retained", "reachable"):
+        raise core.ApiError("bad_request", "scope must be retained or reachable", 400)
+    if not isinstance(normalize_maps, bool):
+        raise core.ApiError("bad_request", "normalizeMaps must be a boolean", 400)
+    return {"scope": scope, "normalizeMaps": normalize_maps}
 
 _KINDS = ["leaf", "node", "scc", "scc-unique"]
 
@@ -141,11 +153,15 @@ def _run_java(job, jobs, abort, args, what, xmx=None):
     log (capped there). abort (the dump's cooperative-cancel flag) kills the
     JVM and raises core.Aborted. Any nonzero exit raises with the tail."""
     log = lambda m: jobs.log(job, m)
-    cmd = ["java", f"-Xmx{xmx or SHAPES_XMX}", "-jar", shapes_jar()] + args
+    cmd = ["java", f"-Xmx{xmx or SHAPES_XMX}", "-XX:ActiveProcessorCount=4",
+           "-jar", shapes_jar()] + args
     log(f"  shapes {what}: {' '.join(args[:2])} ...")
     tail = []
+    env = os.environ.copy()
+    if what == "analyze":
+        env.setdefault("SHAPES_MAX_SCC_MERGE", "1000000")
     proc = subprocess.Popen(cmd, cwd=_REPO, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True)
+                            stderr=subprocess.STDOUT, text=True, env=env)
 
     def drain():   # stream into the job log; keep our own short tail for errors
         for line in proc.stdout:
@@ -177,30 +193,49 @@ def _run_java(job, jobs, abort, args, what, xmx=None):
                            + "\n".join(tail[-20:]) + hint)
 
 
-def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None):
+def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
+                  scope="retained", normalize_maps=True):
     """Full per-class shapes analysis: mat-extract -> analyze-grph -> atomic
     land at dst. The intermediate GRPH (unbounded size) always goes away.
     Raises on any failure — a failed analysis is never recorded."""
+    analysis_options(scope, normalize_maps)
     out_dir = os.path.dirname(dst)
     os.makedirs(out_dir, exist_ok=True)
     grph = os.path.join(out_dir, f".{os.path.basename(dst)}.{os.getpid()}.grph")
     tmp = f"{dst}.tmp{os.getpid()}"
+    stats_path = f"{grph}.json"
     try:
+        extract_args = ["mat-extract", "--hprof", hprof, "--class", cls,
+                        "--out", grph, "--scope", scope, "--stats", stats_path]
+        if normalize_maps:
+            extract_args.append("--normalize-maps")
+        jobs.log(job, f"  scope={scope}; maps={'unordered entries' if normalize_maps else 'raw'}")
         with runner.index_read_hold(dump_dir, lambda m: jobs.log(job, m)):
-            _run_java(job, jobs, abort,
-                      ["mat-extract", "--hprof", hprof, "--class", cls,
-                       "--out", grph], "extract")
+            _run_java(job, jobs, abort, extract_args, "extract",
+                      xmx=SHAPES_XMX_RETAINED if scope == "retained" else None)
         xmx = _analyze_xmx(grph, cls)
         n, e = _grph_stats(grph)
         jobs.log(job, f"  shapes analyze: {n:,} objects, {e:,} refs -> -Xmx{xmx}")
         _run_java(job, jobs, abort,
                   ["analyze-grph", "--graph", grph, "--class", cls,
-                   "--out", tmp], "analyze", xmx=xmx)
+                   "--out", tmp, "--whole-graph"], "analyze", xmx=xmx)
+        with open(stats_path) as f:
+            metadata = json.load(f)
+        if metadata.get("scope") != scope or metadata.get("mapProjection") != (
+                "unordered-entries-v1" if normalize_maps else "raw"):
+            raise RuntimeError("shapes extraction settings do not match the request")
+        metadata.update(pipelineVersion=PIPELINE_VERSION,
+                        sccMergeLimit=int(os.environ.get("SHAPES_MAX_SCC_MERGE", "1000000")))
+        _validate_projection(tmp, metadata)
+        encoded = json.dumps(metadata, separators=(",", ":")).encode("utf-8")
+        # Same atomic file as SHP1: metadata cannot race an artifact replacement.
+        with open(tmp, "ab") as f:
+            f.write(_METADATA_MAGIC + struct.pack(">i", len(encoded)) + encoded)
         os.replace(tmp, dst)   # atomic land: readers see the full artifact or nothing
         jobs.log(job, f"  shapes artifact: {dst} "
                       f"({os.path.getsize(dst)} bytes)")
     finally:
-        for p in (grph, tmp):
+        for p in (grph, tmp, stats_path):
             try:
                 os.remove(p)
             except OSError:
@@ -254,5 +289,35 @@ def parse_shp1(path):
     # shape is simply `count` (collapsed INSTANCES = count / sccSize — that is
     # what the edge-total expansion uses). Summing count × sccSize inflated
     # every multi-member SCC by its member count (313.8M vs |R| = 256.9M).
+    metadata = None
+    if off[0] < len(data):
+        if data[off[0]:off[0] + 4] != _METADATA_MAGIC:
+            raise RuntimeError(f"unknown SHP1 metadata in {path}")
+        off[0] += 4
+        length = take(">i")
+        if length < 0 or off[0] + length != len(data):
+            raise RuntimeError(f"truncated SHP1 metadata in {path}")
+        metadata = json.loads(data[off[0]:].decode("utf-8"))
     return {"shapes": shapes, "edges": edges, "rootsHistogram": roots,
-            "reachableCount": sum(s["count"] for s in shapes)}
+            "reachableCount": sum(s["count"] for s in shapes),
+            "analysis": metadata}
+
+
+def _validate_projection(path, metadata):
+    """Cheap independent totals check before publishing projected data.
+    Source refs and projected refs are deliberately NOT conflated."""
+    p = parse_shp1(path)
+    rows = p["shapes"]
+    totals = {
+        "objects": p["reachableCount"],
+        "roots": sum(r[1] for r in p["rootsHistogram"]),
+        "shallowTotal": sum(r["shallowTotal"] for r in rows),
+    }
+    accounted = sum(r["internalEdges"] * (r["count"] // r["sccSize"]) for r in rows)
+    for source, target, mult in p["edges"]:
+        r = rows[source]
+        accounted += mult * (r["count"] if r["edgesPerMember"] else r["count"] // r["sccSize"])
+    totals["projectedEdges"] = accounted
+    for key, actual in totals.items():
+        if actual != metadata[key]:
+            raise RuntimeError(f"shapes {key}: emitted {actual} != extracted {metadata[key]}")

@@ -119,9 +119,9 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
      *  minutes-long analysis reports progress instead of sitting silent. */
     var progress: (String) -> Unit = {}
 
-    fun analyze(roots: IntArray): ShapeTable {
+    fun analyze(roots: IntArray, wholeGraph: Boolean = false): ShapeTable {
         var t = System.nanoTime()
-        val (inR, rList, rCount) = reachForAnalyze(roots)
+        val (inR, rList, rCount) = scopeForAnalyze(roots, wholeGraph)
         progress("reach: $rCount objects in ${(System.nanoTime() - t) / 1_000_000} ms")
         t = System.nanoTime()
         val (compEnc, comps) = scc(inR, rList, rCount)
@@ -134,6 +134,13 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val table = aggregate(shapes, compEnc, shapeOfComp, comps, roots, rCount)
         progress("aggregate: ${(System.nanoTime() - t) / 1_000_000} ms")
         return table
+    }
+
+    private fun scopeForAnalyze(roots: IntArray, wholeGraph: Boolean): Triple<BitSet, IntArray?, Int> {
+        // mat-extract already selected the scope. Projection may remove paths
+        // to an object; keep its counts/bytes without inventing extra roots.
+        if (wholeGraph) return Triple(BitSet(g.size).apply { set(0, g.size) }, null, g.size)
+        return reachForAnalyze(roots)
     }
 
     private fun reachForAnalyze(roots: IntArray): Triple<BitSet, IntArray?, Int> {
@@ -155,8 +162,8 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val rCount: Int,
     )
 
-    fun analyzeDebug(roots: IntArray): DebugResult {
-        val (inR, rList, rCount) = reachForAnalyze(roots)
+    fun analyzeDebug(roots: IntArray, wholeGraph: Boolean = false): DebugResult {
+        val (inR, rList, rCount) = scopeForAnalyze(roots, wholeGraph)
         val (compEnc, comps) = scc(inR, rList, rCount)
         val (shapes, shapeOfComp) = cons(compEnc, comps)
         val table = aggregate(shapes, compEnc, shapeOfComp, comps, roots, rCount)

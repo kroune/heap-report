@@ -1,0 +1,28 @@
+{
+  "id": "bb8844b41",
+  "name": "Shapes tests verify",
+  "command": "cd /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes && ./gradlew test",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a14f04-255c-72e0-a598-1006d2c860fd-3013753/bb8844b41.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792327403024,
+  "endTime": 1792327404725,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3079821,
+  "bytesWritten": 555,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 1200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

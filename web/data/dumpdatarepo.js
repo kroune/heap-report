@@ -47,8 +47,8 @@ export const shapes = (id, className) =>
     api(`${dq(id)}/shapes?class=${encodeURIComponent(className)}`));
 
 /* starts a server-side shapes analysis (JobKind SHAPES); NOT cached */
-export const shapesAnalyze = (id, className) =>
-  apiPost(`${dq(id)}/shapes-analyze`, {"class": className});
+export const shapesAnalyze = (id, className, {scope = "retained", normalizeMaps = true} = {}) =>
+  apiPost(`${dq(id)}/shapes-analyze`, {"class": className, scope, normalizeMaps});
 
 /* starts a server-side MAT analysis; the returned Job is NOT cached */
 export const analyze = (id, className, {samples = 8, anatomy = true} = {}) =>

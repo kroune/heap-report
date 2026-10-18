@@ -1,0 +1,10 @@
+maps=3000 entries_per_map=2 normalized=false objects=18002 total_shapes=9 distinct_map_shapes=2 distinct_chain_histograms=2
+maps=3000 entries_per_map=2 normalized=true objects=18002 total_shapes=6 distinct_map_shapes=1 distinct_chain_histograms=2
+maps=3000 entries_per_map=10 normalized=false objects=66002 total_shapes=46 distinct_map_shapes=19 distinct_chain_histograms=19
+maps=3000 entries_per_map=10 normalized=true objects=66002 total_shapes=6 distinct_map_shapes=1 distinct_chain_histograms=19
+maps=3000 entries_per_map=30 normalized=false objects=186002 total_shapes=145 distinct_map_shapes=68 distinct_chain_histograms=68
+maps=3000 entries_per_map=30 normalized=true objects=186002 total_shapes=6 distinct_map_shapes=1 distinct_chain_histograms=68
+maps=3000 entries_per_map=100 normalized=false objects=606002 total_shapes=435 distinct_map_shapes=213 distinct_chain_histograms=213
+maps=3000 entries_per_map=100 normalized=true objects=606002 total_shapes=6 distinct_map_shapes=1 distinct_chain_histograms=213
+maps=3000 entries_per_map=200 normalized=false objects=1206002 total_shapes=910 distinct_map_shapes=450 distinct_chain_histograms=450
+maps=3000 entries_per_map=200 normalized=true objects=1206002 total_shapes=6 distinct_map_shapes=1 distinct_chain_histograms=450

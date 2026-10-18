@@ -95,6 +95,12 @@ composition(id, className)                 -> Result<payload>; 404 -> {ok:false,
 anatomy(id, className, {samples=null})   -> Result<payload|same 404>
 compare(aId, bId)                          -> Result<payload>
 analyze(id, className, {samples=8, anatomy=true}) -> Result<Job>
+shapes(id, className)                      -> Result<{shapes,edges,rootsHistogram,reachableCount,analysis}>; same 404
+shapesAnalyze(id, className, {scope='retained', normalizeMaps=true}) -> Result<Job>
+// analysis=null on legacy artifacts; otherwise includes scope, mapProjection,
+// objects, roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges,
+// pipelineVersion, sccMergeLimit. Graph edges are projected when maps normalized.
+// Re-analysis atomically replaces the per-class artifact; choices are visible in UI.
 invalidate(id=null)                        // drop one dump's or all cached entries
 
 // data/inlinerepo.js — same functions, same result shapes, reading the

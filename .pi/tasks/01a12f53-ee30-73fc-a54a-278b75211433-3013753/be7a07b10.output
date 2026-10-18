@@ -1,0 +1,12 @@
+Exception in thread "main" java.lang.reflect.InvocationTargetException
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:119)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:583)
+	at CheckMatArrayRefs.main(CheckMatArrayRefs.java:12)
+Caused by: java.io.FileNotFoundException: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/daemon.index (No such file or directory)
+	at java.base/java.io.FileInputStream.open0(Native Method)
+	at java.base/java.io.FileInputStream.open(FileInputStream.java:185)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:139)
+	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:109)
+	at shapes.mat.MatExtract.open(MatExtract.kt:251)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:104)
+	... 2 more

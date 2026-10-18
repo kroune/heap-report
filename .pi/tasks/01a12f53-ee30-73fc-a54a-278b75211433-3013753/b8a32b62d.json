@@ -1,0 +1,29 @@
+{
+  "id": "b8a32b62d",
+  "name": "Inspect mega composition",
+  "command": "SHAPES_DEBUG_MEGA=1 SHAPES_MAX_SCC_MERGE=1000000 java -Xmx10g -jar experiments/shapes/build/libs/shapes-experiment-all.jar analyze-grph --graph /home/olowo/dlc-clean.grph --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --out /tmp/shp-debug-mega.shp1 2>&1 | grep -E 'MEGA_DEBUG|MEGA_CLASS|cons: [0-9]+ shapes|unique shapes|analyze:'",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b8a32b62d.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792322014620,
+  "endTime": 1792322039679,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 3041671,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 300,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

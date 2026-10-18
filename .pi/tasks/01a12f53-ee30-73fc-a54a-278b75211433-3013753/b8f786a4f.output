@@ -1,0 +1,40 @@
+settings projects 3000
+build files 3000 missing []
+acyclic processed 3000 cycles remaining 0 name-agnostic structural patterns 1254
+api projects 959 distinct degree 3 structural patterns 19
+impl projects 959 distinct degree 6 structural patterns 958
+ui projects 959 distinct degree 2 structural patterns 275
+foundation projects 50 distinct degree 1 structural patterns 1
+common projects 36 distinct degree 2 structural patterns 2
+core projects 36 distinct degree 3 structural patterns 14
+degree distribution [(3, 815), (4, 461), (2, 372), (1, 342), (10, 252), (9, 248), (8, 158), (11, 141), (7, 84), (12, 76), (0, 50), (1918, 1)]
+
+WITHIN EXACT SAME OUT-DEGREE:
+api degree 1 modules 319 exact variants 3
+api degree 2 modules 339 exact variants 6
+api degree 3 modules 301 exact variants 10
+impl degree 7 modules 84 exact variants 84
+impl degree 8 modules 158 exact variants 158
+impl degree 9 modules 248 exact variants 247
+impl degree 10 modules 252 exact variants 252
+impl degree 11 modules 141 exact variants 141
+impl degree 12 modules 76 exact variants 76
+ui degree 3 modules 498 exact variants 98
+ui degree 4 modules 461 exact variants 177
+
+BOUNDED DEPTH signature counts (ignore names, types, values):
+depth 0 [('foundation', 1), ('common', 1), ('core', 1), ('api', 1), ('impl', 1), ('ui', 1)]
+depth 1 [('foundation', 1), ('common', 2), ('core', 3), ('api', 3), ('impl', 6), ('ui', 2)]
+depth 2 [('foundation', 1), ('common', 2), ('core', 14), ('api', 19), ('impl', 438), ('ui', 28)]
+depth 3 [('foundation', 1), ('common', 2), ('core', 14), ('api', 19), ('impl', 958), ('ui', 275)]
+depth 4 [('foundation', 1), ('common', 2), ('core', 14), ('api', 19), ('impl', 958), ('ui', 275)]
+depth 5 [('foundation', 1), ('common', 2), ('core', 14), ('api', 19), ('impl', 958), ('ui', 275)]
+
+CONCRETE SAME-DEGREE, DIFFERENT-STRUCTURE IMPLEMENTATIONS:
+[{"module": ":impl:f0-impl", "degree": 10, "shape": 889, "children": [{"module": ":api:f0-api", "degree": 2, "shape": 10}, {"module": ":api:f553-api", "degree": 1, "shape": 1}, {"module": ":api:f253-api", "degree": 3, "shape": 3}, {"module": ":api:f224-api", "degree": 3, "shape": 3}, {"module": ":foundation:foundation-20", "degree": 0, "shape": 0}, {"module": ":core:core-30", "degree": 3, "shape": 7}, {"module": ":foundation:foundation-42", "degree": 0, "shape": 0}, {"module": ":core:core-22", "degree": 3, "shape": 7}, {"module": ":core:core-4", "degree": 3, "shape": 11}, {"module": ":foundation:foundation-39", "degree": 0, "shape": 0}]}, {"module": ":impl:f3-impl", "degree": 10, "shape": 477, "children": [{"module": ":api:f3-api", "degree": 2, "shape": 4}, {"module": ":api:f132-api", "degree": 2, "shape": 10}, {"module": ":api:f717-api", "degree": 3, "shape": 14}, {"module": ":api:f57-api", "degree": 2, "shape": 9}, {"module": ":api:f414-api", "degree": 3, "shape": 11}, {"module": ":api:f574-api", "degree": 3, "shape": 13}, {"module": ":core:core-7", "degree": 2, "shape": 9}, {"module": ":common:common-30", "degree": 2, "shape": 2}, {"module": ":common:common-21", "degree": 1, "shape": 1}, {"module": ":foundation:foundation-40", "degree": 0, "shape": 0}]}]
+[{"module": ":impl:f2-impl", "degree": 9, "shape": 885, "children": [{"module": ":api:f2-api", "degree": 2, "shape": 9}, {"module": ":api:f807-api", "degree": 1, "shape": 1}, {"module": ":api:f334-api", "degree": 2, "shape": 8}, {"module": ":api:f202-api", "degree": 1, "shape": 1}, {"module": ":api:f280-api", "degree": 3, "shape": 13}, {"module": ":api:f722-api", "degree": 2, "shape": 9}, {"module": ":foundation:foundation-43", "degree": 0, "shape": 0}, {"module": ":core:core-4", "degree": 3, "shape": 11}, {"module": ":foundation:foundation-44", "degree": 0, "shape": 0}]}, {"module": ":impl:f10-impl", "degree": 9, "shape": 990, "children": [{"module": ":api:f10-api", "degree": 1, "shape": 1}, {"module": ":api:f179-api", "degree": 3, "shape": 6}, {"module": ":api:f137-api", "degree": 3, "shape": 17}, {"module": ":api:f456-api", "degree": 2, "shape": 2}, {"module": ":api:f844-api", "degree": 2, "shape": 4}, {"module": ":api:f568-api", "degree": 3, "shape": 11}, {"module": ":foundation:foundation-25", "degree": 0, "shape": 0}, {"module": ":foundation:foundation-5", "degree": 0, "shape": 0}, {"module": ":core:core-15", "degree": 3, "shape": 11}]}]
+
+GROUPED ONLY BY CHILD DEGREE (ONE HOP):
+api 959 groups 19
+impl 959 groups 438
+ui 959 groups 28

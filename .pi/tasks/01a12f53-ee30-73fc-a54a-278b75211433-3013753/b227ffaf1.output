@@ -1,0 +1,27 @@
+Parsed 62414 shapes 322685 edges
+NODE immediately above actual LEAF: 729
+Exact LEAF/NODE duplicate emitted keys: 0
+baseline => 62414 total; 59390 NODE; 0 original NODE in merged groups
+arrays_uniform_size => 36520 total; 33496 NODE; 29543 original NODE in merged groups
+arrays_proportional_size => 36422 total; 33398 NODE; 29728 original NODE in merged groups
+arrays_presence => 22298 total; 19274 NODE; 42380 original NODE in merged groups
+arrays_total_refs => 19511 total; 16487 NODE; 45456 original NODE in merged groups
+all_node_presence => 20783 total; 17759 NODE; 44074 original NODE in merged groups
+Bottom summary: {'shapes': 729, 'groups_without_multiplicity': 686, 'shapes_in_multivariant_groups': 50, 'removed_shapes': 43, 'uniform_child_shapes': 571}
+Largest bottom classes:
+org.gradle.internal.serialize.graph.codecs.BindingsBuilder$producerForSubtypesOf$1 66 => 66
+java.lang.Object[] 65 => 29
+java.lang.reflect.Constructor 61 => 60
+java.util.HashMap$Node 17 => 17
+org.gradle.internal.serialize.graph.SerializerCodec 17 => 17
+org.gradle.internal.serialize.DefaultSerializerRegistry$TypeInfo 17 => 17
+java.lang.ThreadLocal$SuppliedThreadLocal 15 => 15
+org.gradle.internal.serialize.graph.codecs.BindingsBackedCodec$TaggedEncoding 12 => 12
+org.gradle.internal.serialize.DefaultSerializerRegistry$InstanceBasedSerializerFactory 12 => 12
+org.gradle.tooling.provider.model.internal.DefaultToolingModelBuilderRegistry$RegistrationImpl 10 => 10
+org.gradle.api.internal.provider.Collectors$SingleElement 10 => 10
+com.google.gson.internal.bind.TypeAdapters$31 10 => 10
+org.gradle.api.internal.provider.Providers$FixedValueProvider 8 => 8
+com.google.common.collect.SingletonImmutableList 7 => 7
+com.google.common.cache.LocalCache$StrongValueReference 6 => 6
+Done in 1.93s; /tmp/shapes-bottom-up-audit.json

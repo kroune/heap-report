@@ -1,0 +1,28 @@
+{
+  "id": "bf8d1ef8b",
+  "name": "Audit bottom up collapse",
+  "command": "python3 -u /tmp/audit_shapes_bottom_up.py /tmp/shp-cap1m.shp1",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bf8d1ef8b.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792319809319,
+  "endTime": 1792319810847,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3028625,
+  "bytesWritten": 1634,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 120,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

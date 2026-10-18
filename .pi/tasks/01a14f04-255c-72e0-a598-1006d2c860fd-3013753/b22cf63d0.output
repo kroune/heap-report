@@ -1,0 +1,33 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :processResources NO-SOURCE
+> Task :processTestResources NO-SOURCE
+
+> Task :compileKotlin
+w: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/src/main/kotlin/shapes/Shapes.kt:330:13 Expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types.
+w: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/src/main/kotlin/shapes/Shapes.kt:330:13 Expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types.
+
+> Task :compileJava NO-SOURCE
+> Task :classes UP-TO-DATE
+> Task :jar
+
+> Task :compileTestKotlin FAILED
+e: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/src/test/kotlin/shapes/mat/MapProjectionTest.kt:104:31 Argument type mismatch: actual type is 'IntProgression', but 'Int' was expected.
+
+[Incubating] Problems report is available at: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/reports/problems/problems-report.html
+3 actionable tasks: 3 executed
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':compileTestKotlin' (registered by plugin 'org.jetbrains.kotlin.jvm').
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork
+   > Compilation error. See log for more details
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 31s

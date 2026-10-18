@@ -1,0 +1,10 @@
+settings projects 3000
+build files 3000 missing []
+acyclic processed 3000 cycles remaining 0 name-agnostic structural patterns 1254
+api projects 959 distinct degree 3 structural patterns 19
+impl projects 959 distinct degree 6 structural patterns 958
+ui projects 959 distinct degree 2 structural patterns 275
+foundation projects 50 distinct degree 1 structural patterns 1
+common projects 36 distinct degree 2 structural patterns 2
+core projects 36 distinct degree 3 structural patterns 14
+degree distribution [(3, 815), (4, 461), (2, 372), (1, 342), (10, 252), (9, 248), (8, 158), (11, 141), (7, 84), (12, 76), (0, 50), (1918, 1)]

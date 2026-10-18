@@ -1,0 +1,28 @@
+{
+  "id": "b8f786a4f",
+  "name": "Explain module pattern diversity",
+  "command": "python3 -u /tmp/module_pattern_cause.py",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b8f786a4f.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792326022090,
+  "endTime": 1792326022420,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3070542,
+  "bytesWritten": 4376,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 60,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

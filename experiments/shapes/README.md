@@ -73,8 +73,8 @@ single-threaded.
 
 ## Real heap dumps (MAT extractor)
 
-`shapes.mat.MatExtract` pulls the reachable graph for a class out of a MAT
-snapshot into GRPH binary (dense ids, refs remapped — see "Known
+`shapes.mat.MatExtract` pulls an explicitly selected retained/reachable graph
+for a class out of a MAT snapshot into GRPH binary (dense ids, refs remapped — see "Known
 limitations"), `analyze-grph` runs the pipeline on it. Opening bypasses the
 OSGi-dependent `SnapshotFactory` (deserializes `daemon.index` + private
 `SnapshotImpl` ctor via reflection; everything used is index-backed except
@@ -88,6 +88,15 @@ program structure (SHAPES.md "Definitions"). Diagnostic commands:
 missing from the class table — the 9 primitive class objects),
 `mat-reachback` (reverse BFS over the inbound index — quantifies which
 classes carry back-paths into the mega-SCC).
+
+Backend/UI pipeline v2 defaults to `--scope retained --normalize-maps` and
+uses `SHAPES_MAX_SCC_MERGE=1000000` (override supported). The UI exposes raw /
+normalized maps and retained / reachable scope plus re-analysis for existing
+artifacts. CLI flags `--stats <json>` preserve source/projected reference
+counts; `analyze-grph --whole-graph` retains all preselected objects without
+turning them into roots. `SHAPES_XMX_RETAINED` defaults to 8g; the analyzer
+heap is sized from the graph. The server requires a built fat jar and never
+runs Gradle. See `backend/mat/SHAPES.md` for projection and artifact metadata.
 
 Findings on `run-jfr-38` (15.8 GB hprof, 259.8M objects, Gradle daemon,
 2 GB analyzer heap):
@@ -184,6 +193,16 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    it tripled the shape count (1.3M → 4.2M) and OOM'd the aggregate.
    `verifyEdgeAccounting` (Main `--verify-edges`) re-derives every ref
    against the artifact: 600,058,408 refs, exact.
+
+## Flow comparison diagnostics
+
+See [FLOW-COMPARISON.md](FLOW-COMPARISON.md) for controlled same-input
+comparisons, scope/grouping differences, and array multiplicity ablations.
+The 32-root retained sample yields 416 shapes versus 243 flow classes on
+identical adjacency; full retained raw maps yielded 234,834 shapes versus
+7,821 after diagnostic map normalization. Field-aware normalization is now
+available from the UI with explicit scope/projection choices. The diagnostic
+numbers are not a promise for every dump or every collection implementation.
 
 ## Known limitations / notes for review
 

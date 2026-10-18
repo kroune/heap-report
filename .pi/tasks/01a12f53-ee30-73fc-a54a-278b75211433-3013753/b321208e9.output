@@ -1,0 +1,12 @@
+dataset=fixed_ABCD_order maps=3000 entries=20 mode=raw shapes=8982 map_variants=2995 objects=126001
+dataset=fixed_ABCD_order maps=3000 entries=20 mode=order_only shapes=8 map_variants=1 objects=126001
+dataset=fixed_ABCD_order maps=3000 entries=20 mode=buckets_only shapes=6020 map_variants=2864 objects=126001
+dataset=fixed_ABCD_order maps=3000 entries=20 mode=logical shapes=11 map_variants=1 objects=126001
+dataset=shuffled_ABCD_order maps=3000 entries=20 mode=raw shapes=9005 map_variants=3000 objects=126001
+dataset=shuffled_ABCD_order maps=3000 entries=20 mode=order_only shapes=9005 map_variants=3000 objects=126001
+dataset=shuffled_ABCD_order maps=3000 entries=20 mode=buckets_only shapes=5995 map_variants=2849 objects=126001
+dataset=shuffled_ABCD_order maps=3000 entries=20 mode=logical shapes=11 map_variants=1 objects=126001
+dataset=all_A maps=3000 entries=20 mode=raw shapes=8991 map_variants=2999 objects=126001
+dataset=all_A maps=3000 entries=20 mode=order_only shapes=5 map_variants=1 objects=126001
+dataset=all_A maps=3000 entries=20 mode=buckets_only shapes=114 map_variants=53 objects=126001
+dataset=all_A maps=3000 entries=20 mode=logical shapes=5 map_variants=1 objects=126001

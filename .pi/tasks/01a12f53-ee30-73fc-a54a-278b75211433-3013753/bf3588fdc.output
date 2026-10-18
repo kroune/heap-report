@@ -1,0 +1,230 @@
+ROOT MAT=98697886 name=debugUnitTestLintChecksClasspath
+ CFG id=98697886 name=debugUnitTestLintChecksClasspath canBeResolved=true canBeConsumed=false parents=[98696620, 98697275]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e05a0c0
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x68e05a110
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696620 name=debugUnitTestCompileClasspath canBeResolved=true canBeConsumed=false parents=[98697164, 98696218, 98697095, 98696692, 98696354, 98697026, 55340698, 55341525]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e0542b8
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x68e054308
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697275 name=debugUnitTestRuntimeClasspath canBeResolved=true canBeConsumed=false parents=[98697416, 98696218, 98697095, 98696487, 98696692, 98697345]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e056378
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x68e0563c8
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697164 name=testDebugCompileOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e054090
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696218 name=debugUnitTestCompilationImplementation canBeResolved=false canBeConsumed=false parents=[98696084, 98696276]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04d220
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697095 name=testDebugImplementation canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e0537b8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696692 name=testImplementation canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e052610
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696354 name=debugUnitTestCompilationCompileOnly canBeResolved=false canBeConsumed=false parents=[98696411]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04e358
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697026 name=testCompileOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e052ed8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=55340698 name=implementation canBeResolved=false canBeConsumed=false parents=[55341428]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x636908cc8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=55341525 name=debugImplementation canBeResolved=false canBeConsumed=false parents=[55341632]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x63690a620
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697416 name=testDebugRuntimeOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e056150
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696487 name=debugUnitTestCompilationRuntimeOnly canBeResolved=false canBeConsumed=false parents=[98696544]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04f490
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98697345 name=testRuntimeOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e055838
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696084 name=debugUnitTestCompilationApi canBeResolved=false canBeConsumed=false parents=[98696142]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04c080
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696276 name=debugUnitTestImplementation canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04d068
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696411 name=debugUnitTestCompileOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04e1e8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=55341428 name=api canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x636908a78
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=55341632 name=debugApi canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x63690a3d0
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696544 name=debugUnitTestRuntimeOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04f320
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=98696142 name=debugUnitTestApi canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x68e04bf18
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ROOT MAT=112481841 name=releaseLintChecksClasspath
+ CFG id=112481841 name=releaseLintChecksClasspath canBeResolved=true canBeConsumed=false parents=[112481032, 112481245]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa875db8
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x6aa875e08
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112481032 name=releaseCompileClasspath canBeResolved=true canBeConsumed=false parents=[112480788, 112480589, 112480647, 112480731, 112481096, 112478548, 112478684, 112476223]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa870248
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x6aa870298
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112481245 name=releaseRuntimeClasspath canBeResolved=true canBeConsumed=false parents=[112480953, 112480589, 112480647, 112480896, 112476223, 112479200]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa870fd0
+   resolutionStrategy=org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy.DefaultResolutionStrategy_Decorated @ 0x6aa871020
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480788 name=releaseCompileOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86d600
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480589 name=releaseCompilationImplementation canBeResolved=false canBeConsumed=false parents=[112480452, 112480647]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86c4f8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480647 name=releaseImplementation canBeResolved=false canBeConsumed=false parents=[112480510]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86c348
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480731 name=releaseCompilationCompileOnly canBeResolved=false canBeConsumed=false parents=[112480788]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86d9a0
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112481096 name=releaseCompileOnlyApi canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86fc48
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112478548 name=compileOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa85ba78
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112478684 name=compileOnlyApi canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa85cbe8
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112476223 name=implementation canBeResolved=false canBeConsumed=false parents=[112476835]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa84df78
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480953 name=releaseRuntimeOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86e9d0
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480896 name=releaseCompilationRuntimeOnly canBeResolved=false canBeConsumed=false parents=[112480953]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86eb40
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112479200 name=runtimeOnly canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa860e50
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480452 name=releaseCompilationApi canBeResolved=false canBeConsumed=false parents=[112480510]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86b268
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112480510 name=releaseApi canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa86b108
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false
+ CFG id=112476835 name=api canBeResolved=false canBeConsumed=false parents=[]
+   currentResolveState=org.gradle.internal.model.DefaultCalculatedModelValue @ 0x6aa84de00
+   resolutionStrategy=null
+   __allArtifacts__=false
+   __allDependencies__=false
+   __allDependencyConstraints__=false

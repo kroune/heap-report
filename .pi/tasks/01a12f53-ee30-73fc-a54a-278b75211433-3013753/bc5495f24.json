@@ -1,0 +1,28 @@
+{
+  "id": "bc5495f24",
+  "name": "Measure flow partition semantics",
+  "command": "python3 -u /tmp/audit_flow_partition.py",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bc5495f24.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792322540644,
+  "endTime": 1792322541331,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3047318,
+  "bytesWritten": 1390,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 120,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

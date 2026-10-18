@@ -1,0 +1,29 @@
+{
+  "id": "be7b4534c",
+  "name": "Extract full retained scope",
+  "command": "python3 -u /tmp/run_retained_diagnostic.py",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/be7b4534c.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792322499256,
+  "endTime": 1792322537498,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 3046985,
+  "bytesWritten": 946,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 2400,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

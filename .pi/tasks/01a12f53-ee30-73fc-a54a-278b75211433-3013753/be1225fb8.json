@@ -1,0 +1,28 @@
+{
+  "id": "be1225fb8",
+  "name": "Measure ordinary map topology",
+  "command": "SHAPES_MAX_SCC_MERGE=1000000 java -Xmx7g -cp /tmp:experiments/shapes/build/libs/shapes-experiment-all.jar NormalizeAllMaps /home/olowo/dlc-retained.grph org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated /tmp/retained-no-all-map-topology.shp1",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/be1225fb8.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792325588314,
+  "endTime": 1792325637228,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3067565,
+  "bytesWritten": 650,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 300,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

@@ -1,6 +1,6 @@
 # SHAPES.md — exact structural collapse for class anatomy
 
-Status: **v1 draft, not implemented.** When it and the code disagree, one of
+Status: **experimental implementation; pipeline v2 supports explicit scope and map projection.** When it and the code disagree, one of
 them is wrong — update both in the same commit.
 
 Replaces the sampling path in `engine._analyze_class` with exact
@@ -21,6 +21,46 @@ multiplicities.
   view must match class dependencies in code (diamond `A→B→D, A→C→D` keeps
   `B→D`, `C→D`; the dom tree would hang D directly under A and destroy
   exactly the edges we want to show).
+
+## UI/backend pipeline v2
+
+The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the server.
+New analyses default to **retained scope + unordered map entries**, the measured
+flow-comparison configuration. Both choices are explicit controls in the UI:
+`retained` / `reachable`, and normalized / raw maps. Re-analyze replaces the
+per-class artifact atomically; old SHP1 artifacts remain readable but show a
+legacy label and must be re-analyzed to obtain the new semantics.
+
+Scope is selected on the original filtered object graph **before** map
+projection. Retained scope uses MAT `getRetainedSet` for all queried instances
+(with MAT's standalone-compatible ObjectMarker factory switch). The analyzer
+keeps every preselected object even if projection removes its path from a root;
+only actual queried instances count as roots.
+
+Projection is field-aware and supports the exact JDK classes `HashMap$Node`,
+`LinkedHashMap$Entry`, `LinkedHashMap`, and `HashMap$Node[]`. It removes only
+`next`, `before`, `after`, `head`, `tail` as appropriate and makes tables point
+to all entries, independent of buckets/insertion order. Key/value targets
+survive, including an alias also referenced through a removed technical field.
+TreeNode, custom map classes and other collections are not guessed/normalized.
+No object, count, shallow bytes or root is dropped; the projection changes
+**reference semantics**, not the population. Ordering is intentionally absent
+in this optional projection.
+
+An optional `SMD1` length-prefixed JSON trailer in the same SHP1 file records
+scope, projection, pipeline version, object/root/shallow totals, original
+in-scope reference count, boundary reference count and projected reference
+count. Source-reference counts are MAT-index targets (deduplicated by target
+ID), not field/array-slot multiplicities. Displayed edges are explicitly
+**projected** edges when projection is enabled; do not compare them as raw
+heap edges. Before atomic publication the backend checks all object, root,
+shallow and expanded projected-edge totals against extraction statistics.
+
+Backend SCC refinement uses cap 1,000,000 (`SHAPES_MAX_SCC_MERGE` override)
+to avoid the old 64-member artifact in container graphs. Larger components
+still take the lean unique path. CLI without backend flags remains raw /
+reachable, cap 64 unless overridden. See the measured investigation in
+`experiments/shapes/FLOW-COMPARISON.md`.
 
 ## Definitions
 

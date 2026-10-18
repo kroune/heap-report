@@ -1,0 +1,11 @@
+MAPPING retained=65348238 filtered=65348236 roots=[98697886, 112481841]
+Exception in thread "main" java.lang.ExceptionInInitializerError
+	at org.eclipse.mat.parser.model.AbstractObjectImpl.getClassSpecificName(AbstractObjectImpl.java:200)
+	at PhysicalRootDiff.value(PhysicalRootDiff.java:8)
+	at PhysicalRootDiff.dump(PhysicalRootDiff.java:24)
+	at PhysicalRootDiff.main(PhysicalRootDiff.java:42)
+Caused by: java.lang.NullPointerException: Cannot invoke "org.eclipse.mat.internal.MATPlugin.getExtensionTracker()" because the return value of "org.eclipse.mat.internal.MATPlugin.getDefault()" is null
+	at org.eclipse.mat.snapshot.registry.ClassSpecificNameResolverRegistry$RegistryImpl.<init>(ClassSpecificNameResolverRegistry.java:53)
+	at org.eclipse.mat.snapshot.registry.ClassSpecificNameResolverRegistry.<init>(ClassSpecificNameResolverRegistry.java:114)
+	at org.eclipse.mat.snapshot.registry.ClassSpecificNameResolverRegistry.<clinit>(ClassSpecificNameResolverRegistry.java:99)
+	... 4 more

@@ -35,6 +35,37 @@ const C_SEL = "#e8edf5";
 const C_LABEL = "#9aa4b2";
 const C_LABEL_BG = "#0a0d12";
 
+/* Analysis settings are explicit: scope and container semantics are not
+   inferred from an old artifact. Re-analysis replaces the class artifact. */
+function analysisControls(vm, ctx) {
+  const row = document.createElement("div"); row.className = "viz-anrow";
+  if (!ctx.analyze) return row;
+  const scope = document.createElement("select");
+  scope.setAttribute("aria-label", "shapes scope");
+  for (const value of ["retained", "reachable"]) {
+    const opt = document.createElement("option"); opt.value = value; opt.textContent = value;
+    scope.appendChild(opt);
+  }
+  scope.value = vm.requestedScope || "retained";
+  const mode = document.createElement("select"); mode.setAttribute("aria-label", "map structure");
+  for (const [value, text] of [["normalized", "maps: unordered entries"], ["raw", "maps: raw topology"]]) {
+    const opt = document.createElement("option"); opt.value = value; opt.textContent = text;
+    mode.appendChild(opt);
+  }
+  mode.value = vm.normalizeMaps === false ? "raw" : "normalized";
+  const btn = document.createElement("button"); btn.textContent = vm.notAnalyzed ? "analyze (exact)" : "re-analyze";
+  const status = document.createElement("span"); status.className = "viz-anstatus";
+  btn.onclick = () => {
+    btn.disabled = true;
+    ctx.analyze((text, isErr) => {
+      status.textContent = text; status.classList.toggle("err", !!isErr);
+      if (isErr) btn.disabled = false;
+    }, null, { scope: scope.value, normalizeMaps: mode.value === "normalized" });
+  };
+  row.append(scope, mode, btn, status);
+  return row;
+}
+
 /* "not analyzed" state: the shapes analysis has no sample sizes (it is exact
    over ALL instances), so the shared sample-picker prompt does not apply —
    one plain analyze button instead. */
@@ -53,25 +84,7 @@ function notAnalyzedPane(vm, ctx) {
     d.appendChild(hint);
     return d;
   }
-  const row = document.createElement("div");
-  row.className = "viz-anrow";
-  const btn = document.createElement("button");
-  btn.textContent = "analyze (exact)";
-  btn.title = "run the exact structural-collapse analysis — extracts the reachable " +
-    "graph via the MAT indexes, then collapses it into shapes";
-  const status = document.createElement("span");
-  status.className = "viz-anstatus";
-  btn.onclick = () => {
-    btn.disabled = true;
-    ctx.analyze((t, isErr) => {
-      status.textContent = t;
-      status.classList.toggle("err", !!isErr);
-      if (isErr) btn.disabled = false;
-    });
-  };
-  row.appendChild(btn);
-  row.appendChild(status);
-  d.appendChild(row);
+  d.appendChild(analysisControls(vm, ctx));
   return d;
 }
 
@@ -79,13 +92,20 @@ function notAnalyzedPane(vm, ctx) {
 function defaultSide(vm, ctx, outAdj) {
   const total = vm.nodes.reduce((a, n) => a + n.st, 0);
   const rootTotal = vm.rootsHistogram.reduce((a, r) => a + r[1], 0);
-  let h = `<div class="gdim">${vm.shapeCount} shapes over ${ctx.esc(ctx.fmtN(vm.reachable))} ` +
-    `reachable objects · ${ctx.esc(ctx.fmtB(total))} shallow · ${vm.layout.layerCount} layers.</div>` +
+  const analysis = vm.analysis;
+  const scope = analysis ? analysis.scope : "legacy reachable";
+  const mode = analysis && analysis.mapProjection !== "raw" ? "unordered map entries" : "raw map topology";
+  let h = `<div class="gdim">${ctx.esc(scope)} · ${ctx.esc(mode)}${analysis ? "" : " — re-analyze to use the new pipeline"}</div>` +
+    `<div class="gdim">${vm.shapeCount} shapes over ${ctx.esc(ctx.fmtN(vm.reachable))} ` +
+    `scope objects · ${ctx.esc(ctx.fmtB(total))} shallow · ${vm.layout.layerCount} layers.</div>` +
     `<div class="fnote">Exact: every instance of <b>${ctx.esc(vm.className)}</b> collapsed by ` +
     `structure — no sampling. Node size = ${vm.metric === "count" ? "collapsed object count" :
     vm.metric === "roots" ? "root count" : "shallow total"}; edge width = reference count ` +
-    `(per-member × instances). Click a shape for details, double-click a plain class to open its flow. ` +
+    `(projected references when maps are normalized). Click a shape for details, double-click a plain class to open its flow. ` +
     `Sub-pixel detail is shown as dots until you zoom in — nothing is removed.</div>` +
+    (analysis ? `<div class="gdim">Source refs in scope: ${ctx.esc(ctx.fmtN(analysis.sourceEdges))}; ` +
+      `projected refs: ${ctx.esc(ctx.fmtN(analysis.projectedEdges))}; ` +
+      `refs outside scope: ${ctx.esc(ctx.fmtN(analysis.scopeBoundaryEdges))}.</div>` : "") +
     `<div class="glab">roots histogram — ${ctx.esc(ctx.fmtN(rootTotal))} instances of ${ctx.esc(ctx.shortClass(vm.className))}</div>`;
   const hmax = vm.rootsHistogram.length ? vm.rootsHistogram[0][1] : 1;
   for (const [sid, cnt] of vm.rootsHistogram.slice(0, 14)) {
@@ -223,6 +243,7 @@ export function render(container, vm, ctx) {
   const note = document.createElement("span"); note.className = "flab";
   note.textContent = `experimental — exact structural collapse, ${vm.shapeCount} shapes`;
   bar.appendChild(note);
+  bar.appendChild(analysisControls(vm, ctx));
 
   const g = canvas.getContext("2d");
   const W = () => canvas.clientWidth || 760, H = () => canvas.clientHeight || 620;

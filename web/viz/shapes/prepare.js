@@ -8,7 +8,8 @@ import { computeShapesLayout } from "./layout.js";
 export async function prepare(repo, dumpId, className, params = {}) {
   const res = await repo.shapes(dumpId, className);
   if (!res.ok) {
-    if (res.status === 404) return { kind: "shapes", dumpId, className, notAnalyzed: true };
+    if (res.status === 404) return { kind: "shapes", dumpId, className, notAnalyzed: true,
+      requestedScope: params.scope || "retained", normalizeMaps: params.normalizeMaps ?? true };
     return { kind: "shapes", dumpId, className, error: res.error || "shapes query failed" };
   }
   const p = res.data;
@@ -47,6 +48,9 @@ export async function prepare(repo, dumpId, className, params = {}) {
     reachable: p.reachableCount,
     shapeCount: p.shapes.length,
     rootsHistogram: p.rootsHistogram,   // [[shapeId, count]] desc
+    analysis: p.analysis || null,
+    requestedScope: params.scope || (p.analysis && p.analysis.scope) || "retained",
+    normalizeMaps: params.normalizeMaps ?? (p.analysis ? p.analysis.mapProjection !== "raw" : true),
     nodes, layout,
   };
 }

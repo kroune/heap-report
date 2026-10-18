@@ -15,7 +15,9 @@ dumps/<id>/
     analysis.db           # SQLite: every extract, ingested at landing (see below)
     shapes/<cls>-<sha>.shp1  # EXPERIMENTAL exact structural collapse (SHAPES.md),
                           #   written atomically by the SHAPES job; deterministic
-                          #   name from the class (no index file)
+                          #   name from the class (no index file); optional SMD1
+                          #   JSON trailer carries scope/projection and exact
+                          #   source/projected totals in the SAME atomic file
   *.index.zst             # compacted Eclipse MAT indexes
   .dl/                    # in-flight download parts (shared by the component
                           #   stages; removed only by the store's quiescent sweep)

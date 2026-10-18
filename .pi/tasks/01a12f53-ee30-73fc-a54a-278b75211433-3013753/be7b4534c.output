@@ -1,0 +1,12 @@
+  restoring 12 compacted MAT index files (9.2 GB compressed) ...
+  restoring 7 compacted MAT index files (1.5 GB compressed) ...
+ROOTS 327035
+Exception in thread "main" java.lang.ExceptionInInitializerError
+	at org.eclipse.mat.parser.internal.snapshot.ObjectMarkerFactory.getObjectMarker(ObjectMarkerFactory.java:34)
+	at org.eclipse.mat.parser.internal.SnapshotImpl.getRetainedSetMultiThreaded(SnapshotImpl.java:884)
+	at org.eclipse.mat.parser.internal.SnapshotImpl.getRetainedSet(SnapshotImpl.java:933)
+	at ExtractRetained.main(ExtractRetained.java:31)
+Caused by: java.lang.NullPointerException: Cannot invoke "org.osgi.framework.BundleContext.getProperty(String)" because the return value of "org.eclipse.core.internal.runtime.PlatformActivator.getContext()" is null
+	at org.eclipse.core.runtime.Platform.inDebugMode(Platform.java:1565)
+	at org.eclipse.mat.parser.internal.snapshot.ObjectMarkerOld.<clinit>(ObjectMarkerOld.java:47)
+	... 4 more

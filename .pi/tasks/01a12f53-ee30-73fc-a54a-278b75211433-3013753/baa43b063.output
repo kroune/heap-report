@@ -1,0 +1,10 @@
+CHECKED 1000000 candidate_refs=594598 wrongly_removed_named_refs=0
+CHECKED 2000000 candidate_refs=1755010 wrongly_removed_named_refs=0
+CHECKED 3000000 candidate_refs=2691479 wrongly_removed_named_refs=0
+CHECKED 4000000 candidate_refs=3062314 wrongly_removed_named_refs=0
+CHECKED 5000000 candidate_refs=3391104 wrongly_removed_named_refs=0
+CHECKED 6000000 candidate_refs=3689743 wrongly_removed_named_refs=0
+CHECKED 7000000 candidate_refs=3989932 wrongly_removed_named_refs=0
+CHECKED 8000000 candidate_refs=4421682 wrongly_removed_named_refs=0
+CHECKED 9000000 candidate_refs=5746911 wrongly_removed_named_refs=0
+DONE checked=9832688 candidate_refs=6713120 wrongly_removed_named_refs=0 fields={java.util.HashMap$Node.next=1329698, java.util.LinkedHashMap$Entry.after=1494476, java.util.LinkedHashMap$Entry.before=1494476, java.util.LinkedHashMap$Entry.next=215666, java.util.LinkedHashMap.head=1089402, java.util.LinkedHashMap.tail=1089402}

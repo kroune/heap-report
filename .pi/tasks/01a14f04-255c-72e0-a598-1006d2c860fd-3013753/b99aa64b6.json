@@ -1,0 +1,29 @@
+{
+  "id": "b99aa64b6",
+  "name": "Shapes tests retry",
+  "command": "cd /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes && ./gradlew test",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a14f04-255c-72e0-a598-1006d2c860fd-3013753/b99aa64b6.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792327316636,
+  "endTime": 1792327319000,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 3078972,
+  "bytesWritten": 1308,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 1200,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

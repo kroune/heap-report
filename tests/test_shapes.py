@@ -7,7 +7,8 @@ import unittest
 
 from unittest import mock
 
-from backend.mat.shapes import (artifact_path, parse_shp1,
+from backend.mat.shapes import (artifact_path, parse_shp1, analysis_options,
+                                analyze_class, _validate_projection,
                                 _grph_stats, _analyze_xmx)
 
 
@@ -73,6 +74,50 @@ class TestShp1(unittest.TestCase):
         self.assertEqual(p["rootsHistogram"], [[0, 30]])
         # aggregate() counts OBJECTS per shape for every kind: 30 + 9
         self.assertEqual(p["reachableCount"], 39)
+
+    def test_analysis_options(self):
+        self.assertEqual(analysis_options(), {"scope": "retained", "normalizeMaps": True})
+        from backend.core import ApiError
+        for scope, normalized in [("bad", True), ("retained", "false")]:
+            with self.assertRaises(ApiError):
+                analysis_options(scope, normalized)
+
+    def test_publish_projected_pipeline(self):
+        import json
+        from contextlib import nullcontext
+        row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
+               "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
+               "roots": 2, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
+        metadata = dict(scope="retained", mapProjection="unordered-entries-v1",
+                        objects=2, roots=2, shallowTotal=32, sourceEdges=1,
+                        scopeBoundaryEdges=4, projectedEdges=0)
+        calls = []
+        def run(job, jobs, abort, args, what, xmx=None):
+            calls.append((args, what, xmx))
+            target = args[args.index("--out") + 1]
+            if what == "extract":
+                self._write_grph(target, 2)
+                with open(args[args.index("--stats") + 1], "w") as f:
+                    json.dump(metadata, f)
+            else:
+                with open(target, "wb") as f:
+                    f.write(build_shp1(["C"], [row], [], [(0, 2)]))
+        with tempfile.TemporaryDirectory() as d:
+            dst = artifact_path(d, "C")
+            runner = mock.Mock()
+            runner.index_read_hold.side_effect = lambda *a: nullcontext()
+            with mock.patch("backend.mat.shapes._run_java", side_effect=run), \
+                 mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
+                analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
+            p = parse_shp1(dst)
+            self.assertEqual(p["analysis"]["scope"], "retained")
+            self.assertEqual(p["analysis"]["sourceEdges"], 1)
+            self.assertIn("--normalize-maps", calls[0][0])
+            self.assertIn("--whole-graph", calls[1][0])
+            self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
+            bad = dict(metadata, objects=3)
+            with self.assertRaisesRegex(RuntimeError, "objects"):
+                _validate_projection(dst, bad)
 
     def test_rejects_non_shp1(self):
         with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:

@@ -1,0 +1,11 @@
+TRANSFORMED changedObjects=3158083 oldEdges=88997412 newEdges=84522580 removed=4690498 added=215666
+reach: 65348236 objects in 965 ms
+scc: 44469135 components in 1319 ms
+cons: 8388608/44469135 comps, 27745 shapes, 2063 MB used, maxProbe=9
+cons: 16777216/44469135 comps, 55941 shapes, 3150 MB used, maxProbe=22
+cons: 25165824/44469135 comps, 103741 shapes, 3114 MB used, maxProbe=28
+cons: 33554432/44469135 comps, 147896 shapes, 3586 MB used, maxProbe=33
+cons: 41943040/44469135 comps, 169619 shapes, 3878 MB used, maxProbe=33
+cons: 176244 shapes in 39195 ms
+aggregate: 604 ms
+RESULT objects=65348236 shapes=176244 rootShapes=16602 rootCount=327035

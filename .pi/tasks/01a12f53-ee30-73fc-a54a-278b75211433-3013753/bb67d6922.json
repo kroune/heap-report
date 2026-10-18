@@ -1,0 +1,28 @@
+{
+  "id": "bb67d6922",
+  "name": "Measure normalized same role variants",
+  "command": "SHAPES_MAX_SCC_MERGE=1000000 java -Xmx7g -cp /tmp:experiments/shapes/build/libs/shapes-experiment-all.jar NormalizeAllMaps /home/olowo/dlc-retained.grph org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated /tmp/retained-normalized-role-check.shp1 /tmp/normalized-root-population.tsv",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bb67d6922.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792326410091,
+  "endTime": 1792326465335,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3072963,
+  "bytesWritten": 532,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 300,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "b736f656d",
+  "name": "Isolate LinkedHashMap topology",
+  "command": "SHAPES_MAX_SCC_MERGE=1000000 java -Xmx7g -cp /tmp:experiments/shapes/build/libs/shapes-experiment-all.jar NormalizeLinkedMaps /home/olowo/dlc-retained.grph org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated /tmp/retained-no-linked-topology.shp1",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b736f656d.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792324457692,
+  "endTime": 1792324504264,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3059316,
+  "bytesWritten": 648,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 300,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

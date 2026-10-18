@@ -1,0 +1,28 @@
+{
+  "id": "b01ddad47",
+  "name": "Trace root split causes",
+  "command": "python3 -u /tmp/find_first_differences.py > /tmp/first-differences.log",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b01ddad47.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792324340953,
+  "endTime": 1792324342855,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3058573,
+  "bytesWritten": 0,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 60,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}
