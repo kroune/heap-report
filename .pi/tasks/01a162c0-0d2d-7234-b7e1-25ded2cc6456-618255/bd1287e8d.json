@@ -1,0 +1,27 @@
+{
+  "id": "bd1287e8d",
+  "name": "stub extraction run-jfr-38",
+  "command": "cd /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report && python3 /tmp/run_stub_extract.py /home/olowo/dlc-retained-stubs.grph 2>&1",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a162c0-0d2d-7234-b7e1-25ded2cc6456-618255/bd1287e8d.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792660017400,
+  "endTime": 1792660173282,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 633448,
+  "bytesWritten": 2042,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

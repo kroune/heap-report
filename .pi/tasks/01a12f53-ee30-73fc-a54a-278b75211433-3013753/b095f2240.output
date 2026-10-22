@@ -1,0 +1,14 @@
+job2 done
+        -> #675  org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+        -> #2576 org.gradle.api.attributes.Attribute            mult=1 (per member)
+  #4473 com.google.common.collect.ImmutableMapEntry          NODE      count=594     shallowTotal=14256       min=24      max=24      roots=0
+        -> #675  org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+        -> #2415 java.lang.String                               mult=1 (per member)
+  #4582 java.util.concurrent.ConcurrentHashMap$Node          LEAF      count=421     shallowTotal=13472       min=32      max=32      roots=0
+  #235  com.google.common.collect.ImmutableMapEntry$NonTermi NODE      count=545     shallowTotal=13080       min=24      max=24      roots=0
+        -> #4420 org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+  #2415 java.lang.String                                     NODE      count=484     shallowTotal=11616       min=24      max=24      roots=0
+        -> #4366 byte[]                                         mult=1 (per member)
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer-605adc91.shp1 (527358 bytes)
+done: org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer
+None

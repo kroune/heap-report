@@ -1,0 +1,6 @@
+  restoring 12 compacted MAT index files (9.2 GB compressed) ...
+  restoring 10 compacted MAT index files (4.0 GB compressed) ...
+java.util.concurrent.ConcurrentHashMap /tmp/fields-ConcurrentHashMap.txt
+java.util.concurrent.ConcurrentHashMap$Node /tmp/fields-ConcurrentHashMap_Node.txt
+com.google.common.collect.RegularImmutableMap$KeySet /tmp/fields-RegularImmutableMap_KeySet.txt
+com.google.common.collect.ImmutableMapEntrySet$RegularEntrySet /tmp/fields-ImmutableMapEntrySet_RegularEntrySet.txt

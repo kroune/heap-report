@@ -1,0 +1,29 @@
+{
+  "id": "b01f79fbe",
+  "name": "Inspect immutable map fields",
+  "command": "for c in 'com.google.common.collect.ImmutableMapEntry' 'com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry' 'java.util.Map$Entry[]'; do flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-fields --hprof dumps/run-jfr-38/daemon.hprof --class \"$c\" --limit 3 --all; done",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b01f79fbe.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792328913511,
+  "endTime": 1792328913731,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 3093267,
+  "bytesWritten": 1773,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 180,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

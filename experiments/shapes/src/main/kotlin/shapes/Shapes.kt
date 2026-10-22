@@ -509,11 +509,11 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                     for (i in 0 until m) {
                         if (kidIds[i] == prev) mult++
                         else {
-                            if (prev >= 0) kidPacked[nKids++] = packKid(prev, mult)
+                            if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (SET_SEMANTICS) 1 else mult)
                             prev = kidIds[i]; mult = 1
                         }
                     }
-                    if (prev >= 0) kidPacked[nKids++] = packKid(prev, mult)
+                    if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (SET_SEMANTICS) 1 else mult)
                     shape = consMap.intern(shapes, g.classIdx[obj].code, g.className(obj), ShapeKind.NODE,
                         kidPacked, nKids)
                 }
@@ -601,7 +601,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                 if (li != null) intNeigh[i].add(li)
                 else byShape.merge(shapeOfComp[compOfEnc(compEnc, w)], 1, Int::plus)
             }
-            extKids[i] = byShape.map { (id, m) -> Kid(id, m) }.sortedWith(kidCmp).toMutableList()
+            extKids[i] = byShape.map { (id, m) -> Kid(id, if (SET_SEMANTICS) 1 else m) }.sortedWith(kidCmp).toMutableList()
         }
 
         // color refinement: color = (class, external child shapes, internal neighbor colors)
@@ -637,7 +637,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             prevDistinct = distinct.size
             if (distinct.size == n) break            // fully discretized
             colors = Array(n) { i ->
-                Color(colors[i].cls, colors[i].ext, intNeigh[i].map { ranks[it] }.sorted())
+                Color(colors[i].cls, colors[i].ext, intNeigh[i].map { ranks[it] }.let { if (SET_SEMANTICS) it.distinct() else it }.sorted())
             }
         }
 
@@ -656,10 +656,10 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val canonical = order.map { i ->
             MemLk(
                 g.className(members[off + i]),
-                intNeigh[i].map { ranks[it] }.sorted(),
+                intNeigh[i].map { ranks[it] }.let { if (SET_SEMANTICS) it.distinct() else it }.sorted(),
                 extKids[i],
             )
-        }
+        }.let { if (SET_SEMANTICS) it.distinct() else it }   // set semantics: the SCC is its WL-color quotient graph
         val lk = SccLk(canonical)
         // "per member" edge semantics is exact only when every canonical
         // member holds the SAME external edges: a non-uniform SCC (e.g.
@@ -802,5 +802,10 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
          *  — a 141M-member mega-SCC cannot afford it; mid-size SCCs can. */
         val MAX_SCC_MERGE: Int =
             System.getenv("SHAPES_MAX_SCC_MERGE")?.toInt() ?: 64
+
+        /** EXPERIMENT: set semantics — child multiplicities collapse to 1 and an
+         *  SCC is identified by its WL-color quotient graph (members of equal
+         *  color merge). Counts/shallow stay exact; edge mults are NOT (>= 1). */
+        val SET_SEMANTICS: Boolean = System.getenv("SHAPES_SET_SEMANTICS") == "1"
     }
 }

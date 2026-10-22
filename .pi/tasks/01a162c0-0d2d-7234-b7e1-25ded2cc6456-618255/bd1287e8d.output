@@ -1,0 +1,40 @@
+12:06:57   restoring 12 compacted MAT index files (9.2 GB compressed) ...
+12:07:20   restoring 10 compacted MAT index files (4.0 GB compressed) ...
+12:07:36 indexes restored; running extractor
+12:07:36 java -Xmx8g -XX:ActiveProcessorCount=4 -jar /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar mat-extract --hprof /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/daemon.hprof --class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated --out /home/olowo/dlc-retained-stubs.grph --scope retained --stats /home/olowo/dlc-retained-stubs.grph.json --boundary-stubs
+class org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated: 1 class object(s), 327035 instances
+java.lang.ref.Reference subtypes: 58 classes — .discovered edges filtered
+primitive class objects outside the class table: 9 — also filtered
+retained: 65348238 MAT objects, 65348236 non-class objects
+scope retained: 65348236 objects in 22948 ms
+  pass1: 5000000/65348236
+  pass1: 10000000/65348236
+  pass1: 15000000/65348236
+  pass1: 20000000/65348236
+  pass1: 25000000/65348236
+  pass1: 30000000/65348236
+  pass1: 35000000/65348236
+  pass1: 40000000/65348236
+  pass1: 45000000/65348236
+  pass1: 50000000/65348236
+  pass1: 55000000/65348236
+  pass1: 60000000/65348236
+  pass1: 65000000/65348236
+boundary stubs: 248 target classes, 74303947 boundary refs
+classes: 605, pass 1 in 26726 ms
+  pass2: 5000000/65348236
+  pass2: 10000000/65348236
+  pass2: 15000000/65348236
+  pass2: 20000000/65348236
+  pass2: 25000000/65348236
+  pass2: 30000000/65348236
+  pass2: 35000000/65348236
+  pass2: 40000000/65348236
+  pass2: 45000000/65348236
+  pass2: 50000000/65348236
+  pass2: 55000000/65348236
+  pass2: 60000000/65348236
+  pass2: 65000000/65348236
+written: /home/olowo/dlc-retained-stubs.grph (1698 MB), pass 2 in 65264 ms
+edges: source=88997412 projected=163301359 outside-scope=74303947
+12:09:33 extractor rc=0

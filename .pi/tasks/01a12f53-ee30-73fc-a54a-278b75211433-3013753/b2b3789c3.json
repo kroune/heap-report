@@ -1,0 +1,28 @@
+{
+  "id": "b2b3789c3",
+  "name": "Verify retained field boundary",
+  "command": "python3 -u /tmp/run_attribute_boundary.py",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b2b3789c3.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792336059936,
+  "endTime": 1792336154212,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3156423,
+  "bytesWritten": 3846,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

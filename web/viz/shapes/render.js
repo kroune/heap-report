@@ -21,6 +21,7 @@ import { buildSeg } from "../common.js";
 const CELL = 96;               // spatial-grid cell, world units
 const TINY_R = 0.7;            // screen px: below this a node is a bitmap/batched dot
 const EDGE_MIN_PX = 0.35;      // screen px: below this an edge is LOD-skipped
+const BMP_EDGE_MIN_PX = 1.25;  // overview bitmap threshold; zoomed/live view shows finer edges
 const LABEL_R = 14;            // screen px: node gets a text label
 const EDGE_LABEL_MAX = 120;    // draw ×mult edge labels only when few are visible
 const BMP_CAP = 4096;          // max scene-bitmap side, px
@@ -419,7 +420,10 @@ export function render(container, vm, ctx) {
     // once each. 98% of edges here span >32 cells (the mega-SCC sits at the
     // root, longest-path layering stretches everything), so the roamer list
     // does the work — a flat typed-array bbox scan, ~15 ms, only on settle.
-    const minWb = EDGE_MIN_PX / ps;
+    // The overview must not paint every long, one-pixel reference: at fit
+    // scale that turns the entire DAG into a gray sheet. This is rendering
+    // LOD only; the full edge list remains in E and appears as zoom increases.
+    const minWb = Math.max(EDGE_MIN_PX, BMP_EDGE_MIN_PX) / ps;
     eStampVal++;
     const bpaths = new Map();
     let eN = 0;

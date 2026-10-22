@@ -63,6 +63,7 @@ object MatExtract {
     fun extract(
         hprof: String, className: String, out: Path,
         scope: String = "reachable", normalizeMaps: Boolean = false, statsOut: Path? = null,
+        boundaryStubs: Boolean = false,
     ) {
         require(scope == "reachable" || scope == "retained") { "scope must be retained or reachable" }
         // MAT's old marker initializes the Eclipse platform even for index-only
@@ -184,25 +185,6 @@ object MatExtract {
             }
             rIds.a = IntArray(1) // release the BFS buffer before the big allocations
 
-            // pass 1: class table + per-node class index (iterate set bits — no ids array)
-            val classNames = ArrayList<String>()
-            val classIdxOf = HashMap<String, Int>()
-            val nodeClass = IntArray(nR)
-            var oi = 0
-            var o = visited.nextSetBit(0)
-            while (o >= 0) {
-                val cl = s.getClassOf(o)
-                val cidx = classIdxOf.getOrPut(cl.name) {
-                    classNames.add(cl.name)
-                    classNames.size - 1
-                }
-                nodeClass[oi++] = cidx
-                if (oi % 5_000_000 == 0) println("  pass1: $oi/$nR")
-                o = visited.nextSetBit(o + 1)
-            }
-            val t2 = System.nanoTime()
-            println("classes: ${classNames.size}, pass 1 in ${(t2 - t1) / 1_000_000} ms")
-
             // Scope is selected BEFORE projection. Raw counts remain available
             // even though projected refs intentionally hide map implementation links.
             fun sourceRefs(id: Int): IntArray =
@@ -214,6 +196,58 @@ object MatExtract {
                 { id -> s.getClassOf(id).name }, ::sourceRefs,
                 { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
             ) else null
+            val structuralClass = if (projection == null) ({ id: Int -> s.getClassOf(id).name })
+            else ({ id: Int -> projection.structuralClassName(s.getClassOf(id).name) })
+
+            // pass 1: class table + per-node class index (iterate set bits — no ids array)
+            val classNames = ArrayList<String>()
+            val classIdxOf = HashMap<String, Int>()
+            val nodeClass = IntArray(nR)
+            var oi = 0
+            var o = visited.nextSetBit(0)
+            while (o >= 0) {
+                val cl = structuralClass(o)
+                val cidx = classIdxOf.getOrPut(cl) {
+                    classNames.add(cl)
+                    classNames.size - 1
+                }
+                nodeClass[oi++] = cidx
+                if (oi % 5_000_000 == 0) println("  pass1: $oi/$nR")
+                o = visited.nextSetBit(o + 1)
+            }
+            // boundary stubs (experiment): a ref leaving the scope becomes a ref to
+            // ONE synthetic leaf per target class (dense id nR + stubIdx, shallow 0,
+            // no refs). Without this, the shape of an in-scope object depends on
+            // whether its children happen to be shared with something outside
+            // the retained set (DefaultModuleIdentifier: 165k LEAF vs 34k NODE).
+            val stubOfClass = HashMap<Int, Int>()      // class object id -> stub idx
+            val stubClassIdx = ArrayList<Int>()        // stub idx -> class table idx
+            var stubRefs = 0L
+            if (boundaryStubs) {
+                check(scope == "retained") { "--boundary-stubs only makes sense for retained scope" }
+                var o0 = visited.nextSetBit(0)
+                while (o0 >= 0) {
+                    for (w in sourceRefs(o0)) if (w >= 0 && !isExcludedClass(w) && !visited.get(w)) {
+                        val clsObj = s.getClassOf(w)
+                        stubOfClass.getOrPut(clsObj.objectId) {
+                            val cidx = classIdxOf.getOrPut(clsObj.name) {
+                                classNames.add(clsObj.name); classNames.size - 1
+                            }
+                            stubClassIdx.add(cidx)
+                            stubClassIdx.size - 1
+                        }
+                        stubRefs++
+                    }
+                    o0 = visited.nextSetBit(o0 + 1)
+                }
+                println("boundary stubs: ${stubClassIdx.size} target classes, $stubRefs boundary refs")
+                check(stubOfClass.keys.none { cid -> classes.any { it.objectId == cid } }) {
+                    "a boundary target is an instance of the queried class — roots must all be in scope"
+                }
+            }
+            val nStubs = stubClassIdx.size
+            val t2 = System.nanoTime()
+            println("classes: ${classNames.size}, pass 1 in ${(t2 - t1) / 1_000_000} ms")
             var sourceEdges = 0L
             var boundaryEdges = 0L
             var projectedEdges = 0L
@@ -230,9 +264,10 @@ object MatExtract {
                     val b = name.toByteArray(Charsets.UTF_8)
                     d.writeInt(b.size); d.write(b)
                 }
-                d.writeInt(nR)
+                d.writeInt(nR + nStubs)
                 oi = 0
                 o = visited.nextSetBit(0)
+                fun stubId(w: Int): Int = nR + stubOfClass.getValue(s.getClassOf(w).objectId)
                 while (o >= 0) {
                     val nc = nodeClass[oi++]
                     d.writeInt(nc)
@@ -249,14 +284,19 @@ object MatExtract {
                     val refs = projection?.refs(o) ?: original
                     var refCount = 0
                     for (w in refs) if (w >= 0 && !isExcludedClass(w)) {
-                        if (visited.get(w)) refCount++ else projectedBoundaryEdges++
+                        if (visited.get(w) || boundaryStubs) refCount++ else projectedBoundaryEdges++
                     }
                     projectedEdges += refCount
                     d.writeInt(refCount)
-                    for (w in refs) if (w >= 0 && !isExcludedClass(w) && visited.get(w))
-                        d.writeInt(remap(w))
+                    for (w in refs) if (w >= 0 && !isExcludedClass(w)) {
+                        if (visited.get(w)) d.writeInt(remap(w))
+                        else if (boundaryStubs) d.writeInt(stubId(w))
+                    }
                     if (oi % 5_000_000 == 0) println("  pass2: $oi/$nR")
                     o = visited.nextSetBit(o + 1)
+                }
+                for (cidx in stubClassIdx) {   // stub rows: class, shallow 0, no refs
+                    d.writeInt(cidx); d.writeLong(0L); d.writeInt(0)
                 }
                 d.flush()
             }

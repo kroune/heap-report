@@ -1,0 +1,10 @@
+flags=[views] changedObjects=5719701 oldEdges=88997412 newEdges=82920032
+RESULT flags=[views] shapes=7806 rootShapes=975 treeEntryShapes=6 linkedListNodeShapes=41
+flags=[treemap] changedObjects=4885250 oldEdges=88997412 newEdges=84198628
+RESULT flags=[treemap] shapes=7814 rootShapes=977 treeEntryShapes=2 linkedListNodeShapes=41
+flags=[linkedlist] changedObjects=4615290 oldEdges=88997412 newEdges=84432587
+RESULT flags=[linkedlist] shapes=7818 rootShapes=977 treeEntryShapes=6 linkedListNodeShapes=41
+flags=[guava] changedObjects=4513331 oldEdges=88997412 newEdges=84522580
+RESULT flags=[guava] shapes=7810 rootShapes=977 treeEntryShapes=6 linkedListNodeShapes=41
+flags=[views treemap linkedlist guava emit] changedObjects=4513298 oldEdges=88997412 newEdges=84522580
+RESULT flags=[views treemap linkedlist guava emit] shapes=7818 rootShapes=977 treeEntryShapes=6 linkedListNodeShapes=41

@@ -14,7 +14,7 @@ real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
   mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
-      [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>]
+      [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>] [--boundary-stubs]
   mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
   analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
       [--whole-graph]  include all preselected objects, preserving original roots
@@ -55,7 +55,7 @@ fun main(args: Array<String>) {
         "mat-extract" -> shapes.mat.MatExtract.extract(
             opts.require("hprof"), opts.require("class"), Path.of(opts.require("out")),
             opts["scope"] ?: "reachable", opts.flag("normalize-maps"),
-            opts["stats"]?.let { Path.of(it) },
+            opts["stats"]?.let { Path.of(it) }, opts.flag("boundary-stubs"),
         )
         "mat-trace" -> shapes.mat.MatExtract.trace(
             opts.require("hprof"), opts.require("class"),

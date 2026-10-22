@@ -1,0 +1,15 @@
+baseline {'shapes': 2827, 'rootShapes': 469, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 0}
+entry {'shapes': 1648, 'rootShapes': 294, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 1865}
+arrays {'shapes': 2582, 'rootShapes': 468, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 490}
+entry+arrays {'shapes': 1449, 'rootShapes': 293, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 2027}
+boundary {'shapes': 2080, 'rootShapes': 316, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 1177}
+entry+arrays+boundary {'shapes': 916, 'rootShapes': 169, 'objects': 42533, 'roots': 1986, 'mergedOriginalShapes': 2455}
+collision-subclass direct witnesses 20
+DIRECT [{"id": 48, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 5, "children": [[1418, 1], [2202, 1]]}, {"id": 2724, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 13, "children": [[1418, 1], [2202, 1]]}]
+DIRECT [{"id": 223, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 59, "children": [[2115, 1]]}, {"id": 1687, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 1, "children": [[2115, 1]]}]
+DIRECT [{"id": 233, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 58, "children": [[2790, 1]]}, {"id": 857, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 24, "children": [[2790, 1]]}]
+DIRECT [{"id": 281, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 163, "children": [[173, 1]]}, {"id": 1508, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 77, "children": [[173, 1]]}]
+DIRECT [{"id": 329, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 170, "children": [[1173, 1], [1418, 1]]}, {"id": 2564, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 847, "children": [[1173, 1], [1418, 1]]}]
+DIRECT [{"id": 336, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 4, "children": [[1523, 1], [2602, 1]]}, {"id": 1923, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 104, "children": [[1523, 1], [2602, 1]]}]
+DIRECT [{"id": 350, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 21, "children": [[164, 1], [469, 1]]}, {"id": 1802, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 213, "children": [[164, 1], [469, 1]]}]
+DIRECT [{"id": 586, "label": "com.google.common.collect.ImmutableMapEntry", "objects": 2179, "children": [[2562, 1]]}, {"id": 1260, "label": "com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry", "objects": 873, "children": [[2562, 1]]}]

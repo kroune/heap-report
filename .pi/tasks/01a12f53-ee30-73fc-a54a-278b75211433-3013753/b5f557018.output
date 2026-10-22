@@ -1,0 +1,4 @@
+  restoring 12 compacted MAT index files (9.2 GB compressed) ...
+org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry /tmp/fields-DefaultImmutableAttributesEntry.txt
+com.google.common.collect.RegularImmutableMap$KeySet /tmp/fields-RegularImmutableMap_KeySet.txt
+com.google.common.collect.RegularImmutableMap$Values /tmp/fields-RegularImmutableMap_Values.txt

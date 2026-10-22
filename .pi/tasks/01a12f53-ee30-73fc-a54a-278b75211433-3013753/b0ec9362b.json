@@ -1,0 +1,29 @@
+{
+  "id": "b0ec9362b",
+  "name": "Inspect immutable map fields",
+  "command": "flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-fields --hprof dumps/run-jfr-38/daemon.hprof --class com.google.common.collect.RegularImmutableMap --limit 5 --all > /tmp/fields-regular-map.txt && flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-fields --hprof dumps/run-jfr-38/daemon.hprof --class com.google.common.collect.ImmutableMapEntry --limit 5 --all > /tmp/fields-immutable-entry.txt && flock -s dumps/run-jfr-38/.matindex.lock java -Xmx3g -jar experiments/shapes/build/libs/shapes-experiment-all.jar mat-fields --hprof dumps/run-jfr-38/daemon.hprof --class com.google.common.collect.ImmutableMapEntry$NonTerminalImmutableMapEntry --limit 5 --all > /tmp/fields-nonterminal-entry.txt",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b0ec9362b.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792328824843,
+  "endTime": 1792328824956,
+  "exitCode": 1,
+  "signal": null,
+  "pid": 3092323,
+  "bytesWritten": 591,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 1",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 180,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

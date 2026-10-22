@@ -11,17 +11,61 @@ class MapProjection(
     private val indexedRefs: (Int) -> IntArray,
     private val namedRefs: (Int) -> List<Pair<String, Int>>,
 ) {
+    /** Bucket collisions select a different concrete Guava entry subclass.
+     * Once the bucket link is projected out, that class distinction is also
+     * representation-only. Object/class totals are retained by the extractor.
+     */
+    fun structuralClassName(name: String): String = when (name) {
+        IMMUTABLE_MAP_ENTRY_NONTERMINAL -> IMMUTABLE_MAP_ENTRY
+        else -> name
+    }
+
     fun refs(id: Int): IntArray {
         val name = className(id)
         return when (name) {
             LINKED_HASH_MAP -> withoutNamedEdges(indexedRefs(id), namedRefs(id), setOf("head", "tail"))
-            HASH_MAP_NODE -> withoutNamedEdges(indexedRefs(id), namedRefs(id), setOf("next"))
+            HASH_MAP_NODE, CONCURRENT_HASH_MAP_NODE -> withoutNamedEdges(
+                indexedRefs(id), namedRefs(id), setOf("next")
+            )
             LINKED_HASH_MAP_ENTRY -> withoutNamedEdges(
                 indexedRefs(id), namedRefs(id), setOf("next", "before", "after")
             )
-            HASH_MAP_NODE_ARRAY -> projectTable(indexedRefs(id))
+            HASH_MAP_NODE_ARRAY, CONCURRENT_HASH_MAP_NODE_ARRAY -> projectTable(indexedRefs(id))
+            IMMUTABLE_MAP_ENTRY_ARRAY, JAVA_MAP_ENTRY_ARRAY -> indexedRefs(id).distinct().sorted().toIntArray()
+            CONCURRENT_HASH_MAP -> keepNamedTargets(indexedRefs(id), namedRefs(id), "table")
+            REGULAR_IMMUTABLE_MAP_KEY_SET, REGULAR_IMMUTABLE_MAP_VALUES,
+            IMMUTABLE_MAP_ENTRY_SET_REGULAR -> IntArray(0)
+            REGULAR_IMMUTABLE_MAP -> keepNamedTargets(indexedRefs(id), namedRefs(id), "entries")
+            IMMUTABLE_MAP_ENTRY_NONTERMINAL -> withoutNamedEdges(
+                indexedRefs(id), namedRefs(id), setOf("nextInKeyBucket", "nextInValueBucket")
+            )
+            DEFAULT_IMMUTABLE_ATTRIBUTES_CONTAINER -> keepNamedTargets(
+                indexedRefs(id), namedRefs(id), setOf("hierarchy")
+            )
+            DEFAULT_IMMUTABLE_ATTRIBUTES_ENTRY -> withoutNamedEdges(
+                indexedRefs(id), namedRefs(id), setOf("coercionCache")
+            )
             else -> indexedRefs(id)
         }
+    }
+
+    /** Keep only the semantic entry-array field of an immutable map; views and
+     * hash tables are implementation detail. */
+    private fun keepNamedTargets(
+        raw: IntArray,
+        fields: List<Pair<String, Int>>,
+        fieldName: String,
+    ): IntArray = keepNamedTargets(raw, fields, setOf(fieldName))
+
+    private fun keepNamedTargets(
+        raw: IntArray,
+        fields: List<Pair<String, Int>>,
+        fieldNames: Set<String>,
+    ): IntArray {
+        val targets = fields.filter { it.first in fieldNames && it.second >= 0 }
+            .mapTo(HashSet()) { it.second }
+        if (targets.isEmpty()) return raw
+        return raw.filter { it in targets }.distinct().toIntArray()
     }
 
     /** Remove exactly the named edges, not every occurrence of their target. */
@@ -80,10 +124,10 @@ class MapProjection(
     }
 
     private fun isEntryNode(name: String): Boolean =
-        name == HASH_MAP_NODE || name == LINKED_HASH_MAP_ENTRY
+        name == HASH_MAP_NODE || name == LINKED_HASH_MAP_ENTRY || name == CONCURRENT_HASH_MAP_NODE
 
     private fun isTechnicalLink(nodeClass: String, field: String): Boolean = when (nodeClass) {
-        HASH_MAP_NODE -> field == "next"
+        HASH_MAP_NODE, CONCURRENT_HASH_MAP_NODE -> field == "next"
         LINKED_HASH_MAP_ENTRY -> field == "next" || field == "before" || field == "after"
         else -> false
     }
@@ -146,5 +190,22 @@ class MapProjection(
         const val LINKED_HASH_MAP = "java.util.LinkedHashMap"
         const val LINKED_HASH_MAP_ENTRY = "java.util.LinkedHashMap" + '$' + "Entry"
         const val HASH_MAP_NODE_ARRAY = "java.util.HashMap" + '$' + "Node[]"
+        const val CONCURRENT_HASH_MAP = "java.util.concurrent.ConcurrentHashMap"
+        const val CONCURRENT_HASH_MAP_NODE = CONCURRENT_HASH_MAP + '$' + "Node"
+        const val CONCURRENT_HASH_MAP_NODE_ARRAY = CONCURRENT_HASH_MAP_NODE + "[]"
+        const val IMMUTABLE_MAP_ENTRY_ARRAY = "com.google.common.collect.ImmutableMapEntry[]"
+        const val JAVA_MAP_ENTRY_ARRAY = "java.util.Map" + '$' + "Entry[]"
+        const val REGULAR_IMMUTABLE_MAP = "com.google.common.collect.RegularImmutableMap"
+        const val REGULAR_IMMUTABLE_MAP_KEY_SET = REGULAR_IMMUTABLE_MAP + '$' + "KeySet"
+        const val REGULAR_IMMUTABLE_MAP_VALUES = REGULAR_IMMUTABLE_MAP + '$' + "Values"
+        const val IMMUTABLE_MAP_ENTRY_SET_REGULAR =
+            "com.google.common.collect.ImmutableMapEntrySet" + '$' + "RegularEntrySet"
+        const val IMMUTABLE_MAP_ENTRY = "com.google.common.collect.ImmutableMapEntry"
+        const val IMMUTABLE_MAP_ENTRY_NONTERMINAL =
+            IMMUTABLE_MAP_ENTRY + '$' + "NonTerminalImmutableMapEntry"
+        const val DEFAULT_IMMUTABLE_ATTRIBUTES_ENTRY =
+            "org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry"
+        const val DEFAULT_IMMUTABLE_ATTRIBUTES_CONTAINER =
+            "org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer"
     }
 }

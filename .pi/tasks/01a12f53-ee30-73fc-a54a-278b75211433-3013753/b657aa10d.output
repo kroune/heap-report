@@ -1,0 +1,13 @@
+/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/tests/test_mat_extract.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='UTF-8'>
+  return self.runner.run(None, self.hprof, self.outdir, "t1",
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.14/traceback.py:270: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='UTF-8'>
+  tb.tb_frame.clear()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+dump source github unavailable: offline
+dump source s3 too slow (>1s) — skipped
+S3 source disabled: no usable credentials in /tmp/definitely-missing-creds
+----------------------------------------------------------------------
+Ran 149 tests in 23.096s
+
+OK

@@ -1,0 +1,63 @@
+
+CLASS org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry shapes 17 objects 1059
+coarse downstream-label signatures 8 multi-shape groups 4
+ group 4 objects 655 sig (('org.gradle.api.attributes.Attribute', 1), ('org.gradle.internal.snapshot.impl.CoercingStringValueSnapshot', 1))
+    [(1141, 384, 'node'), (1218, 244, 'node'), (1418, 18, 'node'), (2689, 9, 'node')]
+ group 2 objects 265 sig (('org.gradle.internal.snapshot.impl.CoercingStringValueSnapshot', 1),)
+    [(707, 259, 'node'), (1133, 6, 'node')]
+ group 5 objects 111 sig (('org.gradle.internal.snapshot.impl.IsolatedImmutableManagedValue', 1),)
+    [(93, 2, 'node'), (916, 1, 'node'), (2639, 105, 'node'), (2645, 1, 'node'), (2893, 2, 'node')]
+ group 2 objects 9 sig (('org.gradle.api.attributes.Attribute', 1), ('org.gradle.internal.snapshot.impl.IntegerValueSnapshot', 1))
+    [(182, 6, 'node'), (2273, 3, 'node')]
+ group 1 objects 9 sig (('org.gradle.internal.snapshot.impl.IsolatedEnumValueSnapshot', 1),)
+    [(639, 9, 'node')]
+ group 1 objects 5 sig ()
+    [(1055, 5, 'leaf')]
+ group 1 objects 4 sig (('org.gradle.internal.snapshot.impl.IntegerValueSnapshot', 1),)
+    [(193, 4, 'node')]
+ group 1 objects 1 sig (('org.gradle.api.attributes.Attribute', 1),)
+    [(2182, 1, 'node')]
+
+CLASS org.gradle.api.attributes.Attribute shapes 2 objects 598
+coarse downstream-label signatures 2 multi-shape groups 0
+ group 1 objects 361 sig ()
+    [(486, 361, 'leaf')]
+ group 1 objects 237 sig (('java.lang.String', 1),)
+    [(1564, 237, 'node')]
+
+CLASS org.gradle.internal.snapshot.impl.CoercingStringValueSnapshot shapes 2 objects 920
+coarse downstream-label signatures 2 multi-shape groups 0
+ group 1 objects 652 sig ()
+    [(384, 652, 'leaf')]
+ group 1 objects 268 sig (('java.lang.String', 1),)
+    [(323, 268, 'node')]
+
+CLASS org.gradle.internal.snapshot.impl.IsolatedImmutableManagedValue shapes 5 objects 111
+coarse downstream-label signatures 5 multi-shape groups 0
+ group 1 objects 105 sig ()
+    [(393, 105, 'leaf')]
+ group 1 objects 2 sig (('org.gradle.api.attributes.VerificationType$Impl', 1),)
+    [(56, 2, 'node')]
+ group 1 objects 2 sig (('com.android.build.gradle.internal.attributes.VariantAttr$Impl', 1),)
+    [(2608, 2, 'node')]
+ group 1 objects 1 sig (('org.gradle.api.attributes.TestSuiteName$Impl', 1),)
+    [(542, 1, 'node')]
+ group 1 objects 1 sig (('org.gradle.api.attributes.Usage$Impl', 1),)
+    [(2028, 1, 'node')]
+
+CLASS org.gradle.internal.snapshot.impl.IntegerValueSnapshot shapes 1 objects 13
+coarse downstream-label signatures 1 multi-shape groups 0
+ group 1 objects 13 sig ()
+    [(1244, 13, 'leaf')]
+
+ROOT residual signatures
+mass 1690 variants 517 sig (('com.google.common.collect.RegularImmutableMap', 1), ('com.google.common.collect.RegularImmutableMap', 1), ('org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry', 1))
+[(866, 38), (99, 31), (1388, 31), (1213, 30), (2321, 30), (1001, 30), (851, 21), (2147, 20), (1504, 20), (803, 20), (215, 18), (1346, 18)]
+mass 208 variants 44 sig (('com.google.common.collect.RegularImmutableMap', 2), ('org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry', 1))
+[(572, 28), (1580, 15), (2921, 15), (229, 13), (744, 13), (1811, 11), (1782, 9), (1109, 8), (1611, 8), (74, 5), (2678, 5), (1912, 5)]
+mass 49 variants 4 sig (('org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry', 1), ('scc[com.google.common.collect.SingletonImmutableBiMap,com.google.common.collect.SingletonImmutableBiMap]', 2))
+[(708, 38), (2664, 8), (1645, 2), (1261, 1)]
+mass 20 variants 3 sig (('com.google.common.collect.SingletonImmutableBiMap', 1), ('org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry', 1), ('scc[com.google.common.collect.SingletonImmutableBiMap,com.google.common.collect.SingletonImmutableBiMap]', 1))
+[(1795, 17), (1374, 2), (620, 1)]
+mass 19 variants 5 sig (('org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry', 1), ('scc[com.google.common.collect.SingletonImmutableBiMap,com.google.common.collect.SingletonImmutableBiMap]', 1), ('scc[com.google.common.collect.SingletonImmutableBiMap,com.google.common.collect.SingletonImmutableBiMap]', 1))
+[(309, 9), (67, 7), (1238, 1), (2542, 1), (2578, 1)]

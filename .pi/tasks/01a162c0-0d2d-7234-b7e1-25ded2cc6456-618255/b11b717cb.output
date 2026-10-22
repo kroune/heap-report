@@ -1,0 +1,13 @@
+== STUBS exact
+RESULT flags=[emit] zeroShallowLeaves=248 shapes=8377 rootShapes=980 treeEntryShapes=12 linkedListNodeShapes=41
+== STUBS+strings exact
+RESULT flags=[strings, emit] zeroShallowLeaves=248 shapes=8111 rootShapes=916 treeEntryShapes=12 linkedListNodeShapes=29
+== BASE set
+RESULT flags=[emit] zeroShallowLeaves=0 shapes=1811 rootShapes=139 treeEntryShapes=2 linkedListNodeShapes=17
+== STUBS+strings set
+RESULT flags=[strings, emit] zeroShallowLeaves=248 shapes=2193 rootShapes=127 treeEntryShapes=4 linkedListNodeShapes=11
+-rw-r--r-- 1 olowo olowo  640277 Oct 22 12:13 /tmp/ablate-dlc-retained-stubs.grph-emit-strings-set.shp1
+-rw-r--r-- 1 olowo olowo 2496336 Oct 22 12:11 /tmp/ablate-dlc-retained-stubs.grph-emit-strings.shp1
+-rw-r--r-- 1 olowo olowo 2595516 Oct 22 12:10 /tmp/ablate-dlc-retained-stubs.grph-emit.shp1
+-rw-r--r-- 1 olowo olowo  490675 Oct 22 12:12 /tmp/ablate-dlc-retained.grph-emit-set.shp1
+-rw-r--r-- 1 olowo olowo 1850737 Oct 22 11:58 /tmp/ablate-emit.shp1

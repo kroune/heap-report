@@ -1,0 +1,8 @@
+job2 cancelled
+  restoring 12 compacted MAT index files (9.2 GB compressed) ...
+  corrupt compacted index deleted: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/daemon.domOut.index.zst
+zstd -d said: zstd: error 70 : Write error : cannot write block : No space left on device
+the index set is incomplete now — it must be re-fetched (or rebuilt locally) before MAT can run
+  dropped 18 index file(s) — the set is re-acquired from scratch
+cancelled: index acquisition cancelled
+None

@@ -1,0 +1,8 @@
+job1 done
+  #1313 scc[com.google.common.collect.SingletonImmutableBiMa SCC       count=208     shallowTotal=9984        min=48      max=48      roots=0
+        -> #825  org.gradle.api.internal.attributes.DefaultImmu mult=2 (total)
+        -> #2861 com.google.common.collect.SingletonImmutableSe mult=1 (total)
+  #567  org.gradle.api.attributes.Attribute                  LEAF      count=361     shallowTotal=8664        min=24      max=24      roots=0
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer-605adc91.shp1 (378392 bytes)
+done: org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer
+None

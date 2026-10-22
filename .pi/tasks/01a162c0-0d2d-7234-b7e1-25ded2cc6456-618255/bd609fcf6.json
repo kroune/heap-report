@@ -1,0 +1,27 @@
+{
+  "id": "bd609fcf6",
+  "name": "GRPH ablation series",
+  "command": "cd /tmp && JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar; CLS=org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated; for F in \"views\" \"treemap\" \"linkedlist\" \"guava\" \"views treemap linkedlist guava emit\"; do SHAPES_MAX_SCC_MERGE=1000000 java -Xmx10g -cp $JAR:/tmp Ablate /home/olowo/dlc-retained.grph $CLS $F 2>&1 | grep -E \"RESULT|flags=|Exception\"; done",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a162c0-0d2d-7234-b7e1-25ded2cc6456-618255/bd609fcf6.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792659541713,
+  "endTime": 1792659761687,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 628813,
+  "bytesWritten": 889,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "id": "bc7de20ee",
+  "name": "Read immutable map fields",
+  "command": "python3 -u /tmp/run_immutable_fields.py",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bc7de20ee.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792329245909,
+  "endTime": 1792329295152,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3096820,
+  "bytesWritten": 450,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 300,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

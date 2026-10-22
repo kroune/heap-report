@@ -1,0 +1,5 @@
+job2 done
+        -> #234  org.gradle.internal.snapshot.impl.CoercingStri mult=1 (per member)
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer-605adc91.shp1 (168552 bytes)
+done: org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer
+None

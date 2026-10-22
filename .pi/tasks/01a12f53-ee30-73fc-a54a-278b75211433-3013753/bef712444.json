@@ -1,0 +1,29 @@
+{
+  "id": "bef712444",
+  "name": "Trace attribute residuals",
+  "command": "python3 -u /tmp/trace_attribute_residuals.py",
+  "status": "failed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bef712444.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792333582219,
+  "endTime": 1792333582254,
+  "exitCode": 2,
+  "signal": null,
+  "pid": 3133767,
+  "bytesWritten": 98,
+  "isAgent": false,
+  "surviveReload": false,
+  "error": "Exited with code 2",
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 120,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

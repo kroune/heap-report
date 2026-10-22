@@ -68,6 +68,72 @@ class MapProjectionTest {
     }
 
     @Test
+    fun `immutable map keeps entries and drops views and bucket links`() {
+        val g = FakeGraph(
+            arrayOf(
+                "com.google.common.collect.RegularImmutableMap",
+                "java.util.Map" + '$' + "Entry[]",
+                "com.google.common.collect.ImmutableMapEntry" + '$' + "NonTerminalImmutableMapEntry",
+                "com.google.common.collect.ImmutableMapEntry",
+            ),
+            arrayOf(intArrayOf(1, 2, 3), intArrayOf(2, 3), intArrayOf(3, 3), intArrayOf()),
+            arrayOf(
+                listOf("entries" to 1, "table" to 2, "entrySet" to 3),
+                emptyList(),
+                listOf("nextInKeyBucket" to 3, "key" to 3, "value" to 3),
+                emptyList(),
+            ),
+        )
+        assertContentEquals(intArrayOf(1), g.projection().refs(0))
+        assertEquals(setOf(3), g.projection().refs(2).toSet())
+    }
+
+    @Test
+    fun `concurrent hash map drops node chains but keeps key and value`() {
+        val g = FakeGraph(
+            arrayOf(
+                "java.util.concurrent.ConcurrentHashMap" + '$' + "Node",
+            ),
+            arrayOf(intArrayOf(7, 8, 9)),
+            arrayOf(listOf("key" to 7, "next" to 8, "val" to 9)),
+        )
+        assertContentEquals(intArrayOf(7, 9), g.projection().refs(0))
+    }
+
+    @Test
+    fun `immutable views are representation-only`() {
+        val g = FakeGraph(
+            arrayOf(
+                "com.google.common.collect.RegularImmutableMap" + '$' + "KeySet",
+                "com.google.common.collect.RegularImmutableMap",
+            ),
+            arrayOf(intArrayOf(1, 1), intArrayOf()),
+            arrayOf(listOf("map" to 1, "asList" to 1), emptyList()),
+        )
+        assertContentEquals(IntArray(0), g.projection().refs(0))
+    }
+
+    @Test
+    fun `immutable attributes container keeps hierarchy but drops duplicate indexes`() {
+        val g = FakeGraph(
+            arrayOf("org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer"),
+            arrayOf(intArrayOf(1, 2, 3, 4)),
+            arrayOf(listOf("head" to 1, "hierarchy" to 2, "hierarchyByName" to 3, "singleEntry" to 4)),
+        )
+        assertContentEquals(intArrayOf(2), g.projection().refs(0))
+    }
+
+    @Test
+    fun `immutable attribute entry drops coercion cache but keeps attribute and value`() {
+        val g = FakeGraph(
+            arrayOf("org.gradle.api.internal.attributes.DefaultImmutableAttributesEntry"),
+            arrayOf(intArrayOf(1, 2, 3)),
+            arrayOf(listOf("coercionCache" to 1, "attribute" to 2, "value" to 3)),
+        )
+        assertContentEquals(intArrayOf(2, 3), g.projection().refs(0))
+    }
+
+    @Test
     fun `cycles terminate and duplicate buckets become one member`() {
         val g = FakeGraph(
             arrayOf("java.util.HashMap" + '$' + "Node[]", "java.util.HashMap" + '$' + "Node", "java.util.HashMap" + '$' + "Node"),

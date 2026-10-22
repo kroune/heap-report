@@ -196,13 +196,15 @@ Perf/memory, JFR-driven (in order of what profiles showed):
 
 ## Flow comparison diagnostics
 
-See [FLOW-COMPARISON.md](FLOW-COMPARISON.md) for controlled same-input
-comparisons, scope/grouping differences, and array multiplicity ablations.
-The 32-root retained sample yields 416 shapes versus 243 flow classes on
-identical adjacency; full retained raw maps yielded 234,834 shapes versus
-7,821 after diagnostic map normalization. Field-aware normalization is now
-available from the UI with explicit scope/projection choices. The diagnostic
-numbers are not a promise for every dump or every collection implementation.
+See [FLOW-COMPARISON.md](FLOW-COMPARISON.md) — conclusions of the
+flow-vs-shapes investigation and the design decisions they justify.
+Headline: the 32-root retained sample yields 416 shapes versus 243 flow
+classes on identical adjacency; the full retained scope yields 234,834 raw
+shapes versus 7,821 after diagnostic map normalization, and the residual is
+fully explained by per-module dependency content plus three identified
+dump-time artifacts. Field-aware normalization is available from the UI
+with explicit scope/projection choices. The diagnostic numbers are not a
+promise for every dump or every collection implementation.
 
 ## Known limitations / notes for review
 

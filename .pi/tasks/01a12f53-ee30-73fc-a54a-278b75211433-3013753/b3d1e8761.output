@@ -1,0 +1,22 @@
+job8 done
+  #2696 com.google.common.collect.ImmutableMapEntry          NODE      count=1000    shallowTotal=24000       min=24      max=24      roots=0
+        -> #1218 org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+        -> #1564 org.gradle.api.attributes.Attribute            mult=1 (per member)
+  #1361 com.google.common.collect.RegularImmutableMap$Values LEAF      count=1485    shallowTotal=23760       min=16      max=16      roots=0
+  #1305 com.google.common.collect.ImmutableMapEntry$NonTermi NODE      count=873     shallowTotal=20952       min=24      max=24      roots=0
+        -> #2639 org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+  #2641 com.google.common.collect.ImmutableMapEntry          NODE      count=847     shallowTotal=20328       min=24      max=24      roots=0
+        -> #1218 org.gradle.api.internal.attributes.DefaultImmu mult=1 (per member)
+        -> #1458 java.lang.String                               mult=1 (per member)
+  #2709 byte[]                                               LEAF      count=484     shallowTotal=20072       min=24      max=424     roots=0
+  #384  org.gradle.internal.snapshot.impl.CoercingStringValu LEAF      count=652     shallowTotal=15648       min=24      max=24      roots=0
+  #2828 java.util.concurrent.ConcurrentHashMap$Node          LEAF      count=427     shallowTotal=13664       min=32      max=32      roots=0
+  #726  com.google.common.collect.RegularImmutableMap$KeySet LEAF      count=534     shallowTotal=12816       min=24      max=24      roots=0
+  #1141 org.gradle.api.internal.attributes.DefaultImmutableA NODE      count=384     shallowTotal=12288       min=32      max=32      roots=0
+        -> #384  org.gradle.internal.snapshot.impl.CoercingStri mult=1 (per member)
+        -> #486  org.gradle.api.attributes.Attribute            mult=1 (per member)
+  #1458 java.lang.String                                     NODE      count=484     shallowTotal=11616       min=24      max=24      roots=0
+        -> #2709 byte[]                                         mult=1 (per member)
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer-605adc91.shp1 (331690 bytes)
+done: org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer
+None

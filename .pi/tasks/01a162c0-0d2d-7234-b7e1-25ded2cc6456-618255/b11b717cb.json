@@ -1,0 +1,27 @@
+{
+  "id": "b11b717cb",
+  "name": "stub + set-semantics ablations",
+  "command": "cd /tmp && JAR=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/libs/shapes-experiment-all.jar; CP=/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/classes/kotlin/main:$JAR:/tmp; CLS=org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated; \necho \"== STUBS exact\"; SHAPES_MAX_SCC_MERGE=1000000 java -Xmx11g -cp $CP Ablate /home/olowo/dlc-retained-stubs.grph $CLS emit 2>&1 | grep -E \"RESULT|Exception|Error\";\necho \"== STUBS+strings exact\"; SHAPES_MAX_SCC_MERGE=1000000 java -Xmx11g -cp $CP Ablate /home/olowo/dlc-retained-stubs.grph $CLS strings emit 2>&1 | grep -E \"RESULT|Exception|Error\";\necho \"== BASE set\"; SHAPES_SET_SEMANTICS=1 SHAPES_MAX_SCC_MERGE=1000000 java -Xmx11g -cp $CP Ablate /home/olowo/dlc-retained.grph $CLS emit 2>&1 | grep -E \"RESULT|Exception|Error\";\necho \"== STUBS+strings set\"; SHAPES_SET_SEMANTICS=1 SHAPES_MAX_SCC_MERGE=1000000 java -Xmx11g -cp $CP Ablate /home/olowo/dlc-retained-stubs.grph $CLS strings emit 2>&1 | grep -E \"RESULT|Exception|Error\";\nls -la /tmp/ablate-*.shp1",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a162c0-0d2d-7234-b7e1-25ded2cc6456-618255/b11b717cb.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792660191536,
+  "endTime": 1792660435169,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 635186,
+  "bytesWritten": 987,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

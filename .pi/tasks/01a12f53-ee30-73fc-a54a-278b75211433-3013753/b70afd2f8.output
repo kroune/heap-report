@@ -1,0 +1,6 @@
+job1 done
+  #1418 java.lang.String                                     NODE      count=484     shallowTotal=11616       min=24      max=24      roots=0
+        -> #2621 byte[]                                         mult=1 (per member)
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer-605adc91.shp1 (303930 bytes)
+done: org.gradle.api.internal.attributes.DefaultImmutableAttributesContainer
+None

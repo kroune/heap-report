@@ -1,0 +1,2804 @@
+- generic [ref=e1]:
+  - banner [ref=e2]:
+    - heading "Heap report Gradle sync-OOM benchmark · Eclipse MAT extracts" [level=1] [ref=e3]
+    - button "choose heap dump" [ref=e4] [cursor=pointer]: run-jfr-38 ▾
+    - generic [ref=e15]: ready
+  - navigation [ref=e5]:
+    - button "Classes" [ref=e6] [cursor=pointer]
+    - button "Treemap" [ref=e7] [cursor=pointer]
+    - button "Compare" [ref=e8] [cursor=pointer]
+  - main [ref=e9]:
+    - generic [ref=e16]:
+      - generic [ref=e17]:
+        - textbox "filter classes, e.g. CachePolicy or com.android…" [ref=e18]
+        - generic [ref=e19]: retained/per-instance appear once a class is analyzed (click Analyze or open a viz). Lambda specializations are merged into $$Lambda* families.
+        - generic [ref=e20]:
+          - generic [ref=e21]: 43,711 classes
+          - button "‹" [disabled] [ref=e22]
+          - generic [ref=e23]: 1/219
+          - button "›" [ref=e24] [cursor=pointer]
+      - table [ref=e26]:
+        - rowgroup [ref=e27]:
+          - row [ref=e28]:
+            - columnheader "class" [ref=e29] [cursor=pointer]
+            - columnheader "objects" [ref=e30] [cursor=pointer]
+            - columnheader "shallow ▾" [ref=e31] [cursor=pointer]
+            - columnheader "per inst" [ref=e32] [cursor=pointer]
+            - columnheader "retained" [ref=e33] [cursor=pointer]
+            - columnheader "per inst" [ref=e34]
+            - columnheader "analysis" [ref=e35]
+            - columnheader [ref=e36]
+          - row [ref=e37]:
+            - cell "Object[]" [ref=e38] [cursor=pointer]
+            - cell "11,191,448" [ref=e40]
+            - cell "710M" [ref=e41]
+            - cell "63.4B" [ref=e42]
+            - cell "—" [ref=e43]
+            - cell "—" [ref=e44]
+            - cell [ref=e45]
+            - cell [ref=e46]:
+              - button "viz ▸" [ref=e47] [cursor=pointer]
+              - button "Analyze" [ref=e48] [cursor=pointer]
+          - row [ref=e49]:
+            - cell "byte[]" [ref=e50] [cursor=pointer]
+            - cell "7,901,825" [ref=e52]
+            - cell "703M" [ref=e53]
+            - cell "89B" [ref=e54]
+            - cell "—" [ref=e55]
+            - cell "—" [ref=e56]
+            - cell [ref=e57]
+            - cell [ref=e58]:
+              - button "viz ▸" [ref=e59] [cursor=pointer]
+              - button "Analyze" [ref=e60] [cursor=pointer]
+          - row [ref=e61]:
+            - cell "HashMap$Node[]" [ref=e62] [cursor=pointer]
+            - cell "4,598,848" [ref=e64]
+            - cell "440M" [ref=e65]
+            - cell "95.7B" [ref=e66]
+            - cell "—" [ref=e67]
+            - cell "—" [ref=e68]
+            - cell [ref=e69]
+            - cell [ref=e70]:
+              - button "viz ▸" [ref=e71] [cursor=pointer]
+              - button "Analyze" [ref=e72] [cursor=pointer]
+          - row [ref=e73]:
+            - cell "LinkedHashMap" [ref=e74] [cursor=pointer]
+            - cell "6,297,365" [ref=e76]
+            - cell "403M" [ref=e77]
+            - cell "64B" [ref=e78]
+            - cell "—" [ref=e79]
+            - cell "—" [ref=e80]
+            - cell [ref=e81]
+            - cell [ref=e82]:
+              - button "viz ▸" [ref=e83] [cursor=pointer]
+              - button "Analyze" [ref=e84] [cursor=pointer]
+          - row [ref=e85]:
+            - cell "LinkedHashMap$Entry" [ref=e86] [cursor=pointer]
+            - cell "9,688,851" [ref=e88]
+            - cell "388M" [ref=e89]
+            - cell "40B" [ref=e90]
+            - cell "—" [ref=e91]
+            - cell "—" [ref=e92]
+            - cell [ref=e93]
+            - cell [ref=e94]:
+              - button "viz ▸" [ref=e95] [cursor=pointer]
+              - button "Analyze" [ref=e96] [cursor=pointer]
+          - row [ref=e97]:
+            - cell "ArrayList" [ref=e98] [cursor=pointer]
+            - cell "12,788,276" [ref=e100]
+            - cell "307M" [ref=e101]
+            - cell "24B" [ref=e102]
+            - cell "—" [ref=e103]
+            - cell "—" [ref=e104]
+            - cell [ref=e105]
+            - cell [ref=e106]:
+              - button "viz ▸" [ref=e107] [cursor=pointer]
+              - button "Analyze" [ref=e108] [cursor=pointer]
+          - row [ref=e109]:
+            - cell "HashMap$Node" [ref=e110] [cursor=pointer]
+            - cell "7,768,864" [ref=e112]
+            - cell "249M" [ref=e113]
+            - cell "32B" [ref=e114]
+            - cell "—" [ref=e115]
+            - cell "—" [ref=e116]
+            - cell [ref=e117]
+            - cell [ref=e118]:
+              - button "viz ▸" [ref=e119] [cursor=pointer]
+              - button "Analyze" [ref=e120] [cursor=pointer]
+          - row [ref=e121]:
+            - cell "ValueState$NonFinalizedValue" [ref=e122] [cursor=pointer]
+            - cell "8,483,738" [ref=e124]
+            - cell "204M" [ref=e125]
+            - cell "24B" [ref=e126]
+            - cell "—" [ref=e127]
+            - cell "—" [ref=e128]
+            - cell [ref=e129]
+            - cell [ref=e130]:
+              - button "viz ▸" [ref=e131] [cursor=pointer]
+              - button "Analyze" [ref=e132] [cursor=pointer]
+          - row [ref=e133]:
+            - cell "String" [ref=e134] [cursor=pointer]
+            - cell "8,001,125" [ref=e136]
+            - cell "192M" [ref=e137]
+            - cell "24B" [ref=e138]
+            - cell "—" [ref=e139]
+            - cell "—" [ref=e140]
+            - cell [ref=e141]
+            - cell [ref=e142]:
+              - button "viz ▸" [ref=e143] [cursor=pointer]
+              - button "Analyze" [ref=e144] [cursor=pointer]
+          - row [ref=e145]:
+            - cell "DefaultProperty" [ref=e146] [cursor=pointer]
+            - cell "3,663,780" [ref=e148]
+            - cell "147M" [ref=e149]
+            - cell "40B" [ref=e150]
+            - cell "—" [ref=e151]
+            - cell "—" [ref=e152]
+            - cell [ref=e153]
+            - cell [ref=e154]:
+              - button "viz ▸" [ref=e155] [cursor=pointer]
+              - button "Analyze" [ref=e156] [cursor=pointer]
+          - row [ref=e157]:
+            - cell "VariantResolvingArtifactSet" [ref=e158] [cursor=pointer]
+            - cell "3,207,502" [ref=e160]
+            - cell "128M" [ref=e161]
+            - cell "40B" [ref=e162]
+            - cell "—" [ref=e163]
+            - cell "—" [ref=e164]
+            - cell [ref=e165]
+            - cell [ref=e166]:
+              - button "viz ▸" [ref=e167] [cursor=pointer]
+              - button "Analyze" [ref=e168] [cursor=pointer]
+          - row [ref=e169]:
+            - cell "DefaultFilePropertyFactory$DefaultDirectoryVar" [ref=e170] [cursor=pointer]
+            - cell "2,295,155" [ref=e172]
+            - cell "110M" [ref=e173]
+            - cell "48B" [ref=e174]
+            - cell "—" [ref=e175]
+            - cell "—" [ref=e176]
+            - cell [ref=e177]
+            - cell [ref=e178]:
+              - button "viz ▸" [ref=e179] [cursor=pointer]
+              - button "Analyze" [ref=e180] [cursor=pointer]
+          - row [ref=e181]:
+            - cell "HashMap" [ref=e182] [cursor=pointer]
+            - cell "2,140,353" [ref=e184]
+            - cell "103M" [ref=e185]
+            - cell "48B" [ref=e186]
+            - cell "—" [ref=e187]
+            - cell "—" [ref=e188]
+            - cell [ref=e189]
+            - cell [ref=e190]:
+              - button "viz ▸" [ref=e191] [cursor=pointer]
+              - button "Analyze" [ref=e192] [cursor=pointer]
+          - row [ref=e193]:
+            - cell "DefaultDomainObjectSet_Decorated" [ref=e194] [cursor=pointer]
+            - cell "1,497,378" [ref=e196]
+            - cell "95.8M" [ref=e197]
+            - cell "64B" [ref=e198]
+            - cell "—" [ref=e199]
+            - cell "—" [ref=e200]
+            - cell [ref=e201]
+            - cell [ref=e202]:
+              - button "viz ▸" [ref=e203] [cursor=pointer]
+              - button "Analyze" [ref=e204] [cursor=pointer]
+          - row [ref=e205]:
+            - cell "DefaultLegacyConfiguration_Decorated" [ref=e206] [cursor=pointer]
+            - cell "327,035" [ref=e208]
+            - cell "91.6M" [ref=e209]
+            - cell "280B" [ref=e210]
+            - cell "2.3G" [ref=e211]
+            - cell "6.9K" [ref=e212]
+            - cell "rs a32" [ref=e213]:
+              - generic "retained-set composition available" [ref=e214]: rs
+              - generic "anatomy extracted with 32 samples" [ref=e215]: a32
+            - cell [ref=e216]:
+              - button "viz ▸" [active] [ref=e217] [cursor=pointer]
+          - row [ref=e218]:
+            - cell "DefaultTaskDependency" [ref=e219] [cursor=pointer]
+            - cell "2,778,226" [ref=e221]
+            - cell "88.9M" [ref=e222]
+            - cell "32B" [ref=e223]
+            - cell "—" [ref=e224]
+            - cell "—" [ref=e225]
+            - cell [ref=e226]
+            - cell [ref=e227]:
+              - button "viz ▸" [ref=e228] [cursor=pointer]
+              - button "Analyze" [ref=e229] [cursor=pointer]
+          - row [ref=e230]:
+            - cell "LinkedHashSet" [ref=e231] [cursor=pointer]
+            - cell "5,365,667" [ref=e233]
+            - cell "85.9M" [ref=e234]
+            - cell "16B" [ref=e235]
+            - cell "—" [ref=e236]
+            - cell "—" [ref=e237]
+            - cell [ref=e238]
+            - cell [ref=e239]:
+              - button "viz ▸" [ref=e240] [cursor=pointer]
+              - button "Analyze" [ref=e241] [cursor=pointer]
+          - row [ref=e242]:
+            - cell "DefaultConfigurableFileCollection" [ref=e243] [cursor=pointer]
+            - cell "1,230,176" [ref=e245]
+            - cell "68.9M" [ref=e246]
+            - cell "56B" [ref=e247]
+            - cell "—" [ref=e248]
+            - cell "—" [ref=e249]
+            - cell [ref=e250]
+            - cell [ref=e251]:
+              - button "viz ▸" [ref=e252] [cursor=pointer]
+              - button "Analyze" [ref=e253] [cursor=pointer]
+          - row [ref=e254]:
+            - cell "LinkedHashMap$LinkedKeySet" [ref=e255] [cursor=pointer]
+            - cell "2,757,885" [ref=e257]
+            - cell "66.2M" [ref=e258]
+            - cell "24B" [ref=e259]
+            - cell "—" [ref=e260]
+            - cell "—" [ref=e261]
+            - cell [ref=e262]
+            - cell [ref=e263]:
+              - button "viz ▸" [ref=e264] [cursor=pointer]
+              - button "Analyze" [ref=e265] [cursor=pointer]
+          - row [ref=e266]:
+            - cell "DefaultCollectionEventRegister" [ref=e267] [cursor=pointer]
+            - cell "1,653,535" [ref=e269]
+            - cell "66.1M" [ref=e270]
+            - cell "40B" [ref=e271]
+            - cell "—" [ref=e272]
+            - cell "—" [ref=e273]
+            - cell [ref=e274]
+            - cell [ref=e275]:
+              - button "viz ▸" [ref=e276] [cursor=pointer]
+              - button "Analyze" [ref=e277] [cursor=pointer]
+          - row [ref=e278]:
+            - cell "Cached$Deferred" [ref=e279] [cursor=pointer]
+            - cell "2,592,682" [ref=e281]
+            - cell "62.2M" [ref=e282]
+            - cell "24B" [ref=e283]
+            - cell "—" [ref=e284]
+            - cell "—" [ref=e285]
+            - cell [ref=e286]
+            - cell [ref=e287]:
+              - button "viz ▸" [ref=e288] [cursor=pointer]
+              - button "Analyze" [ref=e289] [cursor=pointer]
+          - row [ref=e290]:
+            - cell "ManagedObjectFactory$RootManagedPropertyName" [ref=e291] [cursor=pointer]
+            - cell "2,592,674" [ref=e293]
+            - cell "62.2M" [ref=e294]
+            - cell "24B" [ref=e295]
+            - cell "—" [ref=e296]
+            - cell "—" [ref=e297]
+            - cell [ref=e298]
+            - cell [ref=e299]:
+              - button "viz ▸" [ref=e300] [cursor=pointer]
+              - button "Analyze" [ref=e301] [cursor=pointer]
+          - row [ref=e302]:
+            - cell "IdeDependencyCoreImpl" [ref=e303] [cursor=pointer]
+            - cell "2,587,120" [ref=e305]
+            - cell "62.1M" [ref=e306]
+            - cell "24B" [ref=e307]
+            - cell "—" [ref=e308]
+            - cell "—" [ref=e309]
+            - cell [ref=e310]
+            - cell [ref=e311]:
+              - button "viz ▸" [ref=e312] [cursor=pointer]
+              - button "Analyze" [ref=e313] [cursor=pointer]
+          - row [ref=e314]:
+            - cell "IterationOrderRetainingSetElementSource" [ref=e315] [cursor=pointer]
+            - cell "1,500,392" [ref=e317]
+            - cell "60M" [ref=e318]
+            - cell "40B" [ref=e319]
+            - cell "—" [ref=e320]
+            - cell "—" [ref=e321]
+            - cell [ref=e322]
+            - cell [ref=e323]:
+              - button "viz ▸" [ref=e324] [cursor=pointer]
+              - button "Analyze" [ref=e325] [cursor=pointer]
+          - row [ref=e326]:
+            - cell "TreeMap$Entry" [ref=e327] [cursor=pointer]
+            - cell "1,482,983" [ref=e329]
+            - cell "59.3M" [ref=e330]
+            - cell "40B" [ref=e331]
+            - cell "—" [ref=e332]
+            - cell "—" [ref=e333]
+            - cell [ref=e334]
+            - cell [ref=e335]:
+              - button "viz ▸" [ref=e336] [cursor=pointer]
+              - button "Analyze" [ref=e337] [cursor=pointer]
+          - row [ref=e338]:
+            - cell "Describables$TwoPartDescribable" [ref=e339] [cursor=pointer]
+            - cell "2,331,349" [ref=e341]
+            - cell "56M" [ref=e342]
+            - cell "24B" [ref=e343]
+            - cell "—" [ref=e344]
+            - cell "—" [ref=e345]
+            - cell [ref=e346]
+            - cell [ref=e347]:
+              - button "viz ▸" [ref=e348] [cursor=pointer]
+              - button "Analyze" [ref=e349] [cursor=pointer]
+          - row [ref=e350]:
+            - cell "Integer" [ref=e351] [cursor=pointer]
+            - cell "3,409,932" [ref=e353]
+            - cell "54.6M" [ref=e354]
+            - cell "16B" [ref=e355]
+            - cell "—" [ref=e356]
+            - cell "—" [ref=e357]
+            - cell [ref=e358]
+            - cell [ref=e359]:
+              - button "viz ▸" [ref=e360] [cursor=pointer]
+              - button "Analyze" [ref=e361] [cursor=pointer]
+          - row [ref=e362]:
+            - cell "DefaultMutationGuard$1" [ref=e363] [cursor=pointer]
+            - cell "2,242,023" [ref=e365]
+            - cell "53.8M" [ref=e366]
+            - cell "24B" [ref=e367]
+            - cell "—" [ref=e368]
+            - cell "—" [ref=e369]
+            - cell [ref=e370]
+            - cell [ref=e371]:
+              - button "viz ▸" [ref=e372] [cursor=pointer]
+              - button "Analyze" [ref=e373] [cursor=pointer]
+          - row [ref=e374]:
+            - cell "long[]" [ref=e375] [cursor=pointer]
+            - cell "60,229" [ref=e377]
+            - cell "53.8M" [ref=e378]
+            - cell "893B" [ref=e379]
+            - cell "—" [ref=e380]
+            - cell "—" [ref=e381]
+            - cell [ref=e382]
+            - cell [ref=e383]:
+              - button "viz ▸" [ref=e384] [cursor=pointer]
+              - button "Analyze" [ref=e385] [cursor=pointer]
+          - row [ref=e386]:
+            - cell "String[]" [ref=e387] [cursor=pointer]
+            - cell "1,592,637" [ref=e389]
+            - cell "50.9M" [ref=e390]
+            - cell "32B" [ref=e391]
+            - cell "—" [ref=e392]
+            - cell "—" [ref=e393]
+            - cell [ref=e394]
+            - cell [ref=e395]:
+              - button "viz ▸" [ref=e396] [cursor=pointer]
+              - button "Analyze" [ref=e397] [cursor=pointer]
+          - row [ref=e398]:
+            - cell "Path" [ref=e399] [cursor=pointer]
+            - cell "1,587,582" [ref=e401]
+            - cell "50.8M" [ref=e402]
+            - cell "32B" [ref=e403]
+            - cell "—" [ref=e404]
+            - cell "—" [ref=e405]
+            - cell [ref=e406]
+            - cell [ref=e407]:
+              - button "viz ▸" [ref=e408] [cursor=pointer]
+              - button "Analyze" [ref=e409] [cursor=pointer]
+          - row [ref=e410]:
+            - cell "DefaultFilePropertyFactory$DefaultRegularFileVar" [ref=e411] [cursor=pointer]
+            - cell "1,176,183" [ref=e413]
+            - cell "47M" [ref=e414]
+            - cell "40B" [ref=e415]
+            - cell "—" [ref=e416]
+            - cell "—" [ref=e417]
+            - cell [ref=e418]
+            - cell [ref=e419]:
+              - button "viz ▸" [ref=e420] [cursor=pointer]
+              - button "Analyze" [ref=e421] [cursor=pointer]
+          - row [ref=e422]:
+            - cell "DefaultConfiguration$$Lambda*▸ 19" [ref=e423] [cursor=pointer]
+            - cell "1,878,296" [ref=e425]
+            - cell "44.7M" [ref=e426]
+            - cell "23.8B" [ref=e427]
+            - cell "—" [ref=e428]
+            - cell "—" [ref=e429]
+            - cell [ref=e430]
+            - cell [ref=e431]:
+              - button "viz ▸" [ref=e432] [cursor=pointer]
+          - row [ref=e433]:
+            - cell "ReentrantLock$NonfairSync" [ref=e434] [cursor=pointer]
+            - cell "1,381,075" [ref=e436]
+            - cell "44.2M" [ref=e437]
+            - cell "32B" [ref=e438]
+            - cell "—" [ref=e439]
+            - cell "—" [ref=e440]
+            - cell [ref=e441]
+            - cell [ref=e442]:
+              - button "viz ▸" [ref=e443] [cursor=pointer]
+              - button "Analyze" [ref=e444] [cursor=pointer]
+          - row [ref=e445]:
+            - cell "DefaultTaskContainer$TaskCreatingProvider_Decorated" [ref=e446] [cursor=pointer]
+            - cell "591,254" [ref=e448]
+            - cell "42.6M" [ref=e449]
+            - cell "72B" [ref=e450]
+            - cell "—" [ref=e451]
+            - cell "—" [ref=e452]
+            - cell [ref=e453]
+            - cell [ref=e454]:
+              - button "viz ▸" [ref=e455] [cursor=pointer]
+              - button "Analyze" [ref=e456] [cursor=pointer]
+          - row [ref=e457]:
+            - cell "Providers$FixedValueProvider" [ref=e458] [cursor=pointer]
+            - cell "2,637,537" [ref=e460]
+            - cell "42.2M" [ref=e461]
+            - cell "16B" [ref=e462]
+            - cell "—" [ref=e463]
+            - cell "—" [ref=e464]
+            - cell [ref=e465]
+            - cell [ref=e466]:
+              - button "viz ▸" [ref=e467] [cursor=pointer]
+              - button "Analyze" [ref=e468] [cursor=pointer]
+          - row [ref=e469]:
+            - cell "ManagedObjectFactory$$Lambda*▸ 1" [ref=e470] [cursor=pointer]
+            - cell "2,592,674" [ref=e472]
+            - cell "41.5M" [ref=e473]
+            - cell "16B" [ref=e474]
+            - cell "—" [ref=e475]
+            - cell "—" [ref=e476]
+            - cell [ref=e477]
+            - cell [ref=e478]:
+              - button "viz ▸" [ref=e479] [cursor=pointer]
+          - row [ref=e480]:
+            - cell "ConcurrentHashMap$Node" [ref=e481] [cursor=pointer]
+            - cell "1,259,832" [ref=e483]
+            - cell "40.3M" [ref=e484]
+            - cell "32B" [ref=e485]
+            - cell "—" [ref=e486]
+            - cell "—" [ref=e487]
+            - cell [ref=e488]
+            - cell [ref=e489]:
+              - button "viz ▸" [ref=e490] [cursor=pointer]
+              - button "Analyze" [ref=e491] [cursor=pointer]
+          - row [ref=e492]:
+            - cell "SinglePropertyAdapter" [ref=e493] [cursor=pointer]
+            - cell "2,502,132" [ref=e495]
+            - cell "40M" [ref=e496]
+            - cell "16B" [ref=e497]
+            - cell "—" [ref=e498]
+            - cell "—" [ref=e499]
+            - cell [ref=e500]
+            - cell [ref=e501]:
+              - button "viz ▸" [ref=e502] [cursor=pointer]
+              - button "Analyze" [ref=e503] [cursor=pointer]
+          - row [ref=e504]:
+            - cell "SingleArtifactContainer" [ref=e505] [cursor=pointer]
+            - cell "834,044" [ref=e507]
+            - cell "40M" [ref=e508]
+            - cell "48B" [ref=e509]
+            - cell "—" [ref=e510]
+            - cell "—" [ref=e511]
+            - cell [ref=e512]
+            - cell [ref=e513]:
+              - button "viz ▸" [ref=e514] [cursor=pointer]
+              - button "Analyze" [ref=e515] [cursor=pointer]
+          - row [ref=e516]:
+            - cell "ValueState$NonFinalizedValueWithCopier" [ref=e517] [cursor=pointer]
+            - cell "1,230,172" [ref=e519]
+            - cell "39.4M" [ref=e520]
+            - cell "32B" [ref=e521]
+            - cell "—" [ref=e522]
+            - cell "—" [ref=e523]
+            - cell [ref=e524]
+            - cell [ref=e525]:
+              - button "viz ▸" [ref=e526] [cursor=pointer]
+              - button "Analyze" [ref=e527] [cursor=pointer]
+          - row [ref=e528]:
+            - cell "ErrorHandlingNotationParser" [ref=e529] [cursor=pointer]
+            - cell "1,212,229" [ref=e531]
+            - cell "38.8M" [ref=e532]
+            - cell "32B" [ref=e533]
+            - cell "—" [ref=e534]
+            - cell "—" [ref=e535]
+            - cell [ref=e536]
+            - cell [ref=e537]:
+              - button "viz ▸" [ref=e538] [cursor=pointer]
+              - button "Analyze" [ref=e539] [cursor=pointer]
+          - row [ref=e540]:
+            - cell "ThreadLocal$SuppliedThreadLocal" [ref=e541] [cursor=pointer]
+            - cell "1,608,513" [ref=e543]
+            - cell "38.6M" [ref=e544]
+            - cell "24B" [ref=e545]
+            - cell "—" [ref=e546]
+            - cell "—" [ref=e547]
+            - cell [ref=e548]
+            - cell [ref=e549]:
+              - button "viz ▸" [ref=e550] [cursor=pointer]
+              - button "Analyze" [ref=e551] [cursor=pointer]
+          - row [ref=e552]:
+            - cell "DefaultDomainObjectCollection$$Lambda*▸ 1" [ref=e553] [cursor=pointer]
+            - cell "1,608,488" [ref=e555]
+            - cell "38.6M" [ref=e556]
+            - cell "24B" [ref=e557]
+            - cell "—" [ref=e558]
+            - cell "—" [ref=e559]
+            - cell [ref=e560]
+            - cell [ref=e561]:
+              - button "viz ▸" [ref=e562] [cursor=pointer]
+          - row [ref=e563]:
+            - cell "int[]" [ref=e564] [cursor=pointer]
+            - cell "154,882" [ref=e566]
+            - cell "35.3M" [ref=e567]
+            - cell "228B" [ref=e568]
+            - cell "—" [ref=e569]
+            - cell "—" [ref=e570]
+            - cell [ref=e571]
+            - cell [ref=e572]:
+              - button "viz ▸" [ref=e573] [cursor=pointer]
+              - button "Analyze" [ref=e574] [cursor=pointer]
+          - row [ref=e575]:
+            - cell "ValidatingValueCollector" [ref=e576] [cursor=pointer]
+            - cell "1,423,695" [ref=e578]
+            - cell "34.2M" [ref=e579]
+            - cell "24B" [ref=e580]
+            - cell "—" [ref=e581]
+            - cell "—" [ref=e582]
+            - cell [ref=e583]
+            - cell [ref=e584]:
+              - button "viz ▸" [ref=e585] [cursor=pointer]
+              - button "Analyze" [ref=e586] [cursor=pointer]
+          - row [ref=e587]:
+            - cell "LinkedList$Node" [ref=e588] [cursor=pointer]
+            - cell "1,396,428" [ref=e590]
+            - cell "33.5M" [ref=e591]
+            - cell "24B" [ref=e592]
+            - cell "—" [ref=e593]
+            - cell "—" [ref=e594]
+            - cell [ref=e595]
+            - cell [ref=e596]:
+              - button "viz ▸" [ref=e597] [cursor=pointer]
+              - button "Analyze" [ref=e598] [cursor=pointer]
+          - row [ref=e599]:
+            - cell "DefaultUserCodeApplicationContext$CurrentApplication$1" [ref=e600] [cursor=pointer]
+            - cell "1,362,963" [ref=e602]
+            - cell "32.7M" [ref=e603]
+            - cell "24B" [ref=e604]
+            - cell "—" [ref=e605]
+            - cell "—" [ref=e606]
+            - cell [ref=e607]
+            - cell [ref=e608]:
+              - button "viz ▸" [ref=e609] [cursor=pointer]
+              - button "Analyze" [ref=e610] [cursor=pointer]
+          - row [ref=e611]:
+            - cell "DefaultCollectionCallbackActionDecorator$BuildOperationEmittingAction" [ref=e612] [cursor=pointer]
+            - cell "1,353,949" [ref=e614]
+            - cell "32.5M" [ref=e615]
+            - cell "24B" [ref=e616]
+            - cell "—" [ref=e617]
+            - cell "—" [ref=e618]
+            - cell [ref=e619]
+            - cell [ref=e620]:
+              - button "viz ▸" [ref=e621] [cursor=pointer]
+              - button "Analyze" [ref=e622] [cursor=pointer]
+          - row [ref=e623]:
+            - cell "File" [ref=e624] [cursor=pointer]
+            - cell "1,011,074" [ref=e626]
+            - cell "32.4M" [ref=e627]
+            - cell "32B" [ref=e628]
+            - cell "—" [ref=e629]
+            - cell "—" [ref=e630]
+            - cell [ref=e631]
+            - cell [ref=e632]:
+              - button "viz ▸" [ref=e633] [cursor=pointer]
+              - button "Analyze" [ref=e634] [cursor=pointer]
+          - row [ref=e635]:
+            - cell "char[]" [ref=e636] [cursor=pointer]
+            - cell "3,110" [ref=e638]
+            - cell "31.5M" [ref=e639]
+            - cell "10.1K" [ref=e640]
+            - cell "—" [ref=e641]
+            - cell "—" [ref=e642]
+            - cell [ref=e643]
+            - cell [ref=e644]:
+              - button "viz ▸" [ref=e645] [cursor=pointer]
+              - button "Analyze" [ref=e646] [cursor=pointer]
+          - row [ref=e647]:
+            - cell "DefaultConfigurableFileCollection$UnresolvedItemsCollector" [ref=e648] [cursor=pointer]
+            - cell "951,122" [ref=e650]
+            - cell "30.4M" [ref=e651]
+            - cell "32B" [ref=e652]
+            - cell "—" [ref=e653]
+            - cell "—" [ref=e654]
+            - cell [ref=e655]
+            - cell [ref=e656]:
+              - button "viz ▸" [ref=e657] [cursor=pointer]
+              - button "Analyze" [ref=e658] [cursor=pointer]
+          - row [ref=e659]:
+            - cell "TaskIdentity" [ref=e660] [cursor=pointer]
+            - cell "591,256" [ref=e662]
+            - cell "28.4M" [ref=e663]
+            - cell "48B" [ref=e664]
+            - cell "—" [ref=e665]
+            - cell "—" [ref=e666]
+            - cell [ref=e667]
+            - cell [ref=e668]:
+              - button "viz ▸" [ref=e669] [cursor=pointer]
+              - button "Analyze" [ref=e670] [cursor=pointer]
+          - row [ref=e671]:
+            - cell "LinkedList" [ref=e672] [cursor=pointer]
+            - cell "882,755" [ref=e674]
+            - cell "28.2M" [ref=e675]
+            - cell "32B" [ref=e676]
+            - cell "—" [ref=e677]
+            - cell "—" [ref=e678]
+            - cell [ref=e679]
+            - cell [ref=e680]:
+              - button "viz ▸" [ref=e681] [cursor=pointer]
+              - button "Analyze" [ref=e682] [cursor=pointer]
+          - row [ref=e683]:
+            - cell "ConcurrentLinkedQueue$Node" [ref=e684] [cursor=pointer]
+            - cell "1,175,884" [ref=e686]
+            - cell "28.2M" [ref=e687]
+            - cell "24B" [ref=e688]
+            - cell "—" [ref=e689]
+            - cell "—" [ref=e690]
+            - cell [ref=e691]
+            - cell [ref=e692]:
+              - button "viz ▸" [ref=e693] [cursor=pointer]
+              - button "Analyze" [ref=e694] [cursor=pointer]
+          - row [ref=e695]:
+            - cell "DefaultListProperty" [ref=e696] [cursor=pointer]
+            - cell "687,053" [ref=e698]
+            - cell "27.5M" [ref=e699]
+            - cell "40B" [ref=e700]
+            - cell "—" [ref=e701]
+            - cell "—" [ref=e702]
+            - cell [ref=e703]
+            - cell [ref=e704]:
+              - button "viz ▸" [ref=e705] [cursor=pointer]
+              - button "Analyze" [ref=e706] [cursor=pointer]
+          - row [ref=e707]:
+            - cell "AbstractCollectionProperty$CollectingSupplier" [ref=e708] [cursor=pointer]
+            - cell "843,052" [ref=e710]
+            - cell "27M" [ref=e711]
+            - cell "32B" [ref=e712]
+            - cell "—" [ref=e713]
+            - cell "—" [ref=e714]
+            - cell [ref=e715]
+            - cell [ref=e716]:
+              - button "viz ▸" [ref=e717] [cursor=pointer]
+              - button "Analyze" [ref=e718] [cursor=pointer]
+          - row [ref=e719]:
+            - cell "PatternSet" [ref=e720] [cursor=pointer]
+            - cell "663,012" [ref=e722]
+            - cell "26.5M" [ref=e723]
+            - cell "40B" [ref=e724]
+            - cell "—" [ref=e725]
+            - cell "—" [ref=e726]
+            - cell [ref=e727]
+            - cell [ref=e728]:
+              - button "viz ▸" [ref=e729] [cursor=pointer]
+              - button "Analyze" [ref=e730] [cursor=pointer]
+          - row [ref=e731]:
+            - cell "MappingProvider" [ref=e732] [cursor=pointer]
+            - cell "1,101,224" [ref=e734]
+            - cell "26.4M" [ref=e735]
+            - cell "24B" [ref=e736]
+            - cell "—" [ref=e737]
+            - cell "—" [ref=e738]
+            - cell [ref=e739]
+            - cell [ref=e740]:
+              - button "viz ▸" [ref=e741] [cursor=pointer]
+              - button "Analyze" [ref=e742] [cursor=pointer]
+          - row [ref=e743]:
+            - cell "AppendOnceList" [ref=e744] [cursor=pointer]
+            - cell "1,086,090" [ref=e746]
+            - cell "26.1M" [ref=e747]
+            - cell "24B" [ref=e748]
+            - cell "—" [ref=e749]
+            - cell "—" [ref=e750]
+            - cell [ref=e751]
+            - cell [ref=e752]:
+              - button "viz ▸" [ref=e753] [cursor=pointer]
+              - button "Analyze" [ref=e754] [cursor=pointer]
+          - row [ref=e755]:
+            - cell "DefaultMutationGuard" [ref=e756] [cursor=pointer]
+            - cell "1,608,489" [ref=e758]
+            - cell "25.7M" [ref=e759]
+            - cell "16B" [ref=e760]
+            - cell "—" [ref=e761]
+            - cell "—" [ref=e762]
+            - cell [ref=e763]
+            - cell [ref=e764]:
+              - button "viz ▸" [ref=e765] [cursor=pointer]
+              - button "Analyze" [ref=e766] [cursor=pointer]
+          - row [ref=e767]:
+            - cell "DefaultImmutableVersionConstraint" [ref=e768] [cursor=pointer]
+            - cell "635,992" [ref=e770]
+            - cell "25.4M" [ref=e771]
+            - cell "40B" [ref=e772]
+            - cell "—" [ref=e773]
+            - cell "—" [ref=e774]
+            - cell [ref=e775]
+            - cell [ref=e776]:
+              - button "viz ▸" [ref=e777] [cursor=pointer]
+              - button "Analyze" [ref=e778] [cursor=pointer]
+          - row [ref=e779]:
+            - cell "DefaultAndroidSourceDirectorySet" [ref=e780] [cursor=pointer]
+            - cell "503,988" [ref=e782]
+            - cell "24.2M" [ref=e783]
+            - cell "48B" [ref=e784]
+            - cell "—" [ref=e785]
+            - cell "—" [ref=e786]
+            - cell [ref=e787]
+            - cell [ref=e788]:
+              - button "viz ▸" [ref=e789] [cursor=pointer]
+              - button "Analyze" [ref=e790] [cursor=pointer]
+          - row [ref=e791]:
+            - cell "SingletonImmutableSet" [ref=e792] [cursor=pointer]
+            - cell "1,485,911" [ref=e794]
+            - cell "23.8M" [ref=e795]
+            - cell "16B" [ref=e796]
+            - cell "—" [ref=e797]
+            - cell "—" [ref=e798]
+            - cell [ref=e799]
+            - cell [ref=e800]:
+              - button "viz ▸" [ref=e801] [cursor=pointer]
+              - button "Analyze" [ref=e802] [cursor=pointer]
+          - row [ref=e803]:
+            - cell "TypeSanitizingTransformer" [ref=e804] [cursor=pointer]
+            - cell "966,177" [ref=e806]
+            - cell "23.2M" [ref=e807]
+            - cell "24B" [ref=e808]
+            - cell "—" [ref=e809]
+            - cell "—" [ref=e810]
+            - cell [ref=e811]
+            - cell [ref=e812]:
+              - button "viz ▸" [ref=e813] [cursor=pointer]
+              - button "Analyze" [ref=e814] [cursor=pointer]
+          - row [ref=e815]:
+            - cell "SingleInitialProviderRequestImpl" [ref=e816] [cursor=pointer]
+            - cell "570,086" [ref=e818]
+            - cell "22.8M" [ref=e819]
+            - cell "40B" [ref=e820]
+            - cell "—" [ref=e821]
+            - cell "—" [ref=e822]
+            - cell [ref=e823]
+            - cell [ref=e824]:
+              - button "viz ▸" [ref=e825] [cursor=pointer]
+              - button "Analyze" [ref=e826] [cursor=pointer]
+          - row [ref=e827]:
+            - cell "TransformBackedProvider" [ref=e828] [cursor=pointer]
+            - cell "942,112" [ref=e830]
+            - cell "22.6M" [ref=e831]
+            - cell "24B" [ref=e832]
+            - cell "—" [ref=e833]
+            - cell "—" [ref=e834]
+            - cell [ref=e835]
+            - cell [ref=e836]:
+              - button "viz ▸" [ref=e837] [cursor=pointer]
+              - button "Analyze" [ref=e838] [cursor=pointer]
+          - row [ref=e839]:
+            - cell "AbstractIterationOrderRetainingElementSource$Element" [ref=e840] [cursor=pointer]
+            - cell "463,510" [ref=e842]
+            - cell "22.2M" [ref=e843]
+            - cell "48B" [ref=e844]
+            - cell "—" [ref=e845]
+            - cell "—" [ref=e846]
+            - cell [ref=e847]
+            - cell [ref=e848]:
+              - button "viz ▸" [ref=e849] [cursor=pointer]
+              - button "Analyze" [ref=e850] [cursor=pointer]
+          - row [ref=e851]:
+            - cell "ImmutableActionSet$SingletonSet" [ref=e852] [cursor=pointer]
+            - cell "1,375,934" [ref=e854]
+            - cell "22M" [ref=e855]
+            - cell "16B" [ref=e856]
+            - cell "—" [ref=e857]
+            - cell "—" [ref=e858]
+            - cell [ref=e859]
+            - cell [ref=e860]:
+              - button "viz ▸" [ref=e861] [cursor=pointer]
+              - button "Analyze" [ref=e862] [cursor=pointer]
+          - row [ref=e863]:
+            - cell "LocalComponentDependencyMetadata" [ref=e864] [cursor=pointer]
+            - cell "545,770" [ref=e866]
+            - cell "21.8M" [ref=e867]
+            - cell "40B" [ref=e868]
+            - cell "—" [ref=e869]
+            - cell "—" [ref=e870]
+            - cell [ref=e871]
+            - cell [ref=e872]:
+              - button "viz ▸" [ref=e873] [cursor=pointer]
+              - button "Analyze" [ref=e874] [cursor=pointer]
+          - row [ref=e875]:
+            - cell "AbstractCollectionProperty$NoValueSupplier" [ref=e876] [cursor=pointer]
+            - cell "903,075" [ref=e878]
+            - cell "21.7M" [ref=e879]
+            - cell "24B" [ref=e880]
+            - cell "—" [ref=e881]
+            - cell "—" [ref=e882]
+            - cell [ref=e883]
+            - cell [ref=e884]:
+              - button "viz ▸" [ref=e885] [cursor=pointer]
+              - button "Analyze" [ref=e886] [cursor=pointer]
+          - row [ref=e887]:
+            - cell "TypedStorageProvider$$Lambda*▸ 3" [ref=e888] [cursor=pointer]
+            - cell "894,056" [ref=e890]
+            - cell "21.5M" [ref=e891]
+            - cell "24B" [ref=e892]
+            - cell "—" [ref=e893]
+            - cell "—" [ref=e894]
+            - cell [ref=e895]
+            - cell [ref=e896]:
+              - button "viz ▸" [ref=e897] [cursor=pointer]
+          - row [ref=e898]:
+            - cell "DefaultMapProperty" [ref=e899] [cursor=pointer]
+            - cell "442,595" [ref=e901]
+            - cell "21.2M" [ref=e902]
+            - cell "48B" [ref=e903]
+            - cell "—" [ref=e904]
+            - cell "—" [ref=e905]
+            - cell [ref=e906]
+            - cell [ref=e907]:
+              - button "viz ▸" [ref=e908] [cursor=pointer]
+              - button "Analyze" [ref=e909] [cursor=pointer]
+          - row [ref=e910]:
+            - cell "CalculatedValueContainer" [ref=e911] [cursor=pointer]
+            - cell "880,754" [ref=e913]
+            - cell "21.1M" [ref=e914]
+            - cell "24B" [ref=e915]
+            - cell "—" [ref=e916]
+            - cell "—" [ref=e917]
+            - cell [ref=e918]
+            - cell [ref=e919]:
+              - button "viz ▸" [ref=e920] [cursor=pointer]
+              - button "Analyze" [ref=e921] [cursor=pointer]
+          - row [ref=e922]:
+            - cell "DefaultPublishArtifactSet" [ref=e923] [cursor=pointer]
+            - cell "657,048" [ref=e925]
+            - cell "21M" [ref=e926]
+            - cell "32B" [ref=e927]
+            - cell "—" [ref=e928]
+            - cell "—" [ref=e929]
+            - cell [ref=e930]
+            - cell [ref=e931]:
+              - button "viz ▸" [ref=e932] [cursor=pointer]
+              - button "Analyze" [ref=e933] [cursor=pointer]
+          - row [ref=e934]:
+            - cell "DefaultFileCollectionFactory$1" [ref=e935] [cursor=pointer]
+            - cell "657,048" [ref=e937]
+            - cell "21M" [ref=e938]
+            - cell "32B" [ref=e939]
+            - cell "—" [ref=e940]
+            - cell "—" [ref=e941]
+            - cell [ref=e942]
+            - cell [ref=e943]:
+              - button "viz ▸" [ref=e944] [cursor=pointer]
+              - button "Analyze" [ref=e945] [cursor=pointer]
+          - row [ref=e946]:
+            - cell "RegularImmutableSet" [ref=e947] [cursor=pointer]
+            - cell "651,647" [ref=e949]
+            - cell "20.9M" [ref=e950]
+            - cell "32B" [ref=e951]
+            - cell "—" [ref=e952]
+            - cell "—" [ref=e953]
+            - cell [ref=e954]
+            - cell [ref=e955]:
+              - button "viz ▸" [ref=e956] [cursor=pointer]
+              - button "Analyze" [ref=e957] [cursor=pointer]
+          - row [ref=e958]:
+            - cell "DefaultDependencyScopeConfiguration_Decorated" [ref=e959] [cursor=pointer]
+            - cell "72,014" [ref=e961]
+            - cell "20.2M" [ref=e962]
+            - cell "280B" [ref=e963]
+            - cell "—" [ref=e964]
+            - cell "—" [ref=e965]
+            - cell [ref=e966]
+            - cell [ref=e967]:
+              - button "viz ▸" [ref=e968] [cursor=pointer]
+              - button "Analyze" [ref=e969] [cursor=pointer]
+          - row [ref=e970]:
+            - cell "DefaultFileCollectionFactory" [ref=e971] [cursor=pointer]
+            - cell "498,004" [ref=e973]
+            - cell "19.9M" [ref=e974]
+            - cell "40B" [ref=e975]
+            - cell "—" [ref=e976]
+            - cell "—" [ref=e977]
+            - cell [ref=e978]
+            - cell [ref=e979]:
+              - button "viz ▸" [ref=e980] [cursor=pointer]
+              - button "Analyze" [ref=e981] [cursor=pointer]
+          - row [ref=e982]:
+            - cell "DefaultConfigurableFileCollection$EmptyCollector" [ref=e983] [cursor=pointer]
+            - cell "1,230,177" [ref=e985]
+            - cell "19.7M" [ref=e986]
+            - cell "16B" [ref=e987]
+            - cell "—" [ref=e988]
+            - cell "—" [ref=e989]
+            - cell [ref=e990]
+            - cell [ref=e991]:
+              - button "viz ▸" [ref=e992] [cursor=pointer]
+              - button "Analyze" [ref=e993] [cursor=pointer]
+          - row [ref=e994]:
+            - cell "DefaultConfigurableFileCollection$PathSet" [ref=e995] [cursor=pointer]
+            - cell "1,230,176" [ref=e997]
+            - cell "19.7M" [ref=e998]
+            - cell "16B" [ref=e999]
+            - cell "—" [ref=e1000]
+            - cell "—" [ref=e1001]
+            - cell [ref=e1002]
+            - cell [ref=e1003]:
+              - button "viz ▸" [ref=e1004] [cursor=pointer]
+              - button "Analyze" [ref=e1005] [cursor=pointer]
+          - row [ref=e1006]:
+            - cell "NotationConverterToNotationParserAdapter" [ref=e1007] [cursor=pointer]
+            - cell "1,227,296" [ref=e1009]
+            - cell "19.6M" [ref=e1010]
+            - cell "16B" [ref=e1011]
+            - cell "—" [ref=e1012]
+            - cell "—" [ref=e1013]
+            - cell [ref=e1014]
+            - cell [ref=e1015]:
+              - button "viz ▸" [ref=e1016] [cursor=pointer]
+              - button "Analyze" [ref=e1017] [cursor=pointer]
+          - row [ref=e1018]:
+            - cell "DefaultServiceRegistry$FactoryMethodService" [ref=e1019] [cursor=pointer]
+            - cell "301,851" [ref=e1021]
+            - cell "19.3M" [ref=e1022]
+            - cell "64B" [ref=e1023]
+            - cell "—" [ref=e1024]
+            - cell "—" [ref=e1025]
+            - cell [ref=e1026]
+            - cell [ref=e1027]:
+              - button "viz ▸" [ref=e1028] [cursor=pointer]
+              - button "Analyze" [ref=e1029] [cursor=pointer]
+          - row [ref=e1030]:
+            - cell "DefaultConfiguration$ConfigurationResolvableDependencies_Decorated" [ref=e1031] [cursor=pointer]
+            - cell "402,059" [ref=e1033]
+            - cell "19.3M" [ref=e1034]
+            - cell "48B" [ref=e1035]
+            - cell "—" [ref=e1036]
+            - cell "—" [ref=e1037]
+            - cell [ref=e1038]
+            - cell [ref=e1039]:
+              - button "viz ▸" [ref=e1040] [cursor=pointer]
+              - button "Analyze" [ref=e1041] [cursor=pointer]
+          - row [ref=e1042]:
+            - cell "ReentrantLock" [ref=e1043] [cursor=pointer]
+            - cell "1,200,609" [ref=e1045]
+            - cell "19.2M" [ref=e1046]
+            - cell "16B" [ref=e1047]
+            - cell "—" [ref=e1048]
+            - cell "—" [ref=e1049]
+            - cell [ref=e1050]
+            - cell [ref=e1051]:
+              - button "viz ▸" [ref=e1052] [cursor=pointer]
+              - button "Analyze" [ref=e1053] [cursor=pointer]
+          - row [ref=e1054]:
+            - cell "DefaultResolvedDependency" [ref=e1055] [cursor=pointer]
+            - cell "342,422" [ref=e1057]
+            - cell "19.2M" [ref=e1058]
+            - cell "56B" [ref=e1059]
+            - cell "318M" [ref=e1060]
+            - cell "928B" [ref=e1061]
+            - cell "rs a8" [ref=e1062]:
+              - generic "retained-set composition available" [ref=e1063]: rs
+              - generic "anatomy extracted with 8 samples" [ref=e1064]: a8
+            - cell [ref=e1065]:
+              - button "viz ▸" [ref=e1066] [cursor=pointer]
+          - row [ref=e1067]:
+            - cell "DefaultModuleComponentSelector" [ref=e1068] [cursor=pointer]
+            - cell "597,007" [ref=e1070]
+            - cell "19.1M" [ref=e1071]
+            - cell "32B" [ref=e1072]
+            - cell "—" [ref=e1073]
+            - cell "—" [ref=e1074]
+            - cell [ref=e1075]
+            - cell [ref=e1076]:
+              - button "viz ▸" [ref=e1077] [cursor=pointer]
+              - button "Analyze" [ref=e1078] [cursor=pointer]
+          - row [ref=e1079]:
+            - cell "SynchronizedLazyImpl" [ref=e1080] [cursor=pointer]
+            - cell "784,555" [ref=e1082]
+            - cell "18.8M" [ref=e1083]
+            - cell "24B" [ref=e1084]
+            - cell "—" [ref=e1085]
+            - cell "—" [ref=e1086]
+            - cell [ref=e1087]
+            - cell [ref=e1088]:
+              - button "viz ▸" [ref=e1089] [cursor=pointer]
+              - button "Analyze" [ref=e1090] [cursor=pointer]
+          - row [ref=e1091]:
+            - cell "CalculatedValueContainer$CalculationState" [ref=e1092] [cursor=pointer]
+            - cell "558,094" [ref=e1094]
+            - cell "17.9M" [ref=e1095]
+            - cell "32B" [ref=e1096]
+            - cell "—" [ref=e1097]
+            - cell "—" [ref=e1098]
+            - cell [ref=e1099]
+            - cell [ref=e1100]:
+              - button "viz ▸" [ref=e1101] [cursor=pointer]
+              - button "Analyze" [ref=e1102] [cursor=pointer]
+          - row [ref=e1103]:
+            - cell "FlatMapProvider" [ref=e1104] [cursor=pointer]
+            - cell "732,165" [ref=e1106]
+            - cell "17.6M" [ref=e1107]
+            - cell "24B" [ref=e1108]
+            - cell "—" [ref=e1109]
+            - cell "—" [ref=e1110]
+            - cell [ref=e1111]
+            - cell [ref=e1112]:
+              - button "viz ▸" [ref=e1113] [cursor=pointer]
+              - button "Analyze" [ref=e1114] [cursor=pointer]
+          - row [ref=e1115]:
+            - cell "ManagedObjectFactory" [ref=e1116] [cursor=pointer]
+            - cell "717,251" [ref=e1118]
+            - cell "17.2M" [ref=e1119]
+            - cell "24B" [ref=e1120]
+            - cell "—" [ref=e1121]
+            - cell "—" [ref=e1122]
+            - cell [ref=e1123]
+            - cell [ref=e1124]:
+              - button "viz ▸" [ref=e1125] [cursor=pointer]
+              - button "Analyze" [ref=e1126] [cursor=pointer]
+          - row [ref=e1127]:
+            - cell "AtomicBoolean" [ref=e1128] [cursor=pointer]
+            - cell "1,062,286" [ref=e1130]
+            - cell "17M" [ref=e1131]
+            - cell "16B" [ref=e1132]
+            - cell "—" [ref=e1133]
+            - cell "—" [ref=e1134]
+            - cell [ref=e1135]
+            - cell [ref=e1136]:
+              - button "viz ▸" [ref=e1137] [cursor=pointer]
+              - button "Analyze" [ref=e1138] [cursor=pointer]
+          - row [ref=e1139]:
+            - cell "ArrayListMultimap" [ref=e1140] [cursor=pointer]
+            - cell "351,427" [ref=e1142]
+            - cell "16.9M" [ref=e1143]
+            - cell "48B" [ref=e1144]
+            - cell "—" [ref=e1145]
+            - cell "—" [ref=e1146]
+            - cell [ref=e1147]
+            - cell [ref=e1148]:
+              - button "viz ▸" [ref=e1149] [cursor=pointer]
+              - button "Analyze" [ref=e1150] [cursor=pointer]
+          - row [ref=e1151]:
+            - cell "DefaultModuleIdentifier" [ref=e1152] [cursor=pointer]
+            - cell "690,965" [ref=e1154]
+            - cell "16.6M" [ref=e1155]
+            - cell "24B" [ref=e1156]
+            - cell "—" [ref=e1157]
+            - cell "—" [ref=e1158]
+            - cell [ref=e1159]
+            - cell [ref=e1160]:
+              - button "viz ▸" [ref=e1161] [cursor=pointer]
+              - button "Analyze" [ref=e1162] [cursor=pointer]
+          - row [ref=e1163]:
+            - cell "FileNotationConverter" [ref=e1164] [cursor=pointer]
+            - cell "1,014,078" [ref=e1166]
+            - cell "16.2M" [ref=e1167]
+            - cell "16B" [ref=e1168]
+            - cell "—" [ref=e1169]
+            - cell "—" [ref=e1170]
+            - cell [ref=e1171]
+            - cell [ref=e1172]:
+              - button "viz ▸" [ref=e1173] [cursor=pointer]
+              - button "Analyze" [ref=e1174] [cursor=pointer]
+          - row [ref=e1175]:
+            - cell "Collectors$SingleElement" [ref=e1176] [cursor=pointer]
+            - cell "991,483" [ref=e1178]
+            - cell "15.9M" [ref=e1179]
+            - cell "16B" [ref=e1180]
+            - cell "—" [ref=e1181]
+            - cell "—" [ref=e1182]
+            - cell [ref=e1183]
+            - cell [ref=e1184]:
+              - button "viz ▸" [ref=e1185] [cursor=pointer]
+              - button "Analyze" [ref=e1186] [cursor=pointer]
+          - row [ref=e1187]:
+            - cell "AbstractCollectionProperty$EmptySupplier" [ref=e1188] [cursor=pointer]
+            - cell "981,100" [ref=e1190]
+            - cell "15.7M" [ref=e1191]
+            - cell "16B" [ref=e1192]
+            - cell "—" [ref=e1193]
+            - cell "—" [ref=e1194]
+            - cell [ref=e1195]
+            - cell [ref=e1196]:
+              - button "viz ▸" [ref=e1197] [cursor=pointer]
+              - button "Analyze" [ref=e1198] [cursor=pointer]
+          - row [ref=e1199]:
+            - cell "Long" [ref=e1200] [cursor=pointer]
+            - cell "649,305" [ref=e1202]
+            - cell "15.6M" [ref=e1203]
+            - cell "24B" [ref=e1204]
+            - cell "—" [ref=e1205]
+            - cell "—" [ref=e1206]
+            - cell [ref=e1207]
+            - cell [ref=e1208]:
+              - button "viz ▸" [ref=e1209] [cursor=pointer]
+              - button "Analyze" [ref=e1210] [cursor=pointer]
+          - row [ref=e1211]:
+            - cell "Collectors$ElementFromProvider" [ref=e1212] [cursor=pointer]
+            - cell "927,266" [ref=e1214]
+            - cell "14.8M" [ref=e1215]
+            - cell "16B" [ref=e1216]
+            - cell "—" [ref=e1217]
+            - cell "—" [ref=e1218]
+            - cell [ref=e1219]
+            - cell [ref=e1220]:
+              - button "viz ▸" [ref=e1221] [cursor=pointer]
+              - button "Analyze" [ref=e1222] [cursor=pointer]
+          - row [ref=e1223]:
+            - cell "LocalVariantMetadata" [ref=e1224] [cursor=pointer]
+            - cell "365,962" [ref=e1226]
+            - cell "14.6M" [ref=e1227]
+            - cell "40B" [ref=e1228]
+            - cell "—" [ref=e1229]
+            - cell "—" [ref=e1230]
+            - cell [ref=e1231]
+            - cell [ref=e1232]:
+              - button "viz ▸" [ref=e1233] [cursor=pointer]
+              - button "Analyze" [ref=e1234] [cursor=pointer]
+          - row [ref=e1235]:
+            - cell "LocalCache$Segment" [ref=e1236] [cursor=pointer]
+            - cell "180,377" [ref=e1238]
+            - cell "14.4M" [ref=e1239]
+            - cell "80B" [ref=e1240]
+            - cell "—" [ref=e1241]
+            - cell "—" [ref=e1242]
+            - cell [ref=e1243]
+            - cell [ref=e1244]:
+              - button "viz ▸" [ref=e1245] [cursor=pointer]
+              - button "Analyze" [ref=e1246] [cursor=pointer]
+          - row [ref=e1247]:
+            - cell "WeakReference" [ref=e1248] [cursor=pointer]
+            - cell "450,287" [ref=e1250]
+            - cell "14.4M" [ref=e1251]
+            - cell "32B" [ref=e1252]
+            - cell "—" [ref=e1253]
+            - cell "—" [ref=e1254]
+            - cell [ref=e1255]
+            - cell [ref=e1256]:
+              - button "viz ▸" [ref=e1257] [cursor=pointer]
+              - button "Analyze" [ref=e1258] [cursor=pointer]
+          - row [ref=e1259]:
+            - cell "DefaultImmutableCapability" [ref=e1260] [cursor=pointer]
+            - cell "447,742" [ref=e1262]
+            - cell "14.3M" [ref=e1263]
+            - cell "32B" [ref=e1264]
+            - cell "—" [ref=e1265]
+            - cell "—" [ref=e1266]
+            - cell [ref=e1267]
+            - cell [ref=e1268]:
+              - button "viz ▸" [ref=e1269] [cursor=pointer]
+              - button "Analyze" [ref=e1270] [cursor=pointer]
+          - row [ref=e1271]:
+            - cell "ValidatingMapEntryCollector" [ref=e1272] [cursor=pointer]
+            - cell "442,595" [ref=e1274]
+            - cell "14.2M" [ref=e1275]
+            - cell "32B" [ref=e1276]
+            - cell "—" [ref=e1277]
+            - cell "—" [ref=e1278]
+            - cell [ref=e1279]
+            - cell [ref=e1280]:
+              - button "viz ▸" [ref=e1281] [cursor=pointer]
+              - button "Analyze" [ref=e1282] [cursor=pointer]
+          - row [ref=e1283]:
+            - cell "TaskConfigurationActions" [ref=e1284] [cursor=pointer]
+            - cell "354,064" [ref=e1286]
+            - cell "14.2M" [ref=e1287]
+            - cell "40B" [ref=e1288]
+            - cell "—" [ref=e1289]
+            - cell "—" [ref=e1290]
+            - cell [ref=e1291]
+            - cell [ref=e1292]:
+              - button "viz ▸" [ref=e1293] [cursor=pointer]
+              - button "Analyze" [ref=e1294] [cursor=pointer]
+          - row [ref=e1295]:
+            - cell "FreezableAttributeContainer" [ref=e1296] [cursor=pointer]
+            - cell "576,038" [ref=e1298]
+            - cell "13.8M" [ref=e1299]
+            - cell "24B" [ref=e1300]
+            - cell "—" [ref=e1301]
+            - cell "—" [ref=e1302]
+            - cell [ref=e1303]
+            - cell [ref=e1304]:
+              - button "viz ▸" [ref=e1305] [cursor=pointer]
+              - button "Analyze" [ref=e1306] [cursor=pointer]
+          - row [ref=e1307]:
+            - cell "ArtifactNamingContext" [ref=e1308] [cursor=pointer]
+            - cell "570,086" [ref=e1310]
+            - cell "13.7M" [ref=e1311]
+            - cell "24B" [ref=e1312]
+            - cell "—" [ref=e1313]
+            - cell "—" [ref=e1314]
+            - cell [ref=e1315]
+            - cell [ref=e1316]:
+              - button "viz ▸" [ref=e1317] [cursor=pointer]
+              - button "Analyze" [ref=e1318] [cursor=pointer]
+          - row [ref=e1319]:
+            - cell "DefaultTaskDependency$VisitBehavior" [ref=e1320] [cursor=pointer]
+            - cell "831,026" [ref=e1322]
+            - cell "13.3M" [ref=e1323]
+            - cell "16B" [ref=e1324]
+            - cell "—" [ref=e1325]
+            - cell "—" [ref=e1326]
+            - cell [ref=e1327]
+            - cell [ref=e1328]:
+              - button "viz ▸" [ref=e1329] [cursor=pointer]
+              - button "Analyze" [ref=e1330] [cursor=pointer]
+          - row [ref=e1331]:
+            - cell "DefaultTransform" [ref=e1332] [cursor=pointer]
+            - cell "183,053" [ref=e1334]
+            - cell "13.2M" [ref=e1335]
+            - cell "72B" [ref=e1336]
+            - cell "—" [ref=e1337]
+            - cell "—" [ref=e1338]
+            - cell [ref=e1339]
+            - cell [ref=e1340]:
+              - button "viz ▸" [ref=e1341] [cursor=pointer]
+              - button "Analyze" [ref=e1342] [cursor=pointer]
+          - row [ref=e1343]:
+            - cell "Collections$SingletonList" [ref=e1344] [cursor=pointer]
+            - cell "540,282" [ref=e1346]
+            - cell "13M" [ref=e1347]
+            - cell "24B" [ref=e1348]
+            - cell "—" [ref=e1349]
+            - cell "—" [ref=e1350]
+            - cell [ref=e1351]
+            - cell [ref=e1352]:
+              - button "viz ▸" [ref=e1353] [cursor=pointer]
+              - button "Analyze" [ref=e1354] [cursor=pointer]
+          - row [ref=e1355]:
+            - cell "ConcurrentHashMap$Node[]" [ref=e1356] [cursor=pointer]
+            - cell "69,397" [ref=e1358]
+            - cell "12.9M" [ref=e1359]
+            - cell "186B" [ref=e1360]
+            - cell "—" [ref=e1361]
+            - cell "—" [ref=e1362]
+            - cell [ref=e1363]
+            - cell [ref=e1364]:
+              - button "viz ▸" [ref=e1365] [cursor=pointer]
+              - button "Analyze" [ref=e1366] [cursor=pointer]
+          - row [ref=e1367]:
+            - cell "DefaultMutableAttributeContainer" [ref=e1368] [cursor=pointer]
+            - cell "403,583" [ref=e1370]
+            - cell "12.9M" [ref=e1371]
+            - cell "32B" [ref=e1372]
+            - cell "—" [ref=e1373]
+            - cell "—" [ref=e1374]
+            - cell [ref=e1375]
+            - cell [ref=e1376]:
+              - button "viz ▸" [ref=e1377] [cursor=pointer]
+              - button "Analyze" [ref=e1378] [cursor=pointer]
+          - row [ref=e1379]:
+            - cell "DefaultDependencySet" [ref=e1380] [cursor=pointer]
+            - cell "402,087" [ref=e1382]
+            - cell "12.9M" [ref=e1383]
+            - cell "32B" [ref=e1384]
+            - cell "—" [ref=e1385]
+            - cell "—" [ref=e1386]
+            - cell [ref=e1387]
+            - cell [ref=e1388]:
+              - button "viz ▸" [ref=e1389] [cursor=pointer]
+              - button "Analyze" [ref=e1390] [cursor=pointer]
+          - row [ref=e1391]:
+            - cell "AnonymousListenerBroadcast" [ref=e1392] [cursor=pointer]
+            - cell "402,072" [ref=e1394]
+            - cell "12.9M" [ref=e1395]
+            - cell "32B" [ref=e1396]
+            - cell "—" [ref=e1397]
+            - cell "—" [ref=e1398]
+            - cell [ref=e1399]
+            - cell [ref=e1400]:
+              - button "viz ▸" [ref=e1401] [cursor=pointer]
+              - button "Analyze" [ref=e1402] [cursor=pointer]
+          - row [ref=e1403]:
+            - cell "DefaultCalculatedModelValue" [ref=e1404] [cursor=pointer]
+            - cell "402,059" [ref=e1406]
+            - cell "12.9M" [ref=e1407]
+            - cell "32B" [ref=e1408]
+            - cell "—" [ref=e1409]
+            - cell "—" [ref=e1410]
+            - cell [ref=e1411]
+            - cell [ref=e1412]:
+              - button "viz ▸" [ref=e1413] [cursor=pointer]
+              - button "Analyze" [ref=e1414] [cursor=pointer]
+          - row [ref=e1415]:
+            - cell "FileImpl" [ref=e1416] [cursor=pointer]
+            - cell "391,754" [ref=e1418]
+            - cell "12.5M" [ref=e1419]
+            - cell "32B" [ref=e1420]
+            - cell "—" [ref=e1421]
+            - cell "—" [ref=e1422]
+            - cell [ref=e1423]
+            - cell [ref=e1424]:
+              - button "viz ▸" [ref=e1425] [cursor=pointer]
+              - button "Analyze" [ref=e1426] [cursor=pointer]
+          - row [ref=e1427]:
+            - cell "DecoratingPublishArtifact_Decorated" [ref=e1428] [cursor=pointer]
+            - cell "173,982" [ref=e1430]
+            - cell "12.5M" [ref=e1431]
+            - cell "72B" [ref=e1432]
+            - cell "—" [ref=e1433]
+            - cell "—" [ref=e1434]
+            - cell [ref=e1435]
+            - cell [ref=e1436]:
+              - button "viz ▸" [ref=e1437] [cursor=pointer]
+              - button "Analyze" [ref=e1438] [cursor=pointer]
+          - row [ref=e1439]:
+            - cell "DefaultVariant_Decorated" [ref=e1440] [cursor=pointer]
+            - cell "173,979" [ref=e1442]
+            - cell "12.5M" [ref=e1443]
+            - cell "72B" [ref=e1444]
+            - cell "—" [ref=e1445]
+            - cell "—" [ref=e1446]
+            - cell [ref=e1447]
+            - cell [ref=e1448]:
+              - button "viz ▸" [ref=e1449] [cursor=pointer]
+              - button "Analyze" [ref=e1450] [cursor=pointer]
+          - row [ref=e1451]:
+            - cell "HashSet" [ref=e1452] [cursor=pointer]
+            - cell "780,070" [ref=e1454]
+            - cell "12.5M" [ref=e1455]
+            - cell "16B" [ref=e1456]
+            - cell "—" [ref=e1457]
+            - cell "—" [ref=e1458]
+            - cell [ref=e1459]
+            - cell [ref=e1460]:
+              - button "viz ▸" [ref=e1461] [cursor=pointer]
+              - button "Analyze" [ref=e1462] [cursor=pointer]
+          - row [ref=e1463]:
+            - cell "TreeMap" [ref=e1464] [cursor=pointer]
+            - cell "258,385" [ref=e1466]
+            - cell "12.4M" [ref=e1467]
+            - cell "48B" [ref=e1468]
+            - cell "—" [ref=e1469]
+            - cell "—" [ref=e1470]
+            - cell [ref=e1471]
+            - cell [ref=e1472]:
+              - button "viz ▸" [ref=e1473] [cursor=pointer]
+              - button "Analyze" [ref=e1474] [cursor=pointer]
+          - row [ref=e1475]:
+            - cell "TransformingConverter" [ref=e1476] [cursor=pointer]
+            - cell "507,039" [ref=e1478]
+            - cell "12.2M" [ref=e1479]
+            - cell "24B" [ref=e1480]
+            - cell "—" [ref=e1481]
+            - cell "—" [ref=e1482]
+            - cell [ref=e1483]
+            - cell [ref=e1484]:
+              - button "viz ▸" [ref=e1485] [cursor=pointer]
+              - button "Analyze" [ref=e1486] [cursor=pointer]
+          - row [ref=e1487]:
+            - cell "BaseDirFileResolver" [ref=e1488] [cursor=pointer]
+            - cell "507,038" [ref=e1490]
+            - cell "12.2M" [ref=e1491]
+            - cell "24B" [ref=e1492]
+            - cell "—" [ref=e1493]
+            - cell "—" [ref=e1494]
+            - cell [ref=e1495]
+            - cell [ref=e1496]:
+              - button "viz ▸" [ref=e1497] [cursor=pointer]
+              - button "Analyze" [ref=e1498] [cursor=pointer]
+          - row [ref=e1499]:
+            - cell "ConcurrentLinkedQueue" [ref=e1500] [cursor=pointer]
+            - cell "504,776" [ref=e1502]
+            - cell "12.1M" [ref=e1503]
+            - cell "24B" [ref=e1504]
+            - cell "—" [ref=e1505]
+            - cell "—" [ref=e1506]
+            - cell [ref=e1507]
+            - cell [ref=e1508]:
+              - button "viz ▸" [ref=e1509] [cursor=pointer]
+              - button "Analyze" [ref=e1510] [cursor=pointer]
+          - row [ref=e1511]:
+            - cell "PersistentList$Cons" [ref=e1512] [cursor=pointer]
+            - cell "504,192" [ref=e1514]
+            - cell "12.1M" [ref=e1515]
+            - cell "24B" [ref=e1516]
+            - cell "—" [ref=e1517]
+            - cell "—" [ref=e1518]
+            - cell [ref=e1519]
+            - cell [ref=e1520]:
+              - button "viz ▸" [ref=e1521] [cursor=pointer]
+              - button "Analyze" [ref=e1522] [cursor=pointer]
+          - row [ref=e1523]:
+            - cell "DefaultFilePropertyFactory$FixedDirectory" [ref=e1524] [cursor=pointer]
+            - cell "504,021" [ref=e1526]
+            - cell "12.1M" [ref=e1527]
+            - cell "24B" [ref=e1528]
+            - cell "—" [ref=e1529]
+            - cell "—" [ref=e1530]
+            - cell [ref=e1531]
+            - cell [ref=e1532]:
+              - button "viz ▸" [ref=e1533] [cursor=pointer]
+              - button "Analyze" [ref=e1534] [cursor=pointer]
+          - row [ref=e1535]:
+            - cell "Collectors$TypedCollector" [ref=e1536] [cursor=pointer]
+            - cell "495,246" [ref=e1538]
+            - cell "11.9M" [ref=e1539]
+            - cell "24B" [ref=e1540]
+            - cell "—" [ref=e1541]
+            - cell "—" [ref=e1542]
+            - cell [ref=e1543]
+            - cell [ref=e1544]:
+              - button "viz ▸" [ref=e1545] [cursor=pointer]
+              - button "Analyze" [ref=e1546] [cursor=pointer]
+          - row [ref=e1547]:
+            - cell "DefaultSetProperty" [ref=e1548] [cursor=pointer]
+            - cell "294,047" [ref=e1550]
+            - cell "11.8M" [ref=e1551]
+            - cell "40B" [ref=e1552]
+            - cell "—" [ref=e1553]
+            - cell "—" [ref=e1554]
+            - cell [ref=e1555]
+            - cell [ref=e1556]:
+              - button "viz ▸" [ref=e1557] [cursor=pointer]
+              - button "Analyze" [ref=e1558] [cursor=pointer]
+          - row [ref=e1559]:
+            - cell "DefaultMutableMinimalDependency_Decorated" [ref=e1560] [cursor=pointer]
+            - cell "105,003" [ref=e1562]
+            - cell "11.8M" [ref=e1563]
+            - cell "112B" [ref=e1564]
+            - cell "—" [ref=e1565]
+            - cell "—" [ref=e1566]
+            - cell [ref=e1567]
+            - cell [ref=e1568]:
+              - button "viz ▸" [ref=e1569] [cursor=pointer]
+              - button "Analyze" [ref=e1570] [cursor=pointer]
+          - row [ref=e1571]:
+            - cell "WeakIdentityHashMap$WeakKey" [ref=e1572] [cursor=pointer]
+            - cell "362,207" [ref=e1574]
+            - cell "11.6M" [ref=e1575]
+            - cell "32B" [ref=e1576]
+            - cell "—" [ref=e1577]
+            - cell "—" [ref=e1578]
+            - cell [ref=e1579]
+            - cell [ref=e1580]:
+              - button "viz ▸" [ref=e1581] [cursor=pointer]
+              - button "Analyze" [ref=e1582] [cursor=pointer]
+          - row [ref=e1583]:
+            - cell "ArtifactBackedResolvedVariant$SingleArtifactSet" [ref=e1584] [cursor=pointer]
+            - cell "339,449" [ref=e1586]
+            - cell "10.9M" [ref=e1587]
+            - cell "32B" [ref=e1588]
+            - cell "—" [ref=e1589]
+            - cell "—" [ref=e1590]
+            - cell [ref=e1591]
+            - cell [ref=e1592]:
+              - button "viz ▸" [ref=e1593] [cursor=pointer]
+              - button "Analyze" [ref=e1594] [cursor=pointer]
+          - row [ref=e1595]:
+            - cell "DefaultPublishArtifactSet$$Lambda*▸ 1" [ref=e1596] [cursor=pointer]
+            - cell "657,048" [ref=e1598]
+            - cell "10.5M" [ref=e1599]
+            - cell "16B" [ref=e1600]
+            - cell "—" [ref=e1601]
+            - cell "—" [ref=e1602]
+            - cell [ref=e1603]
+            - cell [ref=e1604]:
+              - button "viz ▸" [ref=e1605] [cursor=pointer]
+          - row [ref=e1606]:
+            - cell "DefaultPublishArtifactSet$ArtifactsFileCollection" [ref=e1607] [cursor=pointer]
+            - cell "657,048" [ref=e1609]
+            - cell "10.5M" [ref=e1610]
+            - cell "16B" [ref=e1611]
+            - cell "—" [ref=e1612]
+            - cell "—" [ref=e1613]
+            - cell [ref=e1614]
+            - cell [ref=e1615]:
+              - button "viz ▸" [ref=e1616] [cursor=pointer]
+              - button "Analyze" [ref=e1617] [cursor=pointer]
+          - row [ref=e1618]:
+            - cell "DefaultMapProperty$NoValueSupplier" [ref=e1619] [cursor=pointer]
+            - cell "436,595" [ref=e1621]
+            - cell "10.5M" [ref=e1622]
+            - cell "24B" [ref=e1623]
+            - cell "—" [ref=e1624]
+            - cell "—" [ref=e1625]
+            - cell [ref=e1626]
+            - cell [ref=e1627]:
+              - button "viz ▸" [ref=e1628] [cursor=pointer]
+              - button "Analyze" [ref=e1629] [cursor=pointer]
+          - row [ref=e1630]:
+            - cell "BroadcastDispatch$SingletonDispatch" [ref=e1631] [cursor=pointer]
+            - cell "429,140" [ref=e1633]
+            - cell "10.3M" [ref=e1634]
+            - cell "24B" [ref=e1635]
+            - cell "—" [ref=e1636]
+            - cell "—" [ref=e1637]
+            - cell [ref=e1638]
+            - cell [ref=e1639]:
+              - button "viz ▸" [ref=e1640] [cursor=pointer]
+              - button "Analyze" [ref=e1641] [cursor=pointer]
+          - row [ref=e1642]:
+            - cell "SingleInitialProviderRequestImpl$on$2" [ref=e1643] [cursor=pointer]
+            - cell "429,094" [ref=e1645]
+            - cell "10.3M" [ref=e1646]
+            - cell "24B" [ref=e1647]
+            - cell "—" [ref=e1648]
+            - cell "—" [ref=e1649]
+            - cell [ref=e1650]
+            - cell [ref=e1651]:
+              - button "viz ▸" [ref=e1652] [cursor=pointer]
+              - button "Analyze" [ref=e1653] [cursor=pointer]
+          - row [ref=e1654]:
+            - cell "DefaultServiceRegistry$ConstructorService" [ref=e1655] [cursor=pointer]
+            - cell "181,100" [ref=e1657]
+            - cell "10.1M" [ref=e1658]
+            - cell "56B" [ref=e1659]
+            - cell "—" [ref=e1660]
+            - cell "—" [ref=e1661]
+            - cell [ref=e1662]
+            - cell [ref=e1663]:
+              - button "viz ▸" [ref=e1664] [cursor=pointer]
+              - button "Analyze" [ref=e1665] [cursor=pointer]
+          - row [ref=e1666]:
+            - cell "Describables$MemoizingDescribable" [ref=e1667] [cursor=pointer]
+            - cell "405,072" [ref=e1669]
+            - cell "9.7M" [ref=e1670]
+            - cell "24B" [ref=e1671]
+            - cell "—" [ref=e1672]
+            - cell "—" [ref=e1673]
+            - cell [ref=e1674]
+            - cell [ref=e1675]:
+              - button "viz ▸" [ref=e1676] [cursor=pointer]
+              - button "Analyze" [ref=e1677] [cursor=pointer]
+          - row [ref=e1678]:
+            - cell "FactoryNamedDomainObjectContainer_Decorated" [ref=e1679] [cursor=pointer]
+            - cell "81,006" [ref=e1681]
+            - cell "9.7M" [ref=e1682]
+            - cell "120B" [ref=e1683]
+            - cell "—" [ref=e1684]
+            - cell "—" [ref=e1685]
+            - cell [ref=e1686]
+            - cell [ref=e1687]:
+              - button "viz ▸" [ref=e1688] [cursor=pointer]
+              - button "Analyze" [ref=e1689] [cursor=pointer]
+          - row [ref=e1690]:
+            - cell "DefaultDependencyConstraintSet" [ref=e1691] [cursor=pointer]
+            - cell "402,069" [ref=e1693]
+            - cell "9.6M" [ref=e1694]
+            - cell "24B" [ref=e1695]
+            - cell "—" [ref=e1696]
+            - cell "—" [ref=e1697]
+            - cell [ref=e1698]
+            - cell [ref=e1699]:
+              - button "viz ▸" [ref=e1700] [cursor=pointer]
+              - button "Analyze" [ref=e1701] [cursor=pointer]
+          - row [ref=e1702]:
+            - cell "ExtendedConfigurations" [ref=e1703] [cursor=pointer]
+            - cell "402,059" [ref=e1705]
+            - cell "9.6M" [ref=e1706]
+            - cell "24B" [ref=e1707]
+            - cell "—" [ref=e1708]
+            - cell "—" [ref=e1709]
+            - cell [ref=e1710]
+            - cell [ref=e1711]:
+              - button "viz ▸" [ref=e1712] [cursor=pointer]
+              - button "Analyze" [ref=e1713] [cursor=pointer]
+          - row [ref=e1714]:
+            - cell "SingletonImmutableList" [ref=e1715] [cursor=pointer]
+            - cell "599,079" [ref=e1717]
+            - cell "9.6M" [ref=e1718]
+            - cell "16B" [ref=e1719]
+            - cell "—" [ref=e1720]
+            - cell "—" [ref=e1721]
+            - cell [ref=e1722]
+            - cell [ref=e1723]:
+              - button "viz ▸" [ref=e1724] [cursor=pointer]
+              - button "Analyze" [ref=e1725] [cursor=pointer]
+          - row [ref=e1726]:
+            - cell "AtomicInteger" [ref=e1727] [cursor=pointer]
+            - cell "589,425" [ref=e1729]
+            - cell "9.4M" [ref=e1730]
+            - cell "16B" [ref=e1731]
+            - cell "—" [ref=e1732]
+            - cell "—" [ref=e1733]
+            - cell [ref=e1734]
+            - cell [ref=e1735]:
+              - button "viz ▸" [ref=e1736] [cursor=pointer]
+              - button "Analyze" [ref=e1737] [cursor=pointer]
+          - row [ref=e1738]:
+            - cell "DefaultResolutionStrategy_Decorated" [ref=e1739] [cursor=pointer]
+            - cell "72,024" [ref=e1741]
+            - cell "9.2M" [ref=e1742]
+            - cell "128B" [ref=e1743]
+            - cell "—" [ref=e1744]
+            - cell "—" [ref=e1745]
+            - cell [ref=e1746]
+            - cell [ref=e1747]:
+              - button "viz ▸" [ref=e1748] [cursor=pointer]
+              - button "Analyze" [ref=e1749] [cursor=pointer]
+          - row [ref=e1750]:
+            - cell "DefaultTaskInputs$TaskInputUnionFileCollection" [ref=e1751] [cursor=pointer]
+            - cell "192,020" [ref=e1753]
+            - cell "9.2M" [ref=e1754]
+            - cell "48B" [ref=e1755]
+            - cell "—" [ref=e1756]
+            - cell "—" [ref=e1757]
+            - cell [ref=e1758]
+            - cell [ref=e1759]:
+              - button "viz ▸" [ref=e1760] [cursor=pointer]
+              - button "Analyze" [ref=e1761] [cursor=pointer]
+          - row [ref=e1762]:
+            - cell "SingleInitialProviderRequestImpl$on$1" [ref=e1763] [cursor=pointer]
+            - cell "570,086" [ref=e1765]
+            - cell "9.1M" [ref=e1766]
+            - cell "16B" [ref=e1767]
+            - cell "—" [ref=e1768]
+            - cell "—" [ref=e1769]
+            - cell [ref=e1770]
+            - cell [ref=e1771]:
+              - button "viz ▸" [ref=e1772] [cursor=pointer]
+              - button "Analyze" [ref=e1773] [cursor=pointer]
+          - row [ref=e1774]:
+            - cell "DefaultTransform$IsolateTransformParameters" [ref=e1775] [cursor=pointer]
+            - cell "159,046" [ref=e1777]
+            - cell "8.9M" [ref=e1778]
+            - cell "56B" [ref=e1779]
+            - cell "—" [ref=e1780]
+            - cell "—" [ref=e1781]
+            - cell [ref=e1782]
+            - cell [ref=e1783]:
+              - button "viz ▸" [ref=e1784] [cursor=pointer]
+              - button "Analyze" [ref=e1785] [cursor=pointer]
+          - row [ref=e1786]:
+            - cell "DefaultVariantDefinition" [ref=e1787] [cursor=pointer]
+            - cell "276,077" [ref=e1789]
+            - cell "8.8M" [ref=e1790]
+            - cell "32B" [ref=e1791]
+            - cell "—" [ref=e1792]
+            - cell "—" [ref=e1793]
+            - cell [ref=e1794]
+            - cell [ref=e1795]:
+              - button "viz ▸" [ref=e1796] [cursor=pointer]
+              - button "Analyze" [ref=e1797] [cursor=pointer]
+          - row [ref=e1798]:
+            - cell "ProtocolToModelAdapter$ViewKey" [ref=e1799] [cursor=pointer]
+            - cell "362,207" [ref=e1801]
+            - cell "8.7M" [ref=e1802]
+            - cell "24B" [ref=e1803]
+            - cell "—" [ref=e1804]
+            - cell "—" [ref=e1805]
+            - cell [ref=e1806]
+            - cell [ref=e1807]:
+              - button "viz ▸" [ref=e1808] [cursor=pointer]
+              - button "Analyze" [ref=e1809] [cursor=pointer]
+          - row [ref=e1810]:
+            - cell "DefaultResolutionOutputs$DefaultArtifactView" [ref=e1811] [cursor=pointer]
+            - cell "177,014" [ref=e1813]
+            - cell "8.5M" [ref=e1814]
+            - cell "48B" [ref=e1815]
+            - cell "—" [ref=e1816]
+            - cell "—" [ref=e1817]
+            - cell [ref=e1818]
+            - cell [ref=e1819]:
+              - button "viz ▸" [ref=e1820] [cursor=pointer]
+              - button "Analyze" [ref=e1821] [cursor=pointer]
+          - row [ref=e1822]:
+            - cell "LocalCache$StrongEntry" [ref=e1823] [cursor=pointer]
+            - cell "264,700" [ref=e1825]
+            - cell "8.5M" [ref=e1826]
+            - cell "32B" [ref=e1827]
+            - cell "—" [ref=e1828]
+            - cell "—" [ref=e1829]
+            - cell [ref=e1830]
+            - cell [ref=e1831]:
+              - button "viz ▸" [ref=e1832] [cursor=pointer]
+              - button "Analyze" [ref=e1833] [cursor=pointer]
+          - row [ref=e1834]:
+            - cell "ConcurrentHashMap" [ref=e1835] [cursor=pointer]
+            - cell "131,829" [ref=e1837]
+            - cell "8.4M" [ref=e1838]
+            - cell "64B" [ref=e1839]
+            - cell "—" [ref=e1840]
+            - cell "—" [ref=e1841]
+            - cell [ref=e1842]
+            - cell [ref=e1843]:
+              - button "viz ▸" [ref=e1844] [cursor=pointer]
+              - button "Analyze" [ref=e1845] [cursor=pointer]
+          - row [ref=e1846]:
+            - cell "ImmutableMapEntry" [ref=e1847] [cursor=pointer]
+            - cell "351,110" [ref=e1849]
+            - cell "8.4M" [ref=e1850]
+            - cell "24B" [ref=e1851]
+            - cell "—" [ref=e1852]
+            - cell "—" [ref=e1853]
+            - cell [ref=e1854]
+            - cell [ref=e1855]:
+              - button "viz ▸" [ref=e1856] [cursor=pointer]
+              - button "Analyze" [ref=e1857] [cursor=pointer]
+          - row [ref=e1858]:
+            - cell "DefaultLocalVariantGraphResolveStateBuilder$NonImplicitArtifactVariantIdentifier" [ref=e1859] [cursor=pointer]
+            - cell "347,955" [ref=e1861]
+            - cell "8.4M" [ref=e1862]
+            - cell "24B" [ref=e1863]
+            - cell "—" [ref=e1864]
+            - cell "—" [ref=e1865]
+            - cell [ref=e1866]
+            - cell [ref=e1867]:
+              - button "viz ▸" [ref=e1868] [cursor=pointer]
+              - button "Analyze" [ref=e1869] [cursor=pointer]
+          - row [ref=e1870]:
+            - cell "MapCollectors$SingleEntry" [ref=e1871] [cursor=pointer]
+            - cell "345,033" [ref=e1873]
+            - cell "8.3M" [ref=e1874]
+            - cell "24B" [ref=e1875]
+            - cell "—" [ref=e1876]
+            - cell "—" [ref=e1877]
+            - cell [ref=e1878]
+            - cell [ref=e1879]:
+              - button "viz ▸" [ref=e1880] [cursor=pointer]
+              - button "Analyze" [ref=e1881] [cursor=pointer]
+          - row [ref=e1882]:
+            - cell "CompositeNotationConverter" [ref=e1883] [cursor=pointer]
+            - cell "516,093" [ref=e1885]
+            - cell "8.3M" [ref=e1886]
+            - cell "16B" [ref=e1887]
+            - cell "—" [ref=e1888]
+            - cell "—" [ref=e1889]
+            - cell [ref=e1890]
+            - cell [ref=e1891]:
+              - button "viz ▸" [ref=e1892] [cursor=pointer]
+              - button "Analyze" [ref=e1893] [cursor=pointer]
+          - row [ref=e1894]:
+            - cell "PersistentArray1" [ref=e1895] [cursor=pointer]
+            - cell "510,079" [ref=e1897]
+            - cell "8.2M" [ref=e1898]
+            - cell "16B" [ref=e1899]
+            - cell "—" [ref=e1900]
+            - cell "—" [ref=e1901]
+            - cell [ref=e1902]
+            - cell [ref=e1903]:
+              - button "viz ▸" [ref=e1904] [cursor=pointer]
+              - button "Analyze" [ref=e1905] [cursor=pointer]
+          - row [ref=e1906]:
+            - cell "AbstractFileResolver$$Lambda*▸ 1" [ref=e1907] [cursor=pointer]
+            - cell "507,039" [ref=e1909]
+            - cell "8.1M" [ref=e1910]
+            - cell "16B" [ref=e1911]
+            - cell "—" [ref=e1912]
+            - cell "—" [ref=e1913]
+            - cell [ref=e1914]
+            - cell [ref=e1915]:
+              - button "viz ▸" [ref=e1916] [cursor=pointer]
+          - row [ref=e1917]:
+            - cell "UriNotationConverter" [ref=e1918] [cursor=pointer]
+            - cell "507,039" [ref=e1920]
+            - cell "8.1M" [ref=e1921]
+            - cell "16B" [ref=e1922]
+            - cell "—" [ref=e1923]
+            - cell "—" [ref=e1924]
+            - cell [ref=e1925]
+            - cell [ref=e1926]:
+              - button "viz ▸" [ref=e1927] [cursor=pointer]
+              - button "Analyze" [ref=e1928] [cursor=pointer]
+          - row [ref=e1929]:
+            - cell "Describables$ThreePartDescribable" [ref=e1930] [cursor=pointer]
+            - cell "337,169" [ref=e1932]
+            - cell "8.1M" [ref=e1933]
+            - cell "24B" [ref=e1934]
+            - cell "—" [ref=e1935]
+            - cell "—" [ref=e1936]
+            - cell [ref=e1937]
+            - cell [ref=e1938]:
+              - button "viz ▸" [ref=e1939] [cursor=pointer]
+              - button "Analyze" [ref=e1940] [cursor=pointer]
+          - row [ref=e1941]:
+            - cell "ExtendedConfigurations$RealizedExtendedConfiguration" [ref=e1942] [cursor=pointer]
+            - cell "336,039" [ref=e1944]
+            - cell "8.1M" [ref=e1945]
+            - cell "24B" [ref=e1946]
+            - cell "—" [ref=e1947]
+            - cell "—" [ref=e1948]
+            - cell [ref=e1949]
+            - cell [ref=e1950]:
+              - button "viz ▸" [ref=e1951] [cursor=pointer]
+              - button "Analyze" [ref=e1952] [cursor=pointer]
+          - row [ref=e1953]:
+            - cell "AttributeEntry" [ref=e1954] [cursor=pointer]
+            - cell "336,036" [ref=e1956]
+            - cell "8.1M" [ref=e1957]
+            - cell "24B" [ref=e1958]
+            - cell "—" [ref=e1959]
+            - cell "—" [ref=e1960]
+            - cell [ref=e1961]
+            - cell [ref=e1962]:
+              - button "viz ▸" [ref=e1963] [cursor=pointer]
+              - button "Analyze" [ref=e1964] [cursor=pointer]
+          - row [ref=e1965]:
+            - cell "DefaultAndroidSourceDirectorySet$directories$1" [ref=e1966] [cursor=pointer]
+            - cell "503,988" [ref=e1968]
+            - cell "8.1M" [ref=e1969]
+            - cell "16B" [ref=e1970]
+            - cell "—" [ref=e1971]
+            - cell "—" [ref=e1972]
+            - cell [ref=e1973]
+            - cell [ref=e1974]:
+              - button "viz ▸" [ref=e1975] [cursor=pointer]
+              - button "Analyze" [ref=e1976] [cursor=pointer]
+          - row [ref=e1977]:
+            - cell "TransformedClassPath$TransformedEntry" [ref=e1978] [cursor=pointer]
+            - cell "327,152" [ref=e1980]
+            - cell "7.9M" [ref=e1981]
+            - cell "24B" [ref=e1982]
+            - cell "—" [ref=e1983]
+            - cell "—" [ref=e1984]
+            - cell [ref=e1985]
+            - cell [ref=e1986]:
+              - button "viz ▸" [ref=e1987] [cursor=pointer]
+              - button "Analyze" [ref=e1988] [cursor=pointer]
+          - row [ref=e1989]:
+            - cell "ClasspathEntryModelImpl" [ref=e1990] [cursor=pointer]
+            - cell "327,132" [ref=e1992]
+            - cell "7.9M" [ref=e1993]
+            - cell "24B" [ref=e1994]
+            - cell "—" [ref=e1995]
+            - cell "—" [ref=e1996]
+            - cell [ref=e1997]
+            - cell [ref=e1998]:
+              - button "viz ▸" [ref=e1999] [cursor=pointer]
+              - button "Analyze" [ref=e2000] [cursor=pointer]
+          - row [ref=e2001]:
+            - cell "RecordedEvent" [ref=e2002] [cursor=pointer]
+            - cell "196,107" [ref=e2004]
+            - cell "7.8M" [ref=e2005]
+            - cell "40B" [ref=e2006]
+            - cell "—" [ref=e2007]
+            - cell "—" [ref=e2008]
+            - cell [ref=e2009]
+            - cell [ref=e2010]:
+              - button "viz ▸" [ref=e2011] [cursor=pointer]
+              - button "Analyze" [ref=e2012] [cursor=pointer]
+          - row [ref=e2013]:
+            - cell "MavenResolver" [ref=e2014] [cursor=pointer]
+            - cell "81,034" [ref=e2016]
+            - cell "7.8M" [ref=e2017]
+            - cell "96B" [ref=e2018]
+            - cell "—" [ref=e2019]
+            - cell "—" [ref=e2020]
+            - cell [ref=e2021]
+            - cell [ref=e2022]:
+              - button "viz ▸" [ref=e2023] [cursor=pointer]
+              - button "Analyze" [ref=e2024] [cursor=pointer]
+          - row [ref=e2025]:
+            - cell "DefaultProvider" [ref=e2026] [cursor=pointer]
+            - cell "480,558" [ref=e2028]
+            - cell "7.7M" [ref=e2029]
+            - cell "16B" [ref=e2030]
+            - cell "—" [ref=e2031]
+            - cell "—" [ref=e2032]
+            - cell [ref=e2033]
+            - cell [ref=e2034]:
+              - button "viz ▸" [ref=e2035] [cursor=pointer]
+              - button "Analyze" [ref=e2036] [cursor=pointer]
+          - row [ref=e2037]:
+            - cell "ImmutableActionSet$SetWithManyActions" [ref=e2038] [cursor=pointer]
+            - cell "462,114" [ref=e2040]
+            - cell "7.4M" [ref=e2041]
+            - cell "16B" [ref=e2042]
+            - cell "—" [ref=e2043]
+            - cell "—" [ref=e2044]
+            - cell [ref=e2045]
+            - cell [ref=e2046]:
+              - button "viz ▸" [ref=e2047] [cursor=pointer]
+              - button "Analyze" [ref=e2048] [cursor=pointer]
+          - row [ref=e2049]:
+            - cell "DefaultConfiguration$DefaultResolutionHost" [ref=e2050] [cursor=pointer]
+            - cell "228,039" [ref=e2052]
+            - cell "7.3M" [ref=e2053]
+            - cell "32B" [ref=e2054]
+            - cell "—" [ref=e2055]
+            - cell "—" [ref=e2056]
+            - cell [ref=e2057]
+            - cell [ref=e2058]:
+              - button "viz ▸" [ref=e2059] [cursor=pointer]
+              - button "Analyze" [ref=e2060] [cursor=pointer]
+          - row [ref=e2061]:
+            - cell "ConsumerProvidedVariantFinder$TransformCache$CacheKey" [ref=e2062] [cursor=pointer]
+            - cell "303,048" [ref=e2064]
+            - cell "7.3M" [ref=e2065]
+            - cell "24B" [ref=e2066]
+            - cell "—" [ref=e2067]
+            - cell "—" [ref=e2068]
+            - cell [ref=e2069]
+            - cell [ref=e2070]:
+              - button "viz ▸" [ref=e2071] [cursor=pointer]
+              - button "Analyze" [ref=e2072] [cursor=pointer]
+          - row [ref=e2073]:
+            - cell "FileBasedDirectoryEntryImpl" [ref=e2074] [cursor=pointer]
+            - cell "221,996" [ref=e2076]
+            - cell "7.1M" [ref=e2077]
+            - cell "32B" [ref=e2078]
+            - cell "—" [ref=e2079]
+            - cell "—" [ref=e2080]
+            - cell [ref=e2081]
+            - cell [ref=e2082]:
+              - button "viz ▸" [ref=e2083] [cursor=pointer]
+              - button "Analyze" [ref=e2084] [cursor=pointer]
+          - row [ref=e2085]:
+            - cell "DefaultMapProperty$EmptySupplier" [ref=e2086] [cursor=pointer]
+            - cell "442,595" [ref=e2088]
+            - cell "7.1M" [ref=e2089]
+            - cell "16B" [ref=e2090]
+            - cell "—" [ref=e2091]
+            - cell "—" [ref=e2092]
+            - cell [ref=e2093]
+            - cell [ref=e2094]:
+              - button "viz ▸" [ref=e2095] [cursor=pointer]
+              - button "Analyze" [ref=e2096] [cursor=pointer]
+          - row [ref=e2097]:
+            - cell "ImmutableCapabilities" [ref=e2098] [cursor=pointer]
+            - cell "434,025" [ref=e2100]
+            - cell "6.9M" [ref=e2101]
+            - cell "16B" [ref=e2102]
+            - cell "—" [ref=e2103]
+            - cell "—" [ref=e2104]
+            - cell [ref=e2105]
+            - cell [ref=e2106]:
+              - button "viz ▸" [ref=e2107] [cursor=pointer]
+              - button "Analyze" [ref=e2108] [cursor=pointer]
+          - row [ref=e2109]:
+            - cell "DefaultLocalVariantGraphResolveStateBuilder$$Lambda*▸ 7" [ref=e2110] [cursor=pointer]
+            - cell "269,997" [ref=e2112]
+            - cell "6.7M" [ref=e2113]
+            - cell "24.9B" [ref=e2114]
+            - cell "—" [ref=e2115]
+            - cell "—" [ref=e2116]
+            - cell [ref=e2117]
+            - cell [ref=e2118]:
+              - button "viz ▸" [ref=e2119] [cursor=pointer]
+          - row [ref=e2120]:
+            - cell "DependencyInjectingInstantiator" [ref=e2121] [cursor=pointer]
+            - cell "276,214" [ref=e2123]
+            - cell "6.6M" [ref=e2124]
+            - cell "24B" [ref=e2125]
+            - cell "—" [ref=e2126]
+            - cell "—" [ref=e2127]
+            - cell [ref=e2128]
+            - cell [ref=e2129]:
+              - button "viz ▸" [ref=e2130] [cursor=pointer]
+              - button "Analyze" [ref=e2131] [cursor=pointer]
+          - row [ref=e2132]:
+            - cell "TransformChain" [ref=e2133] [cursor=pointer]
+            - cell "276,077" [ref=e2135]
+            - cell "6.6M" [ref=e2136]
+            - cell "24B" [ref=e2137]
+            - cell "—" [ref=e2138]
+            - cell "—" [ref=e2139]
+            - cell [ref=e2140]
+            - cell [ref=e2141]:
+              - button "viz ▸" [ref=e2142] [cursor=pointer]
+              - button "Analyze" [ref=e2143] [cursor=pointer]
+          - row [ref=e2144]:
+            - cell "ErrorHandlingModuleComponentRepository$ErrorHandlingModuleComponentRepositoryAccess" [ref=e2145] [cursor=pointer]
+            - cell "162,068" [ref=e2147]
+            - cell "6.5M" [ref=e2148]
+            - cell "40B" [ref=e2149]
+            - cell "—" [ref=e2150]
+            - cell "—" [ref=e2151]
+            - cell [ref=e2152]
+            - cell [ref=e2153]:
+              - button "viz ▸" [ref=e2154] [cursor=pointer]
+              - button "Analyze" [ref=e2155] [cursor=pointer]
+          - row [ref=e2156]:
+            - cell "DefaultPatternSetFactory$InternalPatternSet" [ref=e2157] [cursor=pointer]
+            - cell "162,045" [ref=e2159]
+            - cell "6.5M" [ref=e2160]
+            - cell "40B" [ref=e2161]
+            - cell "—" [ref=e2162]
+            - cell "—" [ref=e2163]
+            - cell [ref=e2164]
+            - cell [ref=e2165]:
+              - button "viz ▸" [ref=e2166] [cursor=pointer]
+              - button "Analyze" [ref=e2167] [cursor=pointer]
+          - row [ref=e2168]:
+            - cell "DefaultDependencySet$MutationValidationAction" [ref=e2169] [cursor=pointer]
+            - cell "402,087" [ref=e2171]
+            - cell "6.4M" [ref=e2172]
+            - cell "16B" [ref=e2173]
+            - cell "—" [ref=e2174]
+            - cell "—" [ref=e2175]
+            - cell [ref=e2176]
+            - cell [ref=e2177]:
+              - button "viz ▸" [ref=e2178] [cursor=pointer]
+              - button "Analyze" [ref=e2179] [cursor=pointer]
+          - row [ref=e2180]:
+            - cell "DefaultConfiguration$ConfigurationResolutionAccess" [ref=e2181] [cursor=pointer]
+            - cell "402,059" [ref=e2183]
+            - cell "6.4M" [ref=e2184]
+            - cell "16B" [ref=e2185]
+            - cell "—" [ref=e2186]
+            - cell "—" [ref=e2187]
+            - cell [ref=e2188]
+            - cell [ref=e2189]:
+              - button "viz ▸" [ref=e2190] [cursor=pointer]
+              - button "Analyze" [ref=e2191] [cursor=pointer]
+          - row [ref=e2192]:
+            - cell "DefaultAndroidLibrarySourceSet_Decorated" [ref=e2193] [cursor=pointer]
+            - cell "35,988" [ref=e2195]
+            - cell "6.3M" [ref=e2196]
+            - cell "176B" [ref=e2197]
+            - cell "—" [ref=e2198]
+            - cell "—" [ref=e2199]
+            - cell [ref=e2200]
+            - cell [ref=e2201]:
+              - button "viz ▸" [ref=e2202] [cursor=pointer]
+              - button "Analyze" [ref=e2203] [cursor=pointer]
+          - row [ref=e2204]:
+            - cell "DefaultPluginRegistry$PluginIdLookupCacheKey" [ref=e2205] [cursor=pointer]
+            - cell "255,477" [ref=e2207]
+            - cell "6.1M" [ref=e2208]
+            - cell "24B" [ref=e2209]
+            - cell "—" [ref=e2210]
+            - cell "—" [ref=e2211]
+            - cell [ref=e2212]
+            - cell [ref=e2213]:
+              - button "viz ▸" [ref=e2214] [cursor=pointer]
+              - button "Analyze" [ref=e2215] [cursor=pointer]
+          - row [ref=e2216]:
+            - cell "ChampNode" [ref=e2217] [cursor=pointer]
+            - cell "244,430" [ref=e2219]
+            - cell "5.9M" [ref=e2220]
+            - cell "24B" [ref=e2221]
+            - cell "—" [ref=e2222]
+            - cell "—" [ref=e2223]
+            - cell [ref=e2224]
+            - cell [ref=e2225]:
+              - button "viz ▸" [ref=e2226] [cursor=pointer]
+              - button "Analyze" [ref=e2227] [cursor=pointer]
+          - row [ref=e2228]:
+            - cell "TransformStep" [ref=e2229] [cursor=pointer]
+            - cell "183,053" [ref=e2231]
+            - cell "5.9M" [ref=e2232]
+            - cell "32B" [ref=e2233]
+            - cell "—" [ref=e2234]
+            - cell "—" [ref=e2235]
+            - cell [ref=e2236]
+            - cell [ref=e2237]:
+              - button "viz ▸" [ref=e2238] [cursor=pointer]
+              - button "Analyze" [ref=e2239] [cursor=pointer]
+          - row [ref=e2240]:
+            - cell "DefaultMapProperty$CollectingSupplier" [ref=e2241] [cursor=pointer]
+            - cell "243,038" [ref=e2243]
+            - cell "5.8M" [ref=e2244]
+            - cell "24B" [ref=e2245]
+            - cell "—" [ref=e2246]
+            - cell "—" [ref=e2247]
+            - cell [ref=e2248]
+            - cell [ref=e2249]:
+              - button "viz ▸" [ref=e2250] [cursor=pointer]
+              - button "Analyze" [ref=e2251] [cursor=pointer]
+          - row [ref=e2252]:
+            - cell "ReferenceQueue" [ref=e2253] [cursor=pointer]
+            - cell "181,400" [ref=e2255]
+            - cell "5.8M" [ref=e2256]
+            - cell "32B" [ref=e2257]
+            - cell "—" [ref=e2258]
+            - cell "—" [ref=e2259]
+            - cell [ref=e2260]
+            - cell [ref=e2261]:
+              - button "viz ▸" [ref=e2262] [cursor=pointer]
+              - button "Analyze" [ref=e2263] [cursor=pointer]
+          - row [ref=e2264]:
+            - cell "LocalCache" [ref=e2265] [cursor=pointer]
+            - cell "45,110" [ref=e2267]
+            - cell "5.8M" [ref=e2268]
+            - cell "128B" [ref=e2269]
+            - cell "—" [ref=e2270]
+            - cell "—" [ref=e2271]
+            - cell [ref=e2272]
+            - cell [ref=e2273]:
+              - button "viz ▸" [ref=e2274] [cursor=pointer]
+              - button "Analyze" [ref=e2275] [cursor=pointer]
+          - row [ref=e2276]:
+            - cell "DefaultDependencySubstitutions_Decorated" [ref=e2277] [cursor=pointer]
+            - cell "72,024" [ref=e2279]
+            - cell "5.8M" [ref=e2280]
+            - cell "80B" [ref=e2281]
+            - cell "—" [ref=e2282]
+            - cell "—" [ref=e2283]
+            - cell [ref=e2284]
+            - cell [ref=e2285]:
+              - button "viz ▸" [ref=e2286] [cursor=pointer]
+              - button "Analyze" [ref=e2287] [cursor=pointer]
+          - row [ref=e2288]:
+            - cell "DefaultConfiguration$ConfigurationDescription" [ref=e2289] [cursor=pointer]
+            - cell "360,047" [ref=e2291]
+            - cell "5.8M" [ref=e2292]
+            - cell "16B" [ref=e2293]
+            - cell "—" [ref=e2294]
+            - cell "—" [ref=e2295]
+            - cell [ref=e2296]
+            - cell [ref=e2297]:
+              - button "viz ▸" [ref=e2298] [cursor=pointer]
+              - button "Analyze" [ref=e2299] [cursor=pointer]
+          - row [ref=e2300]:
+            - cell "UnsafeLazyImpl" [ref=e2301] [cursor=pointer]
+            - cell "237,007" [ref=e2303]
+            - cell "5.7M" [ref=e2304]
+            - cell "24B" [ref=e2305]
+            - cell "—" [ref=e2306]
+            - cell "—" [ref=e2307]
+            - cell [ref=e2308]
+            - cell [ref=e2309]:
+              - button "viz ▸" [ref=e2310] [cursor=pointer]
+              - button "Analyze" [ref=e2311] [cursor=pointer]
+          - row [ref=e2312]:
+            - cell "Try$Success" [ref=e2313] [cursor=pointer]
+            - cell "348,858" [ref=e2315]
+            - cell "5.6M" [ref=e2316]
+            - cell "16B" [ref=e2317]
+            - cell "—" [ref=e2318]
+            - cell "—" [ref=e2319]
+            - cell [ref=e2320]
+            - cell [ref=e2321]:
+              - button "viz ▸" [ref=e2322] [cursor=pointer]
+              - button "Analyze" [ref=e2323] [cursor=pointer]
+          - row [ref=e2324]:
+            - cell "LazyPublishArtifact" [ref=e2325] [cursor=pointer]
+            - cell "173,978" [ref=e2327]
+            - cell "5.6M" [ref=e2328]
+            - cell "32B" [ref=e2329]
+            - cell "—" [ref=e2330]
+            - cell "—" [ref=e2331]
+            - cell [ref=e2332]
+            - cell [ref=e2333]:
+              - button "viz ▸" [ref=e2334] [cursor=pointer]
+              - button "Analyze" [ref=e2335] [cursor=pointer]
+          - row [ref=e2336]:
+            - cell "ScopedArtifactsImpl" [ref=e2337] [cursor=pointer]
+            - cell "114,002" [ref=e2339]
+            - cell "5.5M" [ref=e2340]
+            - cell "48B" [ref=e2341]
+            - cell "—" [ref=e2342]
+            - cell "—" [ref=e2343]
+            - cell [ref=e2344]
+            - cell [ref=e2345]:
+              - button "viz ▸" [ref=e2346] [cursor=pointer]
+              - button "Analyze" [ref=e2347] [cursor=pointer]
+          - row [ref=e2348]:
+            - cell "Object" [ref=e2349] [cursor=pointer]
+            - cell "338,639" [ref=e2351]
+            - cell "5.4M" [ref=e2352]
+            - cell "16B" [ref=e2353]
+            - cell "—" [ref=e2354]
+            - cell "—" [ref=e2355]
+            - cell [ref=e2356]
+            - cell [ref=e2357]:
+              - button "viz ▸" [ref=e2358] [cursor=pointer]
+              - button "Analyze" [ref=e2359] [cursor=pointer]
+          - row [ref=e2360]:
+            - cell "DefaultSourceDirectorySet_Decorated" [ref=e2361] [cursor=pointer]
+            - cell "48,016" [ref=e2363]
+            - cell "5.4M" [ref=e2364]
+            - cell "112B" [ref=e2365]
+            - cell "—" [ref=e2366]
+            - cell "—" [ref=e2367]
+            - cell [ref=e2368]
+            - cell [ref=e2369]:
+              - button "viz ▸" [ref=e2370] [cursor=pointer]
+              - button "Analyze" [ref=e2371] [cursor=pointer]
+          - row [ref=e2372]:
+            - cell "KotlinCompile_Decorated" [ref=e2373] [cursor=pointer]
+            - cell "12,002" [ref=e2375]
+            - cell "5.4M" [ref=e2376]
+            - cell "448B" [ref=e2377]
+            - cell "—" [ref=e2378]
+            - cell "—" [ref=e2379]
+            - cell [ref=e2380]
+            - cell [ref=e2381]:
+              - button "viz ▸" [ref=e2382] [cursor=pointer]
+              - button "Analyze" [ref=e2383] [cursor=pointer]
+          - row [ref=e2384]:
+            - cell "DefaultTaskOutputs" [ref=e2385] [cursor=pointer]
+            - cell "96,010" [ref=e2387]
+            - cell "5.4M" [ref=e2388]
+            - cell "56B" [ref=e2389]
+            - cell "—" [ref=e2390]
+            - cell "—" [ref=e2391]
+            - cell [ref=e2392]
+            - cell [ref=e2393]:
+              - button "viz ▸" [ref=e2394] [cursor=pointer]
+              - button "Analyze" [ref=e2395] [cursor=pointer]
+          - row [ref=e2396]:
+            - cell "DefaultValueSourceProviderFactory$LazilyObtainedValue" [ref=e2397] [cursor=pointer]
+            - cell "132,047" [ref=e2399]
+            - cell "5.3M" [ref=e2400]
+            - cell "40B" [ref=e2401]
+            - cell "—" [ref=e2402]
+            - cell "—" [ref=e2403]
+            - cell [ref=e2404]
+            - cell [ref=e2405]:
+              - button "viz ▸" [ref=e2406] [cursor=pointer]
+              - button "Analyze" [ref=e2407] [cursor=pointer]
+          - row [ref=e2408]:
+            - cell "ScopedArtifactsImpl$ScopedArtifactsContainer" [ref=e2409] [cursor=pointer]
+            - cell "165,028" [ref=e2411]
+            - cell "5.3M" [ref=e2412]
+            - cell "32B" [ref=e2413]
+            - cell "—" [ref=e2414]
+            - cell "—" [ref=e2415]
+            - cell [ref=e2416]
+            - cell [ref=e2417]:
+              - button "viz ▸" [ref=e2418] [cursor=pointer]
+              - button "Analyze" [ref=e2419] [cursor=pointer]
+          - row [ref=e2420]:
+            - cell "ResolutionBackedFileCollection" [ref=e2421] [cursor=pointer]
+            - cell "165,014" [ref=e2423]
+            - cell "5.3M" [ref=e2424]
+            - cell "32B" [ref=e2425]
+            - cell "—" [ref=e2426]
+            - cell "—" [ref=e2427]
+            - cell [ref=e2428]
+            - cell [ref=e2429]:
+              - button "viz ▸" [ref=e2430] [cursor=pointer]
+              - button "Analyze" [ref=e2431] [cursor=pointer]
+  - generic [ref=e12]: no jobs
+  - generic [ref=e2437]:
+    - generic [ref=e2438]:
+      - generic [ref=e2439]:
+        - generic [ref=e2440]: org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated
+        - generic [ref=e2441]: anatomy · run-jfr-38
+        - generic [ref=e2443]:
+          - button "anatomy" [ref=e2444] [cursor=pointer]
+          - button "hierarchy" [ref=e2445] [cursor=pointer]
+          - button "graph" [ref=e2446] [cursor=pointer]
+          - button "flow" [ref=e2447] [cursor=pointer]
+          - button "shapes" [ref=e2448] [cursor=pointer]
+      - button "×" [ref=e2449] [cursor=pointer]
+    - generic [ref=e2450]:
+      - generic [ref=e2451]:
+        - generic [ref=e2452]:
+          - button "32 sample instances" [ref=e2453] [cursor=pointer]
+          - button "× 327,035 instances (estimated)" [ref=e2454] [cursor=pointer]
+        - generic [ref=e2455]:
+          - generic [ref=e2456]: "samples:"
+          - generic [ref=e2457]:
+            - generic [ref=e2458]:
+              - button "32" [ref=e2459] [cursor=pointer]
+              - button "8 ▸" [ref=e2460] [cursor=pointer]
+              - button "16 ▸" [ref=e2461] [cursor=pointer]
+            - textbox "custom sample count (1–1024) — runs a new analysis" [ref=e2462]:
+              - /placeholder: custom
+      - generic [ref=e2463]:
+        - generic [ref=e2464]: reference tree (full graph over the union retained set of 32 samples) — counts extrapolated to all instances; root retained = exact class total
+        - generic [ref=e2465]: objects
+        - generic [ref=e2466]: shallow
+        - generic [ref=e2467]: per instance
+        - generic [ref=e2468]: retained
+      - generic [ref=e2469]:
+        - generic [ref=e2470]:
+          - generic [ref=e2471]:
+            - generic [ref=e2472] [cursor=pointer]: ▸
+            - text: DefaultLegacyConfiguration_Decorated⇆359 ×1
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2474]': ≈ 327,035
+          - generic "estimated shallow" [ref=e2475]: ≈ 91.6M
+          - generic [ref=e2476]: 280B
+          - generic "EXACT union retained set of all 327,035 instances (shared objects counted once) — the composition total, not an extrapolation" [ref=e2477]: ≈ 2.3G
+        - generic [ref=e2478]:
+          - generic [ref=e2480]:
+            - generic [ref=e2481]:
+              - generic [ref=e2482] [cursor=pointer]: ▸
+              - text: "currentResolveState: DefaultCalculatedModelValuein 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2484]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2485]: ≈ 10.5M
+            - generic [ref=e2486]: 32B
+            - 'generic "bytes inside the 32-sample set (77.6% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2487]': 353K 78%
+          - generic [ref=e2489]:
+            - generic [ref=e2490]:
+              - generic [ref=e2491] [cursor=pointer]: ▸
+              - text: "ownDependencies: DefaultDomainObjectSet_Decoratedin 32/32⇆96 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2493]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2494]: ≈ 20.9M
+            - generic [ref=e2495]: 64B
+            - 'generic "bytes inside the 32-sample set (3.4% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2496]': 15.5K 3%
+          - generic [ref=e2498]:
+            - generic [ref=e2499]:
+              - generic [ref=e2500] [cursor=pointer]: ▸
+              - text: "ownDependencyConstraints: DefaultDomainObjectSet_Decoratedin 32/32⇆96 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2502]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2503]: ≈ 20.9M
+            - generic [ref=e2504]: 64B
+            - 'generic "bytes inside the 32-sample set (2.6% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2505]': 11.9K 3%
+          - generic [ref=e2507]:
+            - generic [ref=e2508]:
+              - generic [ref=e2509] [cursor=pointer]: ▸
+              - text: "resolutionStrategy: DefaultResolutionStrategy_Decoratedin 12/32 ×0.375"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2511]': ≈ 122,638.125
+            - generic "estimated shallow" [ref=e2512]: ≈ 15.7M
+            - generic [ref=e2513]: 48B
+            - 'generic "bytes inside the 32-sample set (2.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2514]': 10.1K 2%
+          - generic [ref=e2516]:
+            - generic [ref=e2517]:
+              - generic [ref=e2518] [cursor=pointer]: ▸
+              - text: "configurationAttributes: FreezableAttributeContainerin 32/32⇆34 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2520]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2521]: ≈ 7.8M
+            - generic [ref=e2522]: 24B
+            - 'generic "bytes inside the 32-sample set (1.9% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2523]': 8.8K 2%
+          - generic [ref=e2525]:
+            - generic [ref=e2526]:
+              - generic [ref=e2527] [cursor=pointer]: ▸
+              - text: "ownArtifacts: DefaultDomainObjectSet_Decoratedin 27/32⇆81 ×0.844"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2529]': ≈ 275,935.781
+            - generic "estimated shallow" [ref=e2530]: ≈ 17.7M
+            - generic [ref=e2531]: 54B
+            - 'generic "bytes inside the 32-sample set (1.6% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2532]': 7.3K 2%
+          - generic [ref=e2534]:
+            - generic [ref=e2535]:
+              - generic [ref=e2536] [cursor=pointer]: ▸
+              - text: "artifacts: DefaultPublishArtifactSetin 32/32⇆97 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2538]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2539]: ≈ 10.5M
+            - generic [ref=e2540]: 32B
+            - 'generic "bytes inside the 32-sample set (1.3% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2541]': 5.9K 1%
+          - generic [ref=e2543]:
+            - generic [ref=e2544]:
+              - generic [ref=e2545] [cursor=pointer]: ▸
+              - text: "extendsFrom: ExtendedConfigurationsin 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2547]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2548]: ≈ 7.8M
+            - generic [ref=e2549]: 24B
+            - 'generic "bytes inside the 32-sample set (1.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2550]': 5.7K 1%
+          - generic [ref=e2552]:
+            - generic [ref=e2553]:
+              - generic [ref=e2554] [cursor=pointer]: ▸
+              - text: "intrinsicFiles: ResolutionBackedFileCollectionin 6/32 ×0.188"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2556]': ≈ 61,319.063
+            - generic "estimated shallow" [ref=e2557]: ≈ 2M
+            - generic [ref=e2558]: 6B
+            - 'generic "bytes inside the 32-sample set (0.7% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2559]': 3.1K 1%
+          - generic [ref=e2561]:
+            - generic [ref=e2562]:
+              - generic [ref=e2563] [cursor=pointer]: ▸
+              - text: "excludeRules: LinkedHashSetin 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2565]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2566]: ≈ 5.2M
+            - generic [ref=e2567]: 16B
+            - 'generic "bytes inside the 32-sample set (0.7% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2568]': 3K 1%
+          - generic [ref=e2570]:
+            - generic [ref=e2571]:
+              - generic [ref=e2572] [cursor=pointer]: ▸
+              - text: "dependencyResolutionListeners: AnonymousListenerBroadcastin 32/32⇆40 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2574]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2575]: ≈ 10.5M
+            - generic [ref=e2576]: 32B
+            - 'generic "bytes inside the 32-sample set (0.5% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2577]': 2.3K 1%
+          - generic [ref=e2579]:
+            - generic [ref=e2580]:
+              - generic [ref=e2581] [cursor=pointer]: ▸
+              - text: "dependencies: DefaultDependencySetin 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2583]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2584]: ≈ 10.5M
+            - generic [ref=e2585]: 32B
+            - 'generic "bytes inside the 32-sample set (0.5% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2586]': 2.2K 0%
+          - generic [ref=e2588]:
+            - generic [ref=e2589]:
+              - generic [ref=e2590] [cursor=pointer]: ▸
+              - text: "identityPath: Pathin 24/32⇆55 ×0.75"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2592]': ≈ 245,276.25
+            - generic "estimated shallow" [ref=e2593]: ≈ 7.8M
+            - generic [ref=e2594]: 24B
+            - 'generic "bytes inside the 32-sample set (0.4% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2595]': 2K 0%
+          - generic [ref=e2597]:
+            - generic [ref=e2598]:
+              - generic [ref=e2599] [cursor=pointer]: ▸
+              - text: "parsedExcludeRules: LinkedHashSetin 17/32 ×0.531"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2601]': ≈ 173,737.344
+            - generic "estimated shallow" [ref=e2602]: ≈ 2.8M
+            - generic [ref=e2603]: 8.5B
+            - 'generic "bytes inside the 32-sample set (0.4% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2604]': 1.8K 0%
+          - generic [ref=e2606]:
+            - generic [ref=e2607]:
+              - generic [ref=e2608]: ·
+              - text: "resolvableDependencies: DefaultConfiguration$ConfigurationResolvableDependencies_Decoratedin 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2610]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2611]: ≈ 15.7M
+            - generic [ref=e2612]: 48B
+            - 'generic "bytes inside the 32-sample set (0.3% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2613]': 1.5K 0%
+          - generic [ref=e2615]:
+            - generic [ref=e2616]:
+              - generic [ref=e2617] [cursor=pointer]: ▸
+              - text: "dependencyConstraints: DefaultDependencyConstraintSetin 32/32⇆40 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2619]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2620]: ≈ 7.8M
+            - generic [ref=e2621]: 24B
+            - 'generic "bytes inside the 32-sample set (0.3% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2622]': 1.5K 0%
+          - generic [ref=e2624]:
+            - generic [ref=e2625]:
+              - generic [ref=e2626] [cursor=pointer]: ▸
+              - text: "displayName: Describables$MemoizingDescribablein 21/32⇆111 ×0.656"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2628]': ≈ 214,616.719
+            - generic "estimated shallow" [ref=e2629]: ≈ 5.2M
+            - generic [ref=e2630]: 15.8B
+            - 'generic "bytes inside the 32-sample set (0.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2631]': 808B 0%
+          - generic [ref=e2633]:
+            - generic [ref=e2634]:
+              - generic [ref=e2635]: ·
+              - text: "validateExtendedConfiguration: DefaultConfiguration$$Lambda+0x0000000800ada5d0in 32/32⇆64 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2637]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2638]: ≈ 7.8M
+            - generic [ref=e2639]: 24B
+            - 'generic "bytes inside the 32-sample set (0.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2640]': 768B 0%
+          - generic [ref=e2642]:
+            - generic [ref=e2643]:
+              - generic [ref=e2644] [cursor=pointer]: ▸
+              - text: "copyCount: AtomicIntegerin 32/32 ×1"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2646]': ≈ 327,035
+            - generic "estimated shallow" [ref=e2647]: ≈ 5.2M
+            - generic [ref=e2648]: 16B
+            - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2649]': 512B 0%
+          - generic [ref=e2651]:
+            - generic [ref=e2652]:
+              - generic [ref=e2653] [cursor=pointer]: ▸
+              - text: "description: \"Resolved configuration for lint check compilation for varian…\"in 4/32 ×0.125"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2655]': ≈ 40,879.375
+            - generic "estimated shallow" [ref=e2656]: ≈ 981K
+            - generic [ref=e2657]: 3B
+            - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2658]': 472B 0%
+          - generic [ref=e2660]:
+            - generic [ref=e2661]:
+              - generic [ref=e2662]: ·
+              - text: "resolutionAccess: DefaultConfiguration$ConfigurationResolutionAccessin 28/32⇆34 ×0.875"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2664]': ≈ 286,155.625
+            - generic "estimated shallow" [ref=e2665]: ≈ 4.6M
+            - generic [ref=e2666]: 14B
+            - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2667]': 448B 0%
+          - generic [ref=e2669]:
+            - generic [ref=e2670]:
+              - generic [ref=e2671]: ·
+              - text: "observationReason: DefaultConfiguration$$Lambda+0x0000000800afede8in 17/32⇆18 ×0.531"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2673]': ≈ 173,737.344
+            - generic "estimated shallow" [ref=e2674]: ≈ 4.2M
+            - generic [ref=e2675]: 12.8B
+            - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2676]': 408B 0%
+          - generic [ref=e2678]:
+            - generic [ref=e2679]:
+              - generic [ref=e2680] [cursor=pointer]: ▸
+              - text: "outgoing: DefaultConfigurationPublications_Decoratedin 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2682]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2683]: ≈ 1.1M
+            - generic [ref=e2684]: 3.3B
+            - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2685]': 344B 0%
+          - generic [ref=e2687]:
+            - generic [ref=e2688]:
+              - generic [ref=e2689] [cursor=pointer]: ▸
+              - text: "description: \"Classpath for the annotation processor for 'androidTest'.\"in 2/32 ×0.063"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2691]': ≈ 20,439.688
+            - generic "estimated shallow" [ref=e2692]: ≈ 491K
+            - generic [ref=e2693]: 1.5B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2694]': 208B
+          - generic [ref=e2696]:
+            - generic [ref=e2697]:
+              - generic [ref=e2698] [cursor=pointer]: ▸
+              - text: "description: \"Runtime only dependencies for 'androidTestDebug' sources.\"in 2/32 ×0.063"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2700]': ≈ 20,439.688
+            - generic "estimated shallow" [ref=e2701]: ≈ 491K
+            - generic [ref=e2702]: 1.5B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2703]': 208B
+          - generic [ref=e2705]:
+            - generic [ref=e2706]:
+              - generic [ref=e2707] [cursor=pointer]: ▸
+              - text: "description: \"Compile only dependencies for 'main' sources.\"in 2/32 ×0.063"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2709]': ≈ 20,439.688
+            - generic "estimated shallow" [ref=e2710]: ≈ 491K
+            - generic [ref=e2711]: 1.5B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2712]': 176B
+          - generic [ref=e2714]:
+            - generic [ref=e2715]:
+              - generic [ref=e2716] [cursor=pointer]: ▸
+              - text: "description: \"API dependencies for 'main' sources.\"in 2/32 ×0.063"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2718]': ≈ 20,439.688
+            - generic "estimated shallow" [ref=e2719]: ≈ 491K
+            - generic [ref=e2720]: 1.5B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2721]': 160B
+          - generic [ref=e2723]:
+            - generic [ref=e2724]:
+              - generic [ref=e2725] [cursor=pointer]: ▸
+              - text: "description: \"Resolved configuration for annotation-processor for variant:…\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2727]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2728]: ≈ 245K
+            - generic [ref=e2729]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2730]': 120B
+          - generic [ref=e2732]:
+            - generic [ref=e2733]:
+              - generic [ref=e2734] [cursor=pointer]: ▸
+              - text: "description: \"Implementation only dependencies for 'androidTestRelease' so…\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2736]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2737]: ≈ 245K
+            - generic [ref=e2738]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2739]': 112B
+          - generic [ref=e2741]:
+            - generic [ref=e2742]:
+              - generic [ref=e2743] [cursor=pointer]: ▸
+              - text: "description: \"Classpath for the annotation processor for 'testFixturesDebu…\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2745]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2746]: ≈ 245K
+            - generic [ref=e2747]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2748]': 104B
+          - generic [ref=e2750]:
+            - generic [ref=e2751]:
+              - generic [ref=e2752] [cursor=pointer]: ▸
+              - text: "description: \"Compile only API dependencies for 'testFixtures' sources.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2754]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2755]: ≈ 245K
+            - generic [ref=e2756]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2757]': 104B
+          - generic [ref=e2759]:
+            - generic [ref=e2760]:
+              - generic [ref=e2761] [cursor=pointer]: ▸
+              - text: "description: \"Compile only API dependencies for 'testFixturesDebug' source…\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2763]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2764]: ≈ 245K
+            - generic [ref=e2765]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2766]': 104B
+          - generic [ref=e2768]:
+            - generic [ref=e2769]:
+              - generic [ref=e2770] [cursor=pointer]: ▸
+              - text: "description: \"API dependencies for 'testFixturesDebug' sources.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2772]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2773]: ≈ 245K
+            - generic [ref=e2774]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2775]': 96B
+          - generic [ref=e2777]:
+            - generic [ref=e2778]:
+              - generic [ref=e2779] [cursor=pointer]: ▸
+              - text: "description: \"Runtime only dependencies for 'androidTest' sources.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2781]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2782]: ≈ 245K
+            - generic [ref=e2783]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2784]': 96B
+          - generic [ref=e2786]:
+            - generic [ref=e2787]:
+              - generic [ref=e2788] [cursor=pointer]: ▸
+              - text: "description: \"Compile only API dependencies for 'debug' sources.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2790]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2791]: ≈ 245K
+            - generic [ref=e2792]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2793]': 96B
+          - generic [ref=e2795]:
+            - generic [ref=e2796]:
+              - generic [ref=e2797] [cursor=pointer]: ▸
+              - text: "description: \"Compile classpath for '/debugAndroidTest'.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2799]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2800]: ≈ 245K
+            - generic [ref=e2801]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2802]': 88B
+          - generic [ref=e2804]:
+            - generic [ref=e2805]:
+              - generic [ref=e2806] [cursor=pointer]: ▸
+              - text: "description: \"API dependencies for 'debug' sources.\"in 1/32 ×0.031"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2808]': ≈ 10,219.844
+            - generic "estimated shallow" [ref=e2809]: ≈ 245K
+            - generic [ref=e2810]: 0.8B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2811]': 80B
+          - generic [ref=e2813]:
+            - generic [ref=e2814]:
+              - generic [ref=e2815]: ·
+              - text: "isDetached: falsein 31/32 ×0.969"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2817]': ≈ 316,815.156
+            - generic "estimated shallow" [ref=e2818]: ≈ 0B
+            - generic [ref=e2819]: 0B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2820]': 0B
+          - generic [ref=e2822]:
+            - generic [ref=e2823]:
+              - generic [ref=e2824]: ·
+              - text: "visible: truein 10/32 ×0.313"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2826]': ≈ 102,198.438
+            - generic "estimated shallow" [ref=e2827]: ≈ 0B
+            - generic [ref=e2828]: 0B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2829]': 0B
+          - generic [ref=e2831]:
+            - generic [ref=e2832]:
+              - generic [ref=e2833]: ·
+              - text: "transitive: truein 31/32 ×0.969"
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2835]': ≈ 316,815.156
+            - generic "estimated shallow" [ref=e2836]: ≈ 0B
+            - generic [ref=e2837]: 0B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2838]': 0B
+          - generic [ref=e2840]:
+            - generic [ref=e2841]:
+              - generic [ref=e2842] [cursor=pointer]: ▸
+              - text: · 16 more ×8.75
+            - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2844]': ≈ 2,861,556.25
+            - generic "estimated shallow" [ref=e2845]: ≈ 0B
+            - generic [ref=e2846]: 0B
+            - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2847]': 0B
+      - heading "Still unreachable (1 group) — with their structure, not flat" [level=3] [ref=e2848]
+      - generic [ref=e2849]: (held via beyond the depth limit) — 509 objects · ≈ 203M shallow · 53.6K retained
+      - generic [ref=e2850]:
+        - generic [ref=e2852]:
+          - generic [ref=e2853]:
+            - generic [ref=e2854] [cursor=pointer]: ▸
+            - text: LinkedHashMap$Entry⇆741 ×7.719
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2856]': ≈ 2,524,301.406
+          - generic "estimated shallow" [ref=e2857]: ≈ 101M
+          - generic [ref=e2858]: 309B
+          - 'generic "bytes inside the 32-sample set (2.9% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2859]': 13.4K 3%
+        - generic [ref=e2861]:
+          - generic [ref=e2862]:
+            - generic [ref=e2863] [cursor=pointer]: ▸
+            - text: LinkedHashSet ×1.219
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2865]': ≈ 398,573.906
+          - generic "estimated shallow" [ref=e2866]: ≈ 6.4M
+          - generic [ref=e2867]: 19.5B
+          - 'generic "bytes inside the 32-sample set (2.9% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2868]': 13.3K 3%
+        - generic [ref=e2870]:
+          - generic [ref=e2871]:
+            - generic [ref=e2872] [cursor=pointer]: ▸
+            - text: DefaultResolvedDependency⇆26 ×0.281
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2874]': ≈ 91,978.594
+          - generic "estimated shallow" [ref=e2875]: ≈ 5.2M
+          - generic [ref=e2876]: 15.8B
+          - 'generic "bytes inside the 32-sample set (2.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2877]': 9K 2%
+        - generic [ref=e2879]:
+          - generic [ref=e2880]:
+            - generic [ref=e2881] [cursor=pointer]: ▸
+            - text: LinkedHashMap⇆28 ×0.656
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2883]': ≈ 214,616.719
+          - generic "estimated shallow" [ref=e2884]: ≈ 13.7M
+          - generic [ref=e2885]: 42B
+          - 'generic "bytes inside the 32-sample set (1.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2886]': 5K 1%
+        - generic [ref=e2888]:
+          - generic [ref=e2889]:
+            - generic [ref=e2890] [cursor=pointer]: ▸
+            - text: HashMap$Node[] ×1.188
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2892]': ≈ 388,354.063
+          - generic "estimated shallow" [ref=e2893]: ≈ 31.1M
+          - generic [ref=e2894]: 95B
+          - 'generic "bytes inside the 32-sample set (0.7% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2895]': 3K 1%
+        - generic [ref=e2897]:
+          - generic [ref=e2898]:
+            - generic [ref=e2899] [cursor=pointer]: ▸
+            - text: ImmutableCapabilities ×0.5
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2901]': ≈ 163,517.5
+          - generic "estimated shallow" [ref=e2902]: ≈ 2.6M
+          - generic [ref=e2903]: 8B
+          - 'generic "bytes inside the 32-sample set (0.5% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2904]': 2.3K 0%
+        - generic [ref=e2906]:
+          - generic [ref=e2907]:
+            - generic [ref=e2908] [cursor=pointer]: ▸
+            - text: ArrayListMultimap ×0.406
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2910]': ≈ 132,857.969
+          - generic "estimated shallow" [ref=e2911]: ≈ 6.4M
+          - generic [ref=e2912]: 19.5B
+          - 'generic "bytes inside the 32-sample set (0.3% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2913]': 1.2K 0%
+        - generic [ref=e2915]:
+          - generic [ref=e2916]:
+            - generic [ref=e2917] [cursor=pointer]: ▸
+            - text: HashMap ×0.625
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2919]': ≈ 204,396.875
+          - generic "estimated shallow" [ref=e2920]: ≈ 9.8M
+          - generic [ref=e2921]: 30B
+          - 'generic "bytes inside the 32-sample set (0.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2922]': 960B 0%
+        - generic [ref=e2924]:
+          - generic [ref=e2925]:
+            - generic [ref=e2926] [cursor=pointer]: ▸
+            - text: String ×0.406
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2928]': ≈ 132,857.969
+          - generic "estimated shallow" [ref=e2929]: ≈ 3.2M
+          - generic [ref=e2930]: 9.8B
+          - 'generic "bytes inside the 32-sample set (0.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2931]': 960B 0%
+        - generic [ref=e2933]:
+          - generic [ref=e2934]:
+            - generic [ref=e2935] [cursor=pointer]: ▸
+            - text: DefaultExternalResourceConnector⇆12 ×0.125
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2937]': ≈ 40,879.375
+          - generic "estimated shallow" [ref=e2938]: ≈ 981K
+          - generic [ref=e2939]: 3B
+          - 'generic "bytes inside the 32-sample set (0.2% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2940]': 928B 0%
+        - generic [ref=e2942]:
+          - generic [ref=e2943]:
+            - generic [ref=e2944] [cursor=pointer]: ▸
+            - text: DefaultImmutableCapability ×0.188
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2946]': ≈ 61,319.063
+          - generic "estimated shallow" [ref=e2947]: ≈ 2M
+          - generic [ref=e2948]: 6B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2949]': 656B 0%
+        - generic [ref=e2951]:
+          - generic [ref=e2952]:
+            - generic [ref=e2953] [cursor=pointer]: ▸
+            - text: RedirectingGradleMetadataModuleMetadataSource ×0.125
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2955]': ≈ 40,879.375
+          - generic "estimated shallow" [ref=e2956]: ≈ 981K
+          - generic [ref=e2957]: 3B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2958]': 448B 0%
+        - generic [ref=e2960]:
+          - generic [ref=e2961]:
+            - generic [ref=e2962]: ·
+            - text: Describables$ThreePartDescribable ×0.5
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2964]': ≈ 163,517.5
+          - generic "estimated shallow" [ref=e2965]: ≈ 3.9M
+          - generic [ref=e2966]: 12B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2967]': 384B 0%
+        - generic [ref=e2969]:
+          - generic [ref=e2970]:
+            - generic [ref=e2971] [cursor=pointer]: ▸
+            - text: LinkedHashMap$LinkedKeySet ×0.438
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2973]': ≈ 143,077.813
+          - generic "estimated shallow" [ref=e2974]: ≈ 3.4M
+          - generic [ref=e2975]: 10.5B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2976]': 336B 0%
+        - generic [ref=e2978]:
+          - generic [ref=e2979]:
+            - generic [ref=e2980]: ·
+            - text: byte[] ×0.188
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2982]': ≈ 61,319.063
+          - generic "estimated shallow" [ref=e2983]: ≈ 3.4M
+          - generic [ref=e2984]: 10.3B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2985]': 328B 0%
+        - generic [ref=e2987]:
+          - generic [ref=e2988]:
+            - generic [ref=e2989] [cursor=pointer]: ▸
+            - text: AbstractArtifactRepository$RepositoryRuleServiceLookup ×0.125
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e2991]': ≈ 40,879.375
+          - generic "estimated shallow" [ref=e2992]: ≈ 981K
+          - generic [ref=e2993]: 3B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e2994]': 288B 0%
+        - generic [ref=e2996]:
+          - generic [ref=e2997]:
+            - generic [ref=e2998] [cursor=pointer]: ▸
+            - text: ExternalRepositoryResourceAccessor ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3000]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3001]: ≈ 1.2M
+          - generic [ref=e3002]: 3.8B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3003]': 240B 0%
+        - generic [ref=e3005]:
+          - generic [ref=e3006]:
+            - generic [ref=e3007] [cursor=pointer]: ▸
+            - text: DefaultMavenArtifactRepository$MavenSnapshotDecoratingSource ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3009]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3010]: ≈ 818K
+          - generic [ref=e3011]: 2.5B
+          - 'generic "bytes inside the 32-sample set (0.1% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3012]': 240B 0%
+        - generic [ref=e3014]:
+          - generic [ref=e3015]:
+            - generic [ref=e3016]: ·
+            - text: DefaultMavenPomMetadataSource ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3018]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3019]: ≈ 2M
+          - generic [ref=e3020]: 6.3B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3021]': 200B
+        - generic [ref=e3023]:
+          - generic [ref=e3024]:
+            - generic [ref=e3025]: ·
+            - text: DefaultUrlArtifactRepository$$Lambda+0x00000008014e2000 ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3027]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3028]: ≈ 1.2M
+          - generic [ref=e3029]: 3.8B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3030]': 120B
+        - generic [ref=e3032]:
+          - generic [ref=e3033]:
+            - generic [ref=e3034]: ·
+            - text: HttpResourceAccessor⇆10 ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3036]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3037]: ≈ 818K
+          - generic [ref=e3038]: 2.5B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3039]': 80B
+        - generic [ref=e3041]:
+          - generic [ref=e3042]:
+            - generic [ref=e3043]: ·
+            - text: HttpResourceLister ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3045]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3046]: ≈ 818K
+          - generic [ref=e3047]: 2.5B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3048]': 80B
+        - generic [ref=e3050]:
+          - generic [ref=e3051]:
+            - generic [ref=e3052] [cursor=pointer]: ▸
+            - text: HttpResourceUploader ×0.156
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3054]': ≈ 51,099.219
+          - generic "estimated shallow" [ref=e3055]: ≈ 818K
+          - generic [ref=e3056]: 2.5B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3057]': 80B
+        - generic [ref=e3059]:
+          - generic [ref=e3060]:
+            - generic [ref=e3061] [cursor=pointer]: ▸
+            - text: HttpRedirectVerifierFactory$$Lambda+0x00000008014d99b8 ×0.063
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3063]': ≈ 20,439.688
+          - generic "estimated shallow" [ref=e3064]: ≈ 327K
+          - generic [ref=e3065]: 1B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3066]': 80B
+        - generic [ref=e3068]:
+          - generic [ref=e3069]:
+            - generic [ref=e3070]: ·
+            - text: DefaultHostnameVerifier ×0.063
+          - 'generic "estimated: per-instance average × 327,035 instances" [ref=e3072]': ≈ 20,439.688
+          - generic "estimated shallow" [ref=e3073]: ≈ 491K
+          - generic [ref=e3074]: 1.5B
+          - 'generic "bytes inside the 32-sample set (0.0% of it) — NOT extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average" [ref=e3075]': 48B
+      - generic [ref=e3076]:
+        - text: "class-level reference graph: 243 classes · 438 connections"
+        - button "open graph ▸" [ref=e3077] [cursor=pointer]
+        - button "open flow ▸" [ref=e3078] [cursor=pointer]
+      - generic [ref=e3079]: "Full object graph: complete outbounds (edgesfull extracted — the 48-slot cap of the plain edges extraction hides nothing here), depth cap 32, strings & synthetic fields (this$0, dimmed) traversed. ⇆ = inbound refs from inside the set (more refs than objects ⇒ shared within it). \"· N more\" folds the smaller kids of one node — click ▸ to expand. ×N = occurrences across the 32 samples; \"in k/K\" = field non-null in k of the 32 sampled instances (a field missing from some instances is normal — lazily created). \"(shared)\" = referenced but owned by someone else, so its bytes are not inside this class's retained set. In ×N mode objects/shallow extrapolate per-instance; retained is NOT extrapolated — the root row shows the EXACT union retained set of the whole class (the composition total, shared counted once), while child rows show raw bytes inside the sample set + % of it. Child retained can't be extrapolated: objects shared with unsampled instances never enter any extraction, and per-instance ownership is too skewed to average — child shares varying with K is expected, not a bug."

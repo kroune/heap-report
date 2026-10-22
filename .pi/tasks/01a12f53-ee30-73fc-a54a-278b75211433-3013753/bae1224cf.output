@@ -1,0 +1,23 @@
+Starting a Gradle Daemon (subsequent builds will be faster)
+> Task :clean
+> Task :checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :processResources NO-SOURCE
+> Task :processTestResources NO-SOURCE
+
+> Task :compileKotlin
+w: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/src/main/kotlin/shapes/Shapes.kt:330:13 Expected performance impact from inlining is insignificant. Inlining works best for functions with parameters of function types.
+
+> Task :compileJava NO-SOURCE
+> Task :classes UP-TO-DATE
+> Task :fatJar
+> Task :jar
+> Task :compileTestKotlin
+> Task :compileTestJava NO-SOURCE
+> Task :testClasses UP-TO-DATE
+> Task :test
+
+[Incubating] Problems report is available at: file:///home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/experiments/shapes/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 43s
+6 actionable tasks: 6 executed
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.7.1/userguide/configuration_cache_enabling.html

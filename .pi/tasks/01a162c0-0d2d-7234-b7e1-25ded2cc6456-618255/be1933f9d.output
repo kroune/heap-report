@@ -1,0 +1,6 @@
+rc=0
+total 97712
+drwxr-xr-x 2 olowo olowo     4096 Oct 18 18:49 .
+drwxr-xr-x 8 olowo olowo     4096 Oct 18 18:49 ..
+-rw-r--r-- 1 olowo olowo 99889766 Oct 22 12:14 shapes-experiment-all.jar
+-rw-r--r-- 1 olowo olowo   149437 Oct 22 12:14 shapes-experiment.jar

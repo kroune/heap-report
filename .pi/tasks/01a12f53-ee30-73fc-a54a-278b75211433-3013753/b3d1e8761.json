@@ -1,0 +1,28 @@
+{
+  "id": "b3d1e8761",
+  "name": "Watch index re-acquisition",
+  "command": "while :; do curl -fsS --max-time 10 http://127.0.0.1:8321/api/jobs/8 > /tmp/job8.json || exit 2; s=$(python3 -c 'import json;print(json.load(open(\"/tmp/job8.json\"))[\"state\"])'); case \"$s\" in done|failed|cancelled) echo \"job8 $s\"; python3 - <<'PY'\nimport json\nj=json.load(open('/tmp/job8.json'));print('\\n'.join(j.get('log',[])[-20:]));print(j.get('error'))\nPY\nexit 0;; esac; sleep 30; done",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/b3d1e8761.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792332381115,
+  "endTime": 1792332982217,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3123907,
+  "bytesWritten": 2400,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 3600,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

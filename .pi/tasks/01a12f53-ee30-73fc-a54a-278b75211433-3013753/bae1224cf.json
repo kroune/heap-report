@@ -1,0 +1,28 @@
+{
+  "id": "bae1224cf",
+  "name": "Force rebuild current analyzer",
+  "command": "cd experiments/shapes && ./gradlew clean test fatJar --rerun-tasks --console=plain",
+  "status": "completed",
+  "outputPath": ".pi/tasks/01a12f53-ee30-73fc-a54a-278b75211433-3013753/bae1224cf.output",
+  "cwd": "/home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report",
+  "startTime": 1792338541339,
+  "endTime": 1792338585573,
+  "exitCode": 0,
+  "signal": null,
+  "pid": 3176730,
+  "bytesWritten": 1062,
+  "isAgent": false,
+  "surviveReload": false,
+  "notified": true,
+  "notifyOnCompletion": true,
+  "triggerOnCompletion": true,
+  "timeoutSeconds": 900,
+  "shellPolicy": {
+    "policy": "inherit",
+    "executable": "/usr/bin/zsh",
+    "argvPrefix": [
+      "-c"
+    ],
+    "dialect": "posix"
+  }
+}

@@ -1,0 +1,12 @@
+job2 done
+        -> #877  org.gradle.api.internal.collections.DefaultCol mult=46 (total)
+        -> #916  org.gradle.internal.Describables$TwoPartDescri mult=6 (total)
+        -> #942  org.gradle.util.Path                           mult=3 (total)
+        -> #1132 org.gradle.api.internal.artifacts.DefaultExclu mult=1 (total)
+        -> #1464 org.gradle.api.internal.attributes.FreezableAt mult=3 (total)
+        -> #4017 java.lang.String                               mult=5 (total)
+        -> ... and 14 more edges
+  #7623 java.util.ArrayList                                  LEAF      count=993104  shallowTotal=23834496    min=24      max=24      roots=0
+  shapes artifact: /home/olowo/IdeaProjects/GradleExperiments-v2/published/heap-report/dumps/run-jfr-38/data/shapes/radle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated-7c93a799.shp1 (1851051 bytes)
+done: org.gradle.api.internal.artifacts.configurations.DefaultLegacyConfiguration_Decorated
+None

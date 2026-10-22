@@ -22,10 +22,12 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import threading
 
 from .parsing import SKIP_FIELD, _parse_fields_dump, _read_csv
 
 SCHEMA_VERSION = 2
+_OPEN_LOCK = threading.RLock()  # serialize first-open/schema migration per process
 
 SCHEMA = """
 CREATE TABLE kv (k TEXT PRIMARY KEY, v TEXT);
@@ -84,24 +86,25 @@ def open_db(data_dir):
     """Open (creating if needed) the dump's analysis.db with the current
     schema. A SCHEMA_VERSION mismatch wipes and recreates — the caller
     re-ingests / re-analyzes; there is no compat code by design."""
-    os.makedirs(data_dir, exist_ok=True)
-    db = sqlite3.connect(db_path(data_dir), timeout=30)
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA synchronous=NORMAL")
-    have = None
-    try:
-        have = db.execute("SELECT v FROM kv WHERE k='schema'").fetchone()
-    except sqlite3.OperationalError:
-        pass   # no kv table yet — fresh db
-    if have and have[0] == str(SCHEMA_VERSION):
+    with _OPEN_LOCK:
+        os.makedirs(data_dir, exist_ok=True)
+        db = sqlite3.connect(db_path(data_dir), timeout=30)
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA synchronous=NORMAL")
+        have = None
+        try:
+            have = db.execute("SELECT v FROM kv WHERE k='schema'").fetchone()
+        except sqlite3.OperationalError:
+            pass   # no kv table yet — fresh db
+        if have and have[0] == str(SCHEMA_VERSION):
+            return db
+        for t in TABLES:
+            db.execute(f"DROP TABLE IF EXISTS {t}")
+        db.executescript(SCHEMA)
+        db.execute("INSERT INTO kv (k, v) VALUES ('schema', ?)",
+                   (str(SCHEMA_VERSION),))
+        db.commit()
         return db
-    for t in TABLES:
-        db.execute(f"DROP TABLE IF EXISTS {t}")
-    db.executescript(SCHEMA)
-    db.execute("INSERT INTO kv (k, v) VALUES ('schema', ?)",
-               (str(SCHEMA_VERSION),))
-    db.commit()
-    return db
 
 
 # ---------------------------------------------------------------- markers (resumability)
