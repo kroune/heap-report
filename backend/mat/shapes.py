@@ -38,7 +38,14 @@ SHAPES_XMX = os.environ.get("SHAPES_XMX", "2g")   # extractor heap (index-backed
 # analyzer heap is SIZED from the extracted graph (below); this is the override
 SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE")
 SHAPES_XMX_RETAINED = os.environ.get("SHAPES_XMX_RETAINED", "8g")
-PIPELINE_VERSION = 2
+# class relaxation rules (Relax.kt): the versioned repo default, overridable
+# for experiments; empty string disables relaxation entirely
+SHAPES_RELAX_FILE = os.environ.get(
+    "SHAPES_RELAX_FILE",
+    os.path.join(_REPO, "experiments", "shapes", "relax.tsv"))
+# v3: extraction filters java.lang.ref.Reference mechanics (GC semantics —
+# soft/weak/phantom references do not retain), analyze-grph supports --relax
+PIPELINE_VERSION = 3
 _METADATA_MAGIC = b"SMD1"
 
 
@@ -205,10 +212,15 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
     tmp = f"{dst}.tmp{os.getpid()}"
     stats_path = f"{grph}.json"
     try:
+        relax_file = SHAPES_RELAX_FILE if SHAPES_RELAX_FILE and \
+            os.path.exists(SHAPES_RELAX_FILE) else None
         extract_args = ["mat-extract", "--hprof", hprof, "--class", cls,
                         "--out", grph, "--scope", scope, "--stats", stats_path]
         if normalize_maps:
             extract_args.append("--normalize-maps")
+        if relax_file:
+            # level-3 field rules conceal edges at extraction time
+            extract_args += ["--relax", relax_file]
         jobs.log(job, f"  scope={scope}; maps={'unordered entries' if normalize_maps else 'raw'}")
         with runner.index_read_hold(dump_dir, lambda m: jobs.log(job, m)):
             _run_java(job, jobs, abort, extract_args, "extract",
@@ -216,11 +228,24 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
         xmx = _analyze_xmx(grph, cls)
         n, e = _grph_stats(grph)
         jobs.log(job, f"  shapes analyze: {n:,} objects, {e:,} refs -> -Xmx{xmx}")
-        _run_java(job, jobs, abort,
-                  ["analyze-grph", "--graph", grph, "--class", cls,
-                   "--out", tmp, "--whole-graph"], "analyze", xmx=xmx)
+        relax_stats_path = f"{grph}.relax.json"
+        analyze_args = ["analyze-grph", "--graph", grph, "--class", cls,
+                        "--out", tmp, "--whole-graph",
+                        "--relax-stats", relax_stats_path]
+        if relax_file:
+            analyze_args += ["--relax", relax_file]
+            jobs.log(job, f"  relax rules: {relax_file}")
+        _run_java(job, jobs, abort, analyze_args, "analyze", xmx=xmx)
         with open(stats_path) as f:
             metadata = json.load(f)
+        with open(relax_stats_path) as f:
+            relax_stats = json.load(f)
+        if relax_file:
+            with open(relax_file, "rb") as f:
+                relax_sha = hashlib.sha1(f.read()).hexdigest()[:8]
+            metadata["relaxation"] = {
+                "file": os.path.basename(relax_file), "sha1": relax_sha,
+                **relax_stats}
         if metadata.get("scope") != scope or metadata.get("mapProjection") != (
                 "unordered-entries-v1" if normalize_maps else "raw"):
             raise RuntimeError("shapes extraction settings do not match the request")
@@ -235,7 +260,7 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
         jobs.log(job, f"  shapes artifact: {dst} "
                       f"({os.path.getsize(dst)} bytes)")
     finally:
-        for p in (grph, tmp, stats_path):
+        for p in (grph, tmp, stats_path, relax_stats_path):
             try:
                 os.remove(p)
             except OSError:
@@ -284,11 +309,13 @@ def parse_shp1(path):
     edges = [[take(">i"), take(">i"), take(">q")] for _ in range(take(">i"))]
     roots = [[take(">i"), take(">q")] for _ in range(take(">i"))]
     roots.sort(key=lambda r: -r[1])
-    # reachableCount isn't emitted. aggregate() counts OBJECTS per shape for
-    # every kind (count[sid]++ per member object), so objects collapsed by a
-    # shape is simply `count` (collapsed INSTANCES = count / sccSize — that is
-    # what the edge-total expansion uses). Summing count × sccSize inflated
-    # every multi-member SCC by its member count (313.8M vs |R| = 256.9M).
+    # reachableCount isn't emitted. aggregate() counts OBJECTS per shape
+    # (count[sid]++ per member object), so objects collapsed by a shape is
+    # simply `count` (collapsed INSTANCES = count / sccSize — that is what
+    # the edge-total expansion uses). Exception: set-children quotient SCCs
+    # count quotient-size per SCC instance (Shapes.kt), so the object total
+    # needs the analyzer's setChildrenConcealedObjects counter added back
+    # (_validate_projection does exactly that).
     metadata = None
     if off[0] < len(data):
         if data[off[0]:off[0] + 4] != _METADATA_MAGIC:
@@ -305,11 +332,17 @@ def parse_shp1(path):
 
 def _validate_projection(path, metadata):
     """Cheap independent totals check before publishing projected data.
-    Source refs and projected refs are deliberately NOT conflated."""
+    Source refs and projected refs are deliberately NOT conflated. Relaxed
+    classes (Relax.kt) conceal edges deliberately — the analyzer's exact
+    counters are subtracted here, not assumed."""
     p = parse_shp1(path)
     rows = p["shapes"]
+    relax = metadata.get("relaxation", {})
     totals = {
-        "objects": p["reachableCount"],
+        # quotient SCCs (set-children) count quotient-size per instance, not
+        # the true member count — the concealed members are accounted exactly
+        # by the analyzer's counter, like concealed edges
+        "objects": p["reachableCount"] + relax.get("setChildrenConcealedObjects", 0),
         "roots": sum(r[1] for r in p["rootsHistogram"]),
         "shallowTotal": sum(r["shallowTotal"] for r in rows),
     }
@@ -317,7 +350,8 @@ def _validate_projection(path, metadata):
     for source, target, mult in p["edges"]:
         r = rows[source]
         accounted += mult * (r["count"] if r["edgesPerMember"] else r["count"] // r["sccSize"])
-    totals["projectedEdges"] = accounted
+    concealed = relax.get("classOnlyHiddenEdges", 0) + relax.get("setChildrenHiddenEdges", 0)
+    totals["projectedEdges"] = accounted + concealed
     for key, actual in totals.items():
         if actual != metadata[key]:
             raise RuntimeError(f"shapes {key}: emitted {actual} != extracted {metadata[key]}")

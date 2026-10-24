@@ -95,6 +95,84 @@ reachable, cap 64 unless overridden. See the measured investigation in
 - **Shape-DAG**: nodes = shapes; edge S→T with multiplicity m = each member
   of S holds m references to members of T. In-degree > 1 = sharing.
 
+## Scope: reference-kind filtering (GC semantics)
+
+`java.lang.ref.Reference` fields `referent` / `queue` / `next` / `discovered`
+are VM/library mechanics, not program structure. A soft/weak/phantom
+reference does **not** retain its referent — the GC clears it under
+pressure — so those edges never pull objects into the scope and never
+split shapes with GC state (observed on run-jfr-38: the pre-OOM GC had
+cleared some `SoftReference`s, splitting 606 otherwise identical
+configurations from 2,289 untouched ones). Fields **declared by Reference
+subclasses** (e.g. a weak map entry's strong `value`) are payload and are
+kept; subtyping is computed from the MAT class hierarchy, not names. For
+retained scope the set is then restricted to objects still reachable from
+the roots over the filtered graph — totals therefore intentionally diverge
+from MAT's retained histogram (which counts soft/weak edges as strong);
+both numbers are recorded in the stats. Disable with `--raw-references`.
+
+Future note: if a consumer ever needs MAT-histogram parity instead of GC
+semantics, fork MAT's retained computation (`ObjectMarker`) and mark over
+the same filtered edge set — a small, well-bounded change; until then the
+divergence is intentional and reported, not hidden.
+
+## Relaxed classes (analyzer)
+
+The exact key can be deliberately weakened for listed classes via a
+versioned rules file (`experiments/shapes/relax.tsv`, `--relax <file>`,
+backend default; every rule must state which merge it unblocks):
+
+- **class-only**: only the class matters. The object conses as a LEAF of
+  its class; its children stay in scope and keep their counts but are not
+  part of the key. For infrastructure objects whose internal state is
+  irrelevant to the owner graph (e.g. an HTTP client that may or may not
+  have been instantiated yet — the cold-cache first resolutions of a sync).
+- **set-children**: class + SET of child shapes; multiplicities collapse
+  to 1 for that class's outgoing edges. On an SCC member the rule
+  quotients the **whole SCC**: the SCC is one strongly-connected object,
+  and the multiplicity of identical members inside it (e.g. 7
+  ElementShadows per direct project dependency of a configuration) is a
+  children-list fact — the SCC is keyed by its WL-color quotient, and
+  instance accounting counts quotient-size per SCC instance so
+  `instanceCount / sccInstanceSize` stays the instance count. The dropped
+  members are real objects concealed from the artifact's `count` —
+  accounted exactly in `--relax-stats` as `setChildrenConcealedObjects`
+  and added back by the backend's publication check (like concealed edges).
+
+Rules apply inside SCC members as well (external edges of relaxed members
+are concealed / set-collapsed; internal SCC wiring stays exact for
+class-only). Relaxed edges are **concealed, not removed**: the analyzer
+counts them exactly (`--relax-stats`), `--verify-edges` exempts relaxed
+sources (and every member of a quotiented SCC), and the backend's
+publication check subtracts the concealed counters instead of assuming
+them. The rule set is validated against the run-jfr-38 retained set in
+`experiments/shapes/FLOW-COMPARISON.md`.
+
+### Level 3: field concealment (extraction)
+
+`conceal-field:<name>` rules drop **one named field** of a class and all its
+subclasses at extraction time (the analyzer's GRPH has no field names, so
+this level lives in `mat-extract`; the same `relax.tsv` is passed to both
+steps). The edge never enters the graph — its target may leave the scope
+entirely. This is the surgical choice for a lazy/cache field whose
+*presence* is state, not structure, e.g.:
+
+- `ExternalResourceResolver.cachedArtifactResolver` — lazy create-on-first-
+  download field (null in cache-served resolutions). Class-only relaxation
+  of `MavenResolver` was the broader alternative; the field rule hides
+  exactly this edge and keeps the rest of the resolver exact.
+- `DefaultConfiguration.description` — UI text. Shared
+  description Strings (e.g. captured by the IDE tooling model mid-sync) get
+  cut from the retained set and split otherwise-identical SCCs by a missing
+  `String×k`; concealing the field removes the split *and* the uniform
+  noise, identically for every module.
+
+Like the reference filter, field concealment participates in the scope
+restriction: objects reachable only through concealed edges are dropped
+(counted in the extraction stats). Rules are resolved through the exact MAT
+class hierarchy — a rule on `DefaultConfiguration` covers the runtime
+`_Decorated` subclasses.
+
 ## Equality rules
 
 - **Leaf** (no children within R): key = `(class)`.

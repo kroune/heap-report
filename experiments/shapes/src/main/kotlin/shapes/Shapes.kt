@@ -55,6 +55,9 @@ class Shape internal constructor(
      *  label needs nothing more) — [membersTotal] then holds the real count. */
     val members: List<SccMember>?,
     val digest: Digest128,
+    /** set-children SCC: [members] is the WL-color quotient, not the full
+     *  member list — instance accounting counts quotient-size per instance. */
+    val quotient: Boolean = false,
     /** SCC_UNIQUE with truncated [members]: real member count (0 = not truncated). */
     val membersTotal: Int = 0,
     /** SCC_UNIQUE with truncated [members]: Σ per-member internal edges. */
@@ -113,11 +116,29 @@ class ShapeTable(
     fun edgesOf(shapeId: Int): List<EdgeEntry> = edges.filter { it.shapeId == shapeId }
 }
 
-class ShapesAnalyzer(private val g: ObjectGraph) {
+class ShapesAnalyzer @JvmOverloads constructor(
+    private val g: ObjectGraph,
+    /** class relaxation rules (Relax.kt): class name -> CLASS_ONLY | SET_CHILDREN. */
+    private val relax: Map<String, Int> = emptyMap(),
+) {
 
     /** phase timings (reach/scc/cons/aggregate) — Main wires ::println so a
      *  minutes-long analysis reports progress instead of sitting silent. */
     var progress: (String) -> Unit = {}
+
+    /** what relaxation concealed, exactly (Relax.kt) — read after analyze(). */
+    val relaxStats = RelaxStats()
+
+    // class-table index -> relax level (0 = exact); empty when no rules
+    private val levelOfClass: IntArray by lazy(LazyThreadSafetyMode.NONE) {
+        Relax.levels(g.classNames, relax)
+    }
+
+    private fun levelOf(obj: Int): Int =
+        if (levelOfClass.isEmpty()) 0 else levelOfClass[g.classIdx[obj].code]
+
+    /** class-table index -> relax level (0 = exact), for verifyEdgeAccounting. */
+    fun relaxLevels(): IntArray = levelOfClass
 
     fun analyze(roots: IntArray, wholeGraph: Boolean = false): ShapeTable {
         var t = System.nanoTime()
@@ -475,7 +496,14 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                 // acyclic single node
                 val obj = comps.first[c]
                 val rc = g.refCount(obj)
-                if (rc == 0) {
+                val lvl = levelOf(obj)
+                if (lvl > 0) relaxStats.relaxedObjects++
+                if (rc == 0 || lvl == Relax.CLASS_ONLY) {
+                    // class-only relaxation: children stay in scope (conse
+                    // normally) but are not part of this object's key — every
+                    // instance of the class conses to one LEAF regardless of
+                    // state below it. The refs are concealed, not removed.
+                    if (lvl == Relax.CLASS_ONLY) relaxStats.classOnlyHiddenEdges += rc
                     shape = consMap.intern(shapes, g.classIdx[obj].code, g.className(obj), ShapeKind.LEAF,
                         kidPacked, 0)
                 } else {
@@ -503,17 +531,19 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                         val sorted = kidIds.copyOf(m).sortedWith(::kidDigestCmp)
                         sorted.forEachIndexed { i, v -> kidIds[i] = v }
                     }
+                    val setKids = SET_SEMANTICS || lvl == Relax.SET_CHILDREN
                     var nKids = 0
                     var prev = -1
                     var mult = 0
                     for (i in 0 until m) {
                         if (kidIds[i] == prev) mult++
                         else {
-                            if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (SET_SEMANTICS) 1 else mult)
+                            if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (setKids) 1 else mult)
                             prev = kidIds[i]; mult = 1
                         }
                     }
-                    if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (SET_SEMANTICS) 1 else mult)
+                    if (prev >= 0) kidPacked[nKids++] = packKid(prev, if (setKids) 1 else mult)
+                    if (lvl == Relax.SET_CHILDREN) relaxStats.setChildrenHiddenEdges += m - nKids
                     shape = consMap.intern(shapes, g.classIdx[obj].code, g.className(obj), ShapeKind.NODE,
                         kidPacked, nKids)
                 }
@@ -592,16 +622,41 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         for (i in 0 until n) local[members[off + i]] = i
 
         // per-member external kids and internal neighbors (local indices, with multiplicity)
+        val lvls = IntArray(n) { levelOf(members[off + it]) }
+        // set-children on ANY member makes the whole SCC set-semantic: an SCC
+        // is one strongly-connected object, and the multiplicity of identical
+        // members inside it (e.g. 7 ElementShadows per project dependency of
+        // a configuration) is exactly the "children list" fact set-children
+        // discards. The SCC is keyed by its WL-color quotient then; totals
+        // and instance counts stay exact, concealed edges are accounted.
+        val anySet = SET_SEMANTICS || lvls.any { it == Relax.SET_CHILDREN }
         val extKids = Array(n) { mutableListOf<Kid>() }
         val intNeigh = Array(n) { mutableListOf<Int>() }
         for (i in 0 until n) {
+            val lvl = lvls[i]
+            if (lvl > 0) relaxStats.relaxedObjects++
+            if (lvl == Relax.CLASS_ONLY) {
+                // class-only: external children are concealed (internal SCC
+                // wiring stays exact — it is the SCC's own structure)
+                var hidden = 0
+                g.forEachRef(members[off + i]) { w ->
+                    val li = local[w]
+                    if (li != null) intNeigh[i].add(li) else hidden++
+                }
+                relaxStats.classOnlyHiddenEdges += hidden
+                extKids[i] = mutableListOf()
+                continue
+            }
             val byShape = LinkedHashMap<Int, Int>()   // child internal shape id -> mult
             g.forEachRef(members[off + i]) { w ->
                 val li = local[w]
                 if (li != null) intNeigh[i].add(li)
                 else byShape.merge(shapeOfComp[compOfEnc(compEnc, w)], 1, Int::plus)
             }
-            extKids[i] = byShape.map { (id, m) -> Kid(id, if (SET_SEMANTICS) 1 else m) }.sortedWith(kidCmp).toMutableList()
+            extKids[i] = byShape.map { (id, m) ->
+                if (anySet) relaxStats.setChildrenHiddenEdges += m - 1
+                Kid(id, if (anySet) 1 else m)
+            }.sortedWith(kidCmp).toMutableList()
         }
 
         // color refinement: color = (class, external child shapes, internal neighbor colors)
@@ -637,7 +692,7 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
             prevDistinct = distinct.size
             if (distinct.size == n) break            // fully discretized
             colors = Array(n) { i ->
-                Color(colors[i].cls, colors[i].ext, intNeigh[i].map { ranks[it] }.let { if (SET_SEMANTICS) it.distinct() else it }.sorted())
+                Color(colors[i].cls, colors[i].ext, intNeigh[i].map { ranks[it] }.let { if (anySet) it.distinct() else it }.sorted())
             }
         }
 
@@ -656,10 +711,36 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
         val canonical = order.map { i ->
             MemLk(
                 g.className(members[off + i]),
-                intNeigh[i].map { ranks[it] }.let { if (SET_SEMANTICS) it.distinct() else it }.sorted(),
+                intNeigh[i].map { ranks[it] }.let { if (anySet) it.distinct() else it }.sorted(),
                 extKids[i],
             )
-        }.let { if (SET_SEMANTICS) it.distinct() else it }   // set semantics: the SCC is its WL-color quotient graph
+        }.let { pre ->
+            if (!anySet) pre else {
+                // set semantics: the SCC is its WL-color quotient graph.
+                // Account the concealed edges per SCC INSTANCE (consScc runs
+                // per instance; only the Shape is cached): a kept color's
+                // internal ranks were distincted, a dropped duplicate's
+                // internal + (multiplicity-normalized) external edges vanish.
+                val seen = HashSet<MemLk>()
+                val out = ArrayList<MemLk>(pre.size)
+                for (idx in pre.indices) {
+                    val m = pre[idx]
+                    if (seen.add(m)) {
+                        out += m
+                        relaxStats.setChildrenHiddenEdges +=
+                            intNeigh[order[idx]].size - m.internalRanks.size
+                    } else {
+                        relaxStats.setChildrenHiddenEdges +=
+                            intNeigh[order[idx]].size + m.ext.size
+                    }
+                }
+                // the dropped members are real objects concealed from the
+                // artifact's count (quotient-size per instance instead of
+                // the true member count) — account them like concealed edges
+                relaxStats.setChildrenConcealedObjects += (pre.size - out.size).toLong()
+                out
+            }
+        }
         val lk = SccLk(canonical)
         // "per member" edge semantics is exact only when every canonical
         // member holds the SAME external edges: a non-uniform SCC (e.g.
@@ -699,7 +780,8 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
                 else LongArray(0),
                 totals,
                 memPayload,
-                digestOf {
+                quotient = anySet,
+                digest = digestOf {
                     tag(3); i32(canonical.size)
                     for (m in canonical) {
                         str(m.cls)
@@ -734,8 +816,12 @@ class ShapesAnalyzer(private val g: ObjectGraph) {
 
         for (c in 0 until comps.count) {
             val sid = shapeOfComp[c]
+            // quotient SCC: members differ per instance (that is the point of
+            // the quotient), so count quotient-size per SCC INSTANCE —
+            // instanceCount / sccInstanceSize then stays the instance count
+            if (shapes[sid].quotient) count[sid] += shapes[sid].members!!.size
             comps.forEachMember(c) { o ->
-                count[sid]++
+                if (!shapes[sid].quotient) count[sid]++
                 val sh = g.shallowOf(o)
                 shallowSum[sid] += sh
                 if (sh < shallowMin[sid]) shallowMin[sid] = sh

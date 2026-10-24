@@ -9,3 +9,4 @@ __pycache__/
 *.threads
 *.pyc
 .DS_Store
+.pi

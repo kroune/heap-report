@@ -77,7 +77,8 @@ fun verifyInvariants(g: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph:
  * emitted shape-DAG. Full pass over all refs — minutes at 10⁸ objects.
  * Returns up to 20 mismatch lines; empty = exact.
  */
-fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult): List<String> {
+fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult,
+                         relaxLevels: IntArray = IntArray(0)): List<String> {
     val t = dbg.table
     val pubByDigest = HashMap<Digest128, Int>()
     for (e in t.entries) pubByDigest[e.digest] = e.id
@@ -91,18 +92,50 @@ fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult): List<
     // shape-DAG cycle, which the condensation forbids)
     val extTruth = HashMap<Long, Long>()
     val intTruth = HashMap<Int, Long>()
+    val nonExemptShapes = HashSet<Int>()
+    var relaxedSources = 0L
+    // set-children on any SCC member quotients the WHOLE SCC (Shapes.kt):
+    // every member's emitted edges become multiplicity-normalized, so the
+    // whole component is exempt from exact edge accounting, not only the
+    // relaxed member itself
+    val quotientExempt = BooleanArray(g.size)
+    if (relaxLevels.isNotEmpty()) {
+        for (c in 0 until dbg.comps.count) {
+            var anySet = false
+            dbg.comps.forEachMember(c) { o ->
+                if (relaxLevels[g.classIdx[o].code] == Relax.SET_CHILDREN) anySet = true
+            }
+            if (anySet) dbg.comps.forEachMember(c) { o -> quotientExempt[o] = true }
+        }
+    }
     for (o in 0 until g.size) {
         val so = shapeOfObj[o]
         if (so < 0) continue   // outside R (partial-reach text graphs)
+        // relaxed objects conceal their children (Relax.kt): their refs are
+        // neither in the artifact nor expected here — exactness for them is
+        // the analyzer's RelaxStats counters instead
+        if (quotientExempt[o] ||
+            (relaxLevels.isNotEmpty() && relaxLevels[g.classIdx[o].code] > 0)) {
+            relaxedSources++
+            continue
+        }
+        nonExemptShapes.add(so)
         g.forEachRef(o) { w ->
             val sw = shapeOfObj[w]
             if (sw == so) intTruth.merge(so, 1L, Long::plus)
             else extTruth.merge((so.toLong() shl 32) or (sw.toLong() and 0xffffffffL), 1L, Long::plus)
         }
     }
+    if (relaxedSources > 0)
+        println("verify-edges: $relaxedSources objects of relaxed classes exempted " +
+            "(their concealed edges are accounted by RelaxStats)")
     val problems = mutableListOf<String>()
     val entries = t.entries.associateBy { it.id }
     for (e in t.entries) {
+        // shapes whose objects are ALL exempt (relaxed classes, quotiented
+        // SCCs) emitted concealed/quotient-normalized edges — no exact truth
+        // to compare against; their accounting is RelaxStats
+        if (e.id !in nonExemptShapes && relaxLevels.isNotEmpty()) continue
         val collapsed = e.instanceCount / e.sccInstanceSize
         val intEmitted = e.internalEdgesPerInstance * collapsed
         val intTrue = intTruth[e.id] ?: 0L
@@ -114,6 +147,7 @@ fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult): List<
     val extEmitted = HashMap<Long, Long>()
     for (edge in t.edges) {
         val src = entries.getValue(edge.shapeId)
+        if (src.id !in nonExemptShapes && relaxLevels.isNotEmpty()) continue
         val m = if (src.edgesPerMember) edge.mult * src.instanceCount
             else edge.mult * (src.instanceCount / src.sccInstanceSize)
         extEmitted.merge((edge.shapeId.toLong() shl 32) or

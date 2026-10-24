@@ -87,3 +87,46 @@ cache/HTTP-state variants in the Kotlin/compiler detached configurations.
 - `dlc-retained.grph` — `ExtractRetained` (full retained extraction).
 
 These diagnostics do not modify any artifact.
+
+## Relaxation validation (reference filtering + relaxed classes)
+
+The `relax.tsv` rules and the extraction reference filter (see
+`backend/mat/SHAPES.md` and `experiments/shapes/FLOW-COMPARISON.md`) were
+validated on this dataset as follows, cumulative on the strong graph:
+
+| step | shapes | root shapes |
+| --- | ---: | ---: |
+| raw + map normalization | 7,821 | 977 |
+| + reference filtering (Soft/Weak/Phantom edges cut; 980,280 soft-reachable-only objects dropped) | 7,776 | 976 |
+| + `ApacheCommonsHttpClient` class-only | 7,684 | 975 |
+| + `cachedArtifactResolver` conceal-field | 7,573 | 971 |
+| + `LocalCache$LocalManualCache` class-only | 7,259 | 947 |
+| + `DefaultConfiguration.description` conceal-field | 6,953 | 877 |
+| + `DefaultLegacyConfiguration_Decorated` set-children (SCC quotient) | 6,880 | 858 |
+| + `DeduplicatingComponentSelectorSerializer` class-only (traced owner) | **3,168** | **268** |
+
+Reference point: global set semantics (`SHAPES_SET_SEMANTICS=1`, no relax
+file) on the same v4 graph gives 1,598 shapes / 113 root shapes — lower
+than the surgical 268 only because it also erases resolution-content
+cardinality (list element counts), a semantic step rejected here: the
+traced owner of the array divergence was `DefaultVisitedArtifactResults`,
+whose element count IS the resolved classpath. Two JDK-wide rules
+(`HashMap$Node[]`, `Object[]` set-children) were tried, traced, and
+rejected as over-broad; the HashMap divergence belonged entirely to the
+serializer's `writeIndex` dedup cache.
+
+Surgical-merge evidence: after all rules, every f1..f4-impl AND every
+IDE-model (DEV6) module shares **exactly** its `(tier,ndirect,closure)`
+sig-mates' shape in every checked role (50/50, re-verified after each
+rule), 0 (tier,closure) groups split, the implementation family sits at 3
+shapes (population + build-logic + app), and the emitted-vs-projected edge
+and object accounting matches to delta 0 when the concealed counters
+(edges + quotient-concealed objects) are subtracted.
+
+Reproduction: `FilterRefs.java` (GRPH post-transform equivalent of the
+extraction filter: cut refs of the three JDK reference classes, BFS-restrict
+to the queried roots) and the `NormalizeAllMapsRelax` harness (map
+normalization + `ShapesAnalyzer` with `--relax`), then `join_roles.py`
+against the produced population TSVs. The extraction-side filter is
+implemented in `MatExtract` (default on, `--raw-references` to disable) and
+re-extraction reproduces the same dropped set.

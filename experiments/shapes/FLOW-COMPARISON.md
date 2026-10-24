@@ -36,8 +36,13 @@ verified to match MAT's histogram exactly.
 | --- | ---: | ---: |
 | raw exact (SCC merge cap 1M) | 234,834 | 33,806 |
 | + linked-map normalization | 176,244 | 16,602 |
-| + all JDK map normalization | **7,821** | **977** |
-| + set semantics (multiplicities → 1) | 1,811 | 139 |
+| + all JDK map normalization | 7,821 | 977 |
+| + reference filtering (GC semantics) | 7,776 | 976 |
+| + relaxed classes (2 analyzer rules) | 7,259 | 947 |
+| + field concealment (2 extraction rules) | 6,953 | 877 |
+| + set-children rule (config SCC quotient) | 6,880 | 858 |
+| + serializer cache concealment (traced owner) | **3,168** | **268** |
+| global set semantics (every class, reference point) | 1,598 | 113 |
 
 ## Why raw exact shapes explode: physical map topology
 
@@ -69,7 +74,7 @@ Caveat: the normalization erases insertion order along with collisions, and
 insertion order can be meaningful. Don't describe the map effect as "hash
 collisions only".
 
-## What the remaining 977 root shapes are
+## What the 977 root shapes were (877 after artifact removal, 268 after the children-list collapse)
 
 Across 122 configuration roles the residual decomposes exactly — real
 content plus three dump-time artifacts, zero unexplained among 2,989
@@ -102,7 +107,90 @@ immutable-attribute objects carry only 41 distinct `(name, value-class)`
 combinations.
 
 Lesson: variant counts this small are real content plus dump accidents.
-Don't "fix" the collapse to make them go away.
+The accidents are now removed by the mechanisms in the next section — each
+only after its exact merge-blocker was traced. Don't "fix" the collapse to
+make the real content go away.
+
+## Removing the dump-time artifacts: reference filtering + relaxed classes
+
+Two pipeline changes eliminate the state noise above without touching real
+content. Both are validated on the run-jfr-38 retained set; per-merge
+evidence is in `diagnostics/root-cause-join/` and the code rules in
+`experiments/shapes/relax.tsv`.
+
+**Reference-kind filtering (extraction, default on).** `java.lang.ref.Reference`
+fields `referent`/`queue`/`next`/`discovered` are VM/library mechanics, not
+program structure: a soft/weak/phantom reference does not retain its
+referent. Those edges are cut (subclass-declared payload like a weak map
+entry's `value` is kept), and the retained scope is restricted to objects
+still reachable over the filtered graph. Measured: 18,002 SoftReference
+objects, only 2,389 still holding referents (the pre-OOM GC had cleared the
+rest); 980,280 objects (31.0 MB shallow) drop out of the scope. Surgical
+effect on shapes: the 606 configurations whose soft-referenced cached
+resolution results were GC-cleared merge back into their 2,289-strong
+population group — nothing else changes (7,821 → 7,776 shapes, 977 → 976
+root shapes).
+
+**Relaxed classes (analyzer) + field concealment (extraction), `relax.tsv`.**
+Three levels: `class-only` (only the class matters; children stay in scope
+but are concealed from the key), `set-children` (child multiplicities → 1),
+and `conceal-field:<name>` (one named field of a class + subclasses is
+dropped at extraction — the surgical choice for a lazy/cache field whose
+*presence* is state). Every rule was added only after tracing the exact
+object/field that blocked the merge:
+
+| rule | lazy state concealed | evidence |
+| --- | --- | --- |
+| `ApacheCommonsHttpClient` class-only | `InternalHttpClient` instantiated only where a resolution really fetched metadata (55 of 81,020 chains) | SHP1 diffs terminate at the present-vs-null client child |
+| `ExternalResourceResolver` `conceal-field:cachedArtifactResolver` | lazy create-on-first-download field (Gradle `ExternalResourceResolver.kt`:290), null in cache-served resolutions | field owner found by inbound walk; chains identical otherwise |
+| `LocalCache$LocalManualCache` class-only | Guava segment tables/queues initialize on cache writes (12 singleton SCC shapes vs one 38,994-instance shape) | instance accounting in SHP1 |
+| `DefaultConfiguration` `conceal-field:description` | UI text; shared descriptions (IDE tooling model) get cut from retained sets and split SCCs by a missing `String×k` | the six alphabetically-first modules' SCCs differ exactly by `String×5/6` |
+
+Measured cumulative effect (map normalization already applied):
+
+| analysis | shapes | root shapes |
+| --- | ---: | ---: |
+| baseline (raw exact + map normalization) | 7,821 | 977 |
+| + reference filtering | 7,776 | 976 |
+| + `ApacheCommonsHttpClient` | 7,684 | 975 |
+| + `cachedArtifactResolver` concealment | 7,573 | 971 |
+| + `LocalCache$LocalManualCache` | 7,259 | 947 |
+| + `description` concealment | **6,953** | **877** |
+
+Every step is verified surgical, not just smaller: all f1..f4-impl AND all
+six IDE-model modules land **exactly** in their `(tier, deps, closure)`
+group in every checked role (50/50 checks, re-verified after every rule),
+the content signatures never split ambiguously, and
+`kotlinBuildToolsApiClasspath` decomposes as predicted. The relaxed edges
+are concealed, not removed: the analyzer counts them exactly
+(`--relax-stats`), `--verify-edges` exempts relaxed sources, and the
+backend's publication check subtracts the counters.
+
+**The children-list collapse, done surgically.** The remaining differences
+were multiplicity, not content — and each was collapsed only after a pair
+diff named the exact blocking object and its owner chain was traced in the
+heap:
+
+| rule | what is concealed | traced evidence |
+| --- | --- | --- |
+| `DefaultLegacyConfiguration_Decorated` set-children | the configuration SCC carries 7 identical members per direct project dependency (416+7·ndirect, per-instance heap inspection) — set-children on any SCC member quotients the whole SCC (WL-color quotient) | `implementation` family 12 → 3; ndirect stays visible via the distinct dependency-set members |
+| `DeduplicatingComponentSelectorSerializer` class-only | the `writeIndex` HashMap — a per-serialization-pass dedup index over ComponentSelectors (Gradle source: "should not be reused to serialize multiple graphs"); fill level = how the serialization walk proceeded, not what the configuration contains | pair diff `:api:f0-api` vs `:api:f939-api`: the single origin divergence (155+ndirect same-shaped entries); owner chain traced in the SHP1 |
+
+Two JDK-wide shortcuts were REJECTED after tracing: `HashMap$Node[]`
+set-children (the only real count-divergence lived in the serializer's
+writeIndex — normalizing every HashMap in the heap was a lazy over-broad
+shortcut) and `Object[]` set-children (traced to the
+`DefaultVisitedArtifactResults` lists — the element count there is the
+RESOLVED CLASSPATH CARDINALITY, i.e. resolution content, not dump noise).
+
+Cumulative: 877 → 858 (config SCC quotient) → **268 root shapes / 3,168
+shapes** (serializer concealment). The 268 is the content floor: 0
+(tier,closure) signature splits, 48 content groups per resolved role, the
+implementation family at 3 (population + build-logic + app), kotlin at 3 —
+and every remaining variant is a module that genuinely resolved or
+depends-on something different. The global-set-semantics reference (113)
+is LOWER only because it also erases resolution-content cardinality — a
+semantic step this pipeline deliberately does not take.
 
 ## Multiplicity is the encoding channel, not the origin
 

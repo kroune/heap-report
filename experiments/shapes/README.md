@@ -98,6 +98,27 @@ turning them into roots. `SHAPES_XMX_RETAINED` defaults to 8g; the analyzer
 heap is sized from the graph. The server requires a built fat jar and never
 runs Gradle. See `backend/mat/SHAPES.md` for projection and artifact metadata.
 
+## Reference-kind filtering and relaxed classes (v3)
+
+Two noise-elimination mechanisms, both measured and opt-out:
+
+- **Reference filtering** (extraction, default on; `--raw-references`
+  disables): `java.lang.ref.Reference` fields `referent`/`queue`/`next`/
+  `discovered` are VM/library mechanics — a soft/weak/phantom reference does
+  not retain its referent, so those edges never enter the scope and GC state
+  (cleared-vs-alive soft references) never splits shapes. Subclass-declared
+  payload (e.g. a weak map entry's strong `value`) is kept. Retained scope
+  is then restricted to objects reachable over the filtered graph, so totals
+  intentionally diverge from MAT's retained histogram (both numbers are in
+  the extraction stats).
+- **Relaxed classes** (`--relax <tsv>`, backend defaults to `relax.tsv`):
+  per-class rules that weaken the structural key — `class-only` (only the
+  class matters; children concealed from the key, stay in scope) or
+  `set-children` (child multiplicities → 1). Every rule must state which
+  merge it unblocks; the concealed edges are counted exactly
+  (`--relax-stats`) and verified (`--verify-edges` exempts relaxed
+  sources). See `relax.tsv` for the validated starter rules.
+
 Findings on `run-jfr-38` (15.8 GB hprof, 259.8M objects, Gradle daemon,
 2 GB analyzer heap):
 

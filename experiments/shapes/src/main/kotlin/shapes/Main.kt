@@ -10,11 +10,17 @@ shapes — exact structural collapse experiment (see backend/mat/SHAPES.md)
   generate --modules <N> --out <graph.txt>
   demo --modules <N> [--verify]          generate + analyze in memory
 
+common options:
+  --relax <rules.tsv>   class relaxation rules (Relax.kt): weaken the structural
+                        key for listed classes (class-only|set-children)
+
 real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
   mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
       [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>] [--boundary-stubs]
+      [--raw-references]  keep soft/weak/phantom-reference edges (default: filtered —
+                          the GC clears them, so they do not retain their referents)
   mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
   analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
       [--whole-graph]  include all preselected objects, preserving original roots
@@ -30,7 +36,9 @@ fun main(args: Array<String>) {
             val cls = opts.require("class")
             val roots = g.instancesOf(cls)
             println("class $cls: ${roots.size} instances (roots)")
-            val t = ShapesAnalyzer(g).analyze(roots)
+            val z = ShapesAnalyzer(g, relaxOf(opts))
+            val t = z.analyze(roots)
+            printRelax(z)
             printReport(t)
             opts["out"]?.let {
                 ShapesEmit.write(t, Path.of(it))
@@ -52,11 +60,22 @@ fun main(args: Array<String>) {
         }
         "mat-info" -> shapes.mat.MatExtract.info(opts.require("hprof"))
         "mat-histogram" -> shapes.mat.MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
-        "mat-extract" -> shapes.mat.MatExtract.extract(
-            opts.require("hprof"), opts.require("class"), Path.of(opts.require("out")),
-            opts["scope"] ?: "reachable", opts.flag("normalize-maps"),
-            opts["stats"]?.let { Path.of(it) }, opts.flag("boundary-stubs"),
-        )
+        "mat-extract" -> {
+            val fieldRules = opts["relax"]?.let { path ->
+                val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
+                if (rules.classRules.isNotEmpty())
+                    println("relax: ${rules.classRules.size} analyzer-side rules ignored by mat-extract " +
+                        "(pass the same file to analyze-grph)")
+                rules.fieldRules
+            } ?: emptyMap()
+            shapes.mat.MatExtract.extract(
+                opts.require("hprof"), opts.require("class"), Path.of(opts.require("out")),
+                opts["scope"] ?: "reachable", opts.flag("normalize-maps"),
+                opts["stats"]?.let { Path.of(it) }, opts.flag("boundary-stubs"),
+                filterReferences = !opts.flag("raw-references"),
+                fieldRules = fieldRules,
+            )
+        }
         "mat-trace" -> shapes.mat.MatExtract.trace(
             opts.require("hprof"), opts.require("class"),
             (opts["targets"] ?: "DefaultGradleBuild,DefaultGradle,BuildState,DefaultProject").split(","),
@@ -89,13 +108,15 @@ fun main(args: Array<String>) {
             val t0 = System.nanoTime()
             if (opts.flag("verify-edges")) {
                 // inv3 audit: analyze once, then check every ref against the artifact
-                val dbg = ShapesAnalyzer(g).apply { progress = ::println }.analyzeDebug(roots, opts.flag("whole-graph"))
+                val z = ShapesAnalyzer(g, relaxOf(opts)).apply { progress = ::println }
+                val dbg = z.analyzeDebug(roots, opts.flag("whole-graph"))
                 println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
                 opts["out"]?.let {
                     ShapesEmit.write(dbg.table, Path.of(it))
                     println("artifact written: $it")
                 }
-                val problems = verifyEdgeAccounting(g, dbg)
+                printRelax(z)
+                val problems = verifyEdgeAccounting(g, dbg, z.relaxLevels())
                 if (problems.isEmpty()) println("verify-edges: edge accounting exact")
                 else {
                     println("verify-edges: MISMATCHES:")
@@ -104,8 +125,11 @@ fun main(args: Array<String>) {
                 }
                 return
             }
-            val t = ShapesAnalyzer(g).apply { progress = ::println }.analyze(roots, opts.flag("whole-graph"))
+            val z = ShapesAnalyzer(g, relaxOf(opts)).apply { progress = ::println }
+            val t = z.analyze(roots, opts.flag("whole-graph"))
             println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
+            printRelax(z)
+            writeRelaxStats(z, opts)
             // artifact FIRST: printReport of a mega-SCC_UNIQUE shape can emit
             // a million edge lines — the report must never cost the artifact
             opts["out"]?.let {
@@ -119,6 +143,34 @@ fun main(args: Array<String>) {
             System.err.println(USAGE)
             exitProcess(if (opts.cmd == null) 0 else 2)
         }
+    }
+}
+
+private fun relaxOf(opts: Opts): Map<String, Int> =
+    opts["relax"]?.let { path ->
+        val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
+        println("relax: ${rules.classRules.size} analyzer rules from $path" +
+            (if (rules.fieldRules.isEmpty()) "" else " (${rules.fieldRules.size} extraction-side field rules — ignored here)"))
+        rules.classRules
+    } ?: emptyMap()
+
+private fun printRelax(z: ShapesAnalyzer) {
+    val s = z.relaxStats
+    if (s.relaxedObjects > 0) {
+        println("relax: ${s.relaxedObjects} relaxed objects; concealed edges: " +
+            "${s.classOnlyHiddenEdges} (class-only) + ${s.setChildrenHiddenEdges} (set-children)")
+    }
+}
+
+private fun writeRelaxStats(z: ShapesAnalyzer, opts: Opts) {
+    opts["relax-stats"]?.let { path ->
+        val s = z.relaxStats
+        java.nio.file.Files.writeString(Path.of(path),
+            """{"relaxedObjects":${s.relaxedObjects},""" +
+                """"classOnlyHiddenEdges":${s.classOnlyHiddenEdges},""" +
+                """"setChildrenHiddenEdges":${s.setChildrenHiddenEdges},""" +
+                """"setChildrenConcealedObjects":${s.setChildrenConcealedObjects}}""")
+        println("relax stats written: $path")
     }
 }
 

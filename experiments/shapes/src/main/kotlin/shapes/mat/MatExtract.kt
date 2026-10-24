@@ -63,7 +63,8 @@ object MatExtract {
     fun extract(
         hprof: String, className: String, out: Path,
         scope: String = "reachable", normalizeMaps: Boolean = false, statsOut: Path? = null,
-        boundaryStubs: Boolean = false,
+        boundaryStubs: Boolean = false, filterReferences: Boolean = true,
+        fieldRules: Map<String, Set<String>> = emptyMap(),
     ) {
         require(scope == "reachable" || scope == "retained") { "scope must be retained or reachable" }
         // MAT's old marker initializes the Eclipse platform even for index-only
@@ -82,14 +83,38 @@ object MatExtract {
             val roots = classes.flatMap { it.objectIds.asIterable() }.distinct()
             println("class $className: ${classes.size} class object(s), ${roots.size} instances")
 
-            // java.lang.ref.Reference.discovered is the GC's discovered-list
-            // linkage — VM bookkeeping captured mid-flight, not program
-            // structure. It also poisons the exact collapse: a ~100k-link
-            // list makes every list depth a distinct shape (30k layers for
-            // 1 MB of actual data). Filtered here, at the source of truth.
+            // java.lang.ref.Reference mechanics are VM/library bookkeeping,
+            // not program structure: `discovered` is the GC's discovered-list
+            // linkage (already filtered before), and with filterReferences
+            // also `referent`/`queue`/`next` — a soft/weak/phantom reference
+            // does NOT retain its referent (the GC clears it under pressure),
+            // so reference-kind edges must not pull objects into the scope
+            // nor split shapes with GC state (observed: the pre-OOM GC had
+            // cleared some SoftReferences, splitting otherwise identical
+            // configurations). Fields DECLARED BY SUBCLASSES (e.g. a weak map
+            // entry's strong `value`) are kept — they are payload, not
+            // reference mechanics. Subtyping is exact (MAT class hierarchy).
             val refClassIds = (s.getClassesByName("java.lang.ref.Reference", true) ?: emptyList())
                 .mapTo(HashSet()) { it.objectId }
-            println("java.lang.ref.Reference subtypes: ${refClassIds.size} classes — .discovered edges filtered")
+            val droppedRefFields = if (filterReferences) REF_MECHANICS_FIELDS else setOf("discovered")
+            println("java.lang.ref.Reference subtypes: ${refClassIds.size} classes — filtered fields: $droppedRefFields")
+
+            // Relax.kt level 3 (conceal-field:<name>): drop the named fields
+            // of a class and all its subclasses — the surgical choice for a
+            // lazy/cache field whose presence is state, not structure. The
+            // edge never enters the graph, so its target may drop out of the
+            // scope entirely. Subtyping is exact (MAT class hierarchy).
+            // class object id -> fields to drop
+            val concealFields = HashMap<Int, Set<String>>()
+            for ((pattern, fields) in fieldRules) {
+                var n = 0
+                for (cl in s.getClassesByName(pattern, true) ?: emptyList()) {
+                    concealFields[cl.objectId] = fields; n++
+                }
+                println("conceal-field rule: $pattern + subclasses = $n classes, drop fields $fields")
+                if (n == 0) println("conceal-field: WARNING $pattern matches no class in the dump")
+            }
+            fun droppedFieldsOf(id: Int): Set<String>? = concealFields[s.getClassOf(id).objectId]
 
             // java.lang.Class instances MISSING from the class table: the 9
             // primitive class objects (int.class..void.class) have no
@@ -133,7 +158,7 @@ object MatExtract {
                 rIds.push(v)
                 if (refClassIds.contains(s.getClassOf(v).objectId)) {
                     for (ref in s.getObject(v).outboundReferences) {
-                        if (ref.name == "discovered") continue
+                        if (ref.name in droppedRefFields) continue
                         val w = ref.objectId
                         if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
                             visited.set(w); stack.push(w)
@@ -157,6 +182,65 @@ object MatExtract {
                     progressAt += 1_000_000
                 }
             }
+            // Scope is selected BEFORE projection. Raw counts remain available
+            // even though projected refs intentionally hide map implementation links.
+            var concealedFieldEdges = 0L
+            fun sourceRefs(id: Int): IntArray {
+                val dropped = droppedFieldsOf(id)
+                if (dropped != null) {
+                    val named = s.getObject(id).outboundReferences
+                    concealedFieldEdges += named.count { it.name in dropped }
+                    return named.filter { it.name !in dropped }.map { it.objectId }.toIntArray()
+                }
+                return if (refClassIds.contains(s.getClassOf(id).objectId))
+                    s.getObject(id).outboundReferences.filter { it.name !in droppedRefFields }
+                        .map { it.objectId }.toIntArray()
+                else s.getOutboundReferentIds(id)
+            }
+            val projection = if (normalizeMaps) MapProjection(
+                { id -> s.getClassOf(id).name }, ::sourceRefs,
+                { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
+            ) else null
+            val structuralClass = if (projection == null) ({ id: Int -> s.getClassOf(id).name })
+            else ({ id: Int -> projection.structuralClassName(s.getClassOf(id).name) })
+
+            // GC semantics for the retained scope: an object that every path
+            // to crosses a filtered edge is NOT retained by the queried class
+            // (the GC would collect it — a soft/weak/phantom edge, or an edge
+            // concealed as state by a level-3 field rule). Restrict the scope
+            // to objects reachable from the roots over the FINAL (projected,
+            // filtered) edges. MAT's retained set still contains those
+            // objects — it counts soft/weak edges as strong — so `visited`
+            // must shrink here, and the totals diverge from MAT's retained
+            // histogram ON PURPOSE (reported in the stats).
+            var droppedSoftOnly = 0L
+            var droppedSoftShallow = 0L
+            if ((filterReferences || concealFields.isNotEmpty()) && scope == "retained") {
+                val strong = BitSet(n)
+                for (root in roots) if (visited.get(root)) {
+                    strong.set(root); stack.push(root)
+                }
+                while (stack.sp > 0) {
+                    val v = stack.pop()
+                    val refs = projection?.refs(v) ?: sourceRefs(v)
+                    for (w in refs) if (w >= 0 && visited.get(w) && !strong.get(w)) {
+                        strong.set(w); stack.push(w)
+                    }
+                }
+                var o = visited.nextSetBit(0)
+                while (o >= 0) {
+                    if (!strong.get(o)) {
+                        droppedSoftOnly++
+                        droppedSoftShallow += s.getHeapSize(o)
+                    }
+                    o = visited.nextSetBit(o + 1)
+                }
+                visited.clear()
+                visited.or(strong)
+                println("reference filter: $droppedSoftOnly objects ($droppedSoftShallow shallow bytes) " +
+                    "dropped — reachable only through soft/weak/phantom references")
+            }
+
             val t1 = System.nanoTime()
             val nR = visited.cardinality()
             println("scope $scope: $nR objects in ${(t1 - t0) / 1_000_000} ms")
@@ -184,20 +268,6 @@ object MatExtract {
                 return rank[word] + java.lang.Long.bitCount(words[word] and ((1L shl (w and 63)) - 1))
             }
             rIds.a = IntArray(1) // release the BFS buffer before the big allocations
-
-            // Scope is selected BEFORE projection. Raw counts remain available
-            // even though projected refs intentionally hide map implementation links.
-            fun sourceRefs(id: Int): IntArray =
-                if (refClassIds.contains(s.getClassOf(id).objectId))
-                    s.getObject(id).outboundReferences.filter { it.name != "discovered" }
-                        .map { it.objectId }.toIntArray()
-                else s.getOutboundReferentIds(id)
-            val projection = if (normalizeMaps) MapProjection(
-                { id -> s.getClassOf(id).name }, ::sourceRefs,
-                { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
-            ) else null
-            val structuralClass = if (projection == null) ({ id: Int -> s.getClassOf(id).name })
-            else ({ id: Int -> projection.structuralClassName(s.getClassOf(id).name) })
 
             // pass 1: class table + per-node class index (iterate set bits — no ids array)
             val classNames = ArrayList<String>()
@@ -304,7 +374,10 @@ object MatExtract {
             println("written: $out (${Files.size(out) / 1_000_000} MB), pass 2 in ${(t3 - t2) / 1_000_000} ms")
             println("edges: source=$sourceEdges projected=$projectedEdges outside-scope=$boundaryEdges")
             statsOut?.let { path ->
-                Files.writeString(path, """{"scope":"$scope","mapProjection":"${if (normalizeMaps) "unordered-entries-v1" else "raw"}","objects":$nR,"roots":${roots.size},"shallowTotal":$shallowTotal,"sourceEdges":$sourceEdges,"scopeBoundaryEdges":$boundaryEdges,"projectedEdges":$projectedEdges,"projectedBoundaryEdges":$projectedBoundaryEdges,"matRetainedObjects":$retainedCount}""")
+                val fieldRulesJson = if (fieldRules.isEmpty()) "[]" else
+                    fieldRules.entries.joinToString(",", "[", "]") { (c, f) ->
+                        "{\"class\":\"$c\",\"fields\":[${f.joinToString(",") { "\"$it\"" }}]}" }
+                Files.writeString(path, """{"scope":"$scope","mapProjection":"${if (normalizeMaps) "unordered-entries-v1" else "raw"}","objects":$nR,"roots":${roots.size},"shallowTotal":$shallowTotal,"sourceEdges":$sourceEdges,"scopeBoundaryEdges":$boundaryEdges,"projectedEdges":$projectedEdges,"projectedBoundaryEdges":$projectedBoundaryEdges,"matRetainedObjects":$retainedCount,"referenceFiltered":$filterReferences,"softReachableOnlyDropped":$droppedSoftOnly,"softReachableOnlyDroppedShallow":$droppedSoftShallow,"concealedFieldEdges":$concealedFieldEdges,"fieldRules":$fieldRulesJson}""")
             }
         } finally {
             s.dispose()
@@ -649,4 +722,9 @@ object MatExtract {
     // ids.size used below as rIds.sp equivalent
 
     private const val GRPH_MAGIC = 0x47525048 // "GRPH"
+
+    /** Fields of java.lang.ref.Reference that are VM/library mechanics, never
+     *  program structure (see extract). Subclass-declared payload (e.g. a
+     *  weak map entry's strong `value`) is NOT in this set and is kept. */
+    private val REF_MECHANICS_FIELDS = setOf("referent", "queue", "next", "discovered")
 }
