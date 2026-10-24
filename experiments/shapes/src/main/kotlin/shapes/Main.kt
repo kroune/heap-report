@@ -4,7 +4,7 @@ import java.nio.file.Path
 import kotlin.system.exitProcess
 
 private const val USAGE = """
-shapes — exact structural collapse experiment (see backend/mat/SHAPES.md)
+shapes — exact structural collapse (see backend/mat/SHAPES.md)
 
   analyze --graph <file> --class <className> [--out <shapes.bin>] [--verify]
   generate --modules <N> --out <graph.txt>
@@ -164,12 +164,7 @@ private fun printRelax(z: ShapesAnalyzer) {
 
 private fun writeRelaxStats(z: ShapesAnalyzer, opts: Opts) {
     opts["relax-stats"]?.let { path ->
-        val s = z.relaxStats
-        java.nio.file.Files.writeString(Path.of(path),
-            """{"relaxedObjects":${s.relaxedObjects},""" +
-                """"classOnlyHiddenEdges":${s.classOnlyHiddenEdges},""" +
-                """"setChildrenHiddenEdges":${s.setChildrenHiddenEdges},""" +
-                """"setChildrenConcealedObjects":${s.setChildrenConcealedObjects}}""")
+        writeJson(Path.of(path), z.relaxStats)
         println("relax stats written: $path")
     }
 }

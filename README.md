@@ -28,6 +28,15 @@ First use downloads Eclipse MAT (~100 MB) into `.tools/` automatically
 (18 GB hprof + ~11 GB compacted indexes; raw indexes restore to ~20 GB while a
 query runs and are re-compressed when the UI goes idle).
 
+The exact **shapes** visualization uses a standalone Kotlin/MAT tool. Build it
+once with JDK 21 (the server itself never invokes Gradle):
+
+```bash
+cd experiments/shapes && ./gradlew fatJar
+```
+
+Override its location with `SHAPES_JAR` when deploying the jar separately.
+
 ## Architecture
 
 Microkernel: `backend/core.py` pins every contract (dump state machine,

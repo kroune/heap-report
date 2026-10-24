@@ -326,8 +326,8 @@ class QueryEngine(Protocol):
         ...
 
     def shapes(self, dump_id: DumpId, cls: str) -> Optional[dict]:
-        """Exact structural-collapse payload (SHAPES.md; experimental) for one
-        class. None = not analyzed yet (HTTP: 404 {"analyzed": false})."""
+        """Exact structural-collapse payload (SHAPES.md) for one class.
+        None = not analyzed yet (HTTP: 404 {"analyzed": false})."""
         ...
 
     def analyze_shapes(self, dump_id: DumpId, cls: str, scope: str = "retained",

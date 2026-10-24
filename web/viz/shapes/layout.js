@@ -23,11 +23,15 @@ const METRIC = {
 /* nodes: [{id,label,kind,count,st,smin,smax,roots,sccSize,internalEdges,
             edgesPerMember,cat}], edges: [[s, t, multPerMember]].
    metric: "shallow" | "count" | "roots".
-   Returns {nodes: [...+{rad,x,y,layer}], edges: [{s,t,mult,total,d,mx,my}],
+   Returns {nodes: [...+{rad,x,y,layer}], edges: [{s,t,mult,total,mx,my}],
             width, height, layerCount}. Inputs are not mutated. */
-export function computeShapesLayout(nodesIn, edgesIn, metric) {
+export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallow") {
+  if (!Array.isArray(nodesIn) || !Array.isArray(edgesIn))
+    throw new TypeError("shapes layout expects node and edge arrays");
   const mv = METRIC[metric] || METRIC.shallow;
   const N = nodesIn.map(s => ({ ...s }));
+  if (!N.length)
+    return { nodes: N, edges: [], width: 0, height: 0, layerCount: 0, emax: 1 };
 
   // radii by metric (iterative max — the payload can be >1M nodes)
   const mvals = N.map(mv);
@@ -158,12 +162,11 @@ export function computeShapesLayout(nodesIn, edgesIn, metric) {
     const a = N[s], b = N[t];
     const y1 = a.y + a.rad + 2, y2 = b.y - b.rad - 4;
     const my = (y1 + y2) / 2;
-    const d = `M ${a.x} ${y1} C ${a.x} ${my}, ${b.x} ${my}, ${b.x} ${y2}`;
     // total refs: per-member mult × instance count; per-instance totals
     // (SCC_UNIQUE and non-uniform merged SCCs) × collapsed instances
     const total = a.edgesPerMember ? mult * a.count : mult * Math.max(1, Math.floor(a.count / a.sccSize));
     if (total > emax) emax = total;
-    return { s, t, mult, total, d, mx: (a.x + b.x) / 2, my };
+    return { s, t, mult, total, mx: (a.x + b.x) / 2, my };
   });
 
   return { nodes: N, edges, width, height, layerCount: byLayer.length, emax };

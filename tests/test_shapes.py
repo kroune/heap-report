@@ -102,6 +102,10 @@ class TestShp1(unittest.TestCase):
             else:
                 with open(target, "wb") as f:
                     f.write(build_shp1(["C"], [row], [], [(0, 2)]))
+                with open(args[args.index("--relax-stats") + 1], "w") as f:
+                    json.dump({"classOnlyHiddenEdges": 0,
+                               "setChildrenHiddenEdges": 0,
+                               "setChildrenConcealedObjects": 0}, f)
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d, "C")
             runner = mock.Mock()
@@ -112,12 +116,82 @@ class TestShp1(unittest.TestCase):
             p = parse_shp1(dst)
             self.assertEqual(p["analysis"]["scope"], "retained")
             self.assertEqual(p["analysis"]["sourceEdges"], 1)
+            self.assertEqual(p["analysis"]["pipelineVersion"], 4)
             self.assertIn("--normalize-maps", calls[0][0])
             self.assertIn("--whole-graph", calls[1][0])
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
             bad = dict(metadata, objects=3)
             with self.assertRaisesRegex(RuntimeError, "objects"):
                 _validate_projection(dst, bad)
+
+    def test_reachable_count_includes_quotient_concealed_objects(self):
+        import json
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 3,
+               "shallowTotal": 30, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 3, "internalEdges": 2,
+               "edgesPerMember": False}
+        metadata = {"objects": 8, "relaxation": {"setChildrenConcealedObjects": 5}}
+        encoded = json.dumps(metadata).encode()
+        fixture = build_shp1(["scc[C]"], [row], [], []) + b"SMD1" + \
+            struct.pack(">i", len(encoded)) + encoded
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            self.assertEqual(parse_shp1(path)["reachableCount"], 8)
+        finally:
+            os.remove(path)
+
+    def test_rejects_truncated_shp1_and_invalid_edge(self):
+        row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 1,
+               "shallowTotal": 1, "shallowMin": 1, "shallowMax": 1,
+               "roots": 0, "sccSize": 1, "internalEdges": 0,
+               "edgesPerMember": False}
+        valid = build_shp1(["C"], [row], [], [])
+        invalid_edge = build_shp1(["C"], [row], [(0, 1, 1)], [])
+        for fixture in (valid[:-1], invalid_edge, valid + b"junk"):
+            with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+                f.write(fixture)
+                path = f.name
+            try:
+                with self.assertRaises(RuntimeError):
+                    parse_shp1(path)
+            finally:
+                os.remove(path)
+
+    def test_failed_analysis_preserves_artifact_and_cleans_workspace(self):
+        from contextlib import nullcontext
+        with tempfile.TemporaryDirectory() as d:
+            dst = artifact_path(d, "C")
+            os.makedirs(os.path.dirname(dst))
+            with open(dst, "wb") as f:
+                f.write(b"previous artifact")
+            runner = mock.Mock()
+            runner.index_read_hold.side_effect = lambda *args: nullcontext()
+            with mock.patch("backend.mat.shapes._run_java",
+                            side_effect=RuntimeError("extract failed")):
+                with self.assertRaisesRegex(RuntimeError, "extract failed"):
+                    analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
+            with open(dst, "rb") as f:
+                self.assertEqual(f.read(), b"previous artifact")
+            self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
+
+    def test_analysis_options_are_part_of_job_identity(self):
+        from backend.mat.engine import MatQueryEngine
+        from backend import core
+        engine = object.__new__(MatQueryEngine)
+        engine._prepare_analysis = mock.Mock(return_value="heap.hprof")
+        engine._jobs = mock.Mock()
+        engine._jobs.submit.side_effect = lambda *args: args
+        with mock.patch("backend.mat.shapes.shapes_jar", return_value="shapes.jar"):
+            first = engine.analyze_shapes("dump", "com.acme.C", "retained", True)
+            second = engine.analyze_shapes("dump", "com.acme.C", "reachable", False)
+        self.assertEqual(core.JobKind.SHAPES, first[0])
+        self.assertIn("retained", first[2])
+        self.assertIn("normalized", first[2])
+        self.assertIn("reachable", second[2])
+        self.assertIn("raw", second[2])
+        self.assertNotEqual(first[2], second[2])
 
     def test_rejects_non_shp1(self):
         with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
@@ -171,6 +245,18 @@ class TestShp1(unittest.TestCase):
             n, e = _grph_stats(path)
             self.assertEqual(n, 15_800_000)
             self.assertEqual(e, 15_800_000)
+        finally:
+            os.remove(path)
+
+    def test_grph_stats_rejects_malformed_body(self):
+        with tempfile.NamedTemporaryFile(suffix=".grph", delete=False) as f:
+            path = f.name
+        try:
+            self._write_grph(path, 2)
+            with open(path, "ab") as f:
+                f.write(b"x")
+            with self.assertRaisesRegex(RuntimeError, "body size"):
+                _grph_stats(path)
         finally:
             os.remove(path)
 

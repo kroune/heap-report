@@ -4,7 +4,9 @@
  *  - the viz registry (registerViz) and openViz(), the ONLY way a viz opens:
  *    popup host (backdrop + panel + close), loading state, error state.
  *    A viz module is {kind, prepare(repo, dumpId, className, params), render}.
- *    prepare does ALL fetching and returns a viewModel; render is dumb.
+ *    prepare does ALL fetching and returns a viewModel; render is dumb and may
+ *    return cleanup. Refetch/kind switch/close dispose the previous renderer;
+ *    close also invalidates pending prepares. Void renderers remain supported.
  *  - the popup kind switcher: a segment in the header listing every registered
  *    kind — switching visualizations never means leaving the popup and hunting
  *    for another entry point. New viz modules appear here automatically via
@@ -237,6 +239,9 @@ function ensureHost() {
 }
 
 export function closeViz() {
+  seq++;                 // invalidate a prepare which is still in flight
+  disposeRenderer();
+  last = null;
   if (host) host.back.classList.remove('open');
 }
 
@@ -263,6 +268,15 @@ export function registerViz(module) {   // called by boot for each viz module
 
 let seq = 0;   // race token: only the latest open/refetch may paint
 let last = null;   // {kind, dumpId, className} of the last painted viz
+let rendererCleanup = null;
+
+/* Renderers may own global listeners, animation frames and observers. The
+   legacy void return remains valid; only functions are treated as cleanup. */
+function disposeRenderer() {
+  const cleanup = rendererCleanup;
+  rendererCleanup = null;
+  if (cleanup) cleanup();
+}
 
 /* The kind switcher in the popup header: one button per registered viz.
    Every entry point (classes row, treemap leaf, another viz) lands here, so
@@ -302,14 +316,18 @@ function makeAnalyze(kind, dumpId, className, params) {
         reopen();
         return;
       }
+      if (job.state === 'failed' || job.state === 'cancelled') {
+        onStatus(`analysis ${job.state}: ${job.error || 'see the jobs panel'}`, true);
+        return;
+      }
       onStatus(`analysis ${job.state} — waiting for the job to finish…`);
       const stop = pollJobs(jobs => {
         const j = (jobs || []).find(x => x.id === job.id);
         if (!j) return;
         if (j.state === 'done') { stop(); reopen(); }
-        else if (j.state === 'failed') {
+        else if (j.state === 'failed' || j.state === 'cancelled') {
           stop();
-          onStatus(`analysis failed: ${j.error || 'see the jobs panel'}`, true);
+          onStatus(`analysis ${j.state}: ${j.error || 'see the jobs panel'}`, true);
         } else onStatus(`analysis ${j.state}…`);
       });
     });
@@ -319,11 +337,11 @@ function makeAnalyze(kind, dumpId, className, params) {
 export async function openViz(kind, dumpId, className, params = {}) {
   const h = ensureHost();
   const my = ++seq;
-  /* a refetch of the same target keeps the scroll position; a new target
-     (other kind/class) starts at the top */
+  /* Capture before disposal: a renderer is allowed to clear its container. */
   const sameTarget = last && last.kind === kind && last.dumpId === dumpId
     && last.className === className;
   const keepScroll = sameTarget ? h.body.scrollTop : 0;
+  disposeRenderer();
   h.title.textContent = className || kind;
   h.sub.textContent = className ? `${kind} · ${dumpId}` : dumpId;
   paintNav(h, kind, dumpId, className);
@@ -345,13 +363,20 @@ export async function openViz(kind, dumpId, className, params = {}) {
   if (my !== seq) return;
   last = { kind, dumpId, className };
   h.body.textContent = '';
-  mod.render(h.body, vm, {
-    esc, fmtB, fmtN, catColor, catOf, shortClass,
-    onOpenViz: openViz,
-    /* the pinned re-slice path: merge params, re-run prepare, re-render here */
-    refetch: extra => openViz(kind, dumpId, className, { ...params, ...extra }),
-    /* server-only affordance: null in INLINE (snapshot) mode */
-    analyze: inlineMode ? null : makeAnalyze(kind, dumpId, className, params),
-  });
+  try {
+    const cleanup = mod.render(h.body, vm, {
+      esc, fmtB, fmtN, catColor, catOf, shortClass,
+      onOpenViz: openViz,
+      /* the pinned re-slice path: merge params, re-run prepare, re-render here */
+      refetch: extra => openViz(kind, dumpId, className, { ...params, ...extra }),
+      /* server-only affordance: null in INLINE (snapshot) mode */
+      analyze: inlineMode ? null : makeAnalyze(kind, dumpId, className, params),
+    });
+    rendererCleanup = typeof cleanup === 'function' ? cleanup : null;
+  } catch (e) {
+    if (my !== seq) return;
+    showState(h, 'viz-err', (e && e.message) || String(e));
+    return;
+  }
   if (keepScroll) h.body.scrollTop = keepScroll;
 }

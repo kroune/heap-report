@@ -1,21 +1,24 @@
-# shapes — exact structural collapse (experiment)
+# shapes — exact structural collapse
 
-First implementation of `backend/mat/SHAPES.md`, in Kotlin, deliberately
-**without MAT**: the object graph is an in-memory stand-in so the algorithm
-can be exercised, measured and reviewed before wiring it into the MAT JVM.
+Implementation of `backend/mat/SHAPES.md`, in Kotlin. The analyzer operates on
+a compact in-memory graph; the supported MAT extractor produces that graph
+from real heap dumps. The historical `experiments/shapes` path is retained
+while the implementation is being hardened, to keep existing build and
+diagnostic workflows compatible.
 Spec section references below are to SHAPES.md.
 
 ## What is implemented
 
 - **Definitions** — `ObjectGraph` (objects + outbound refs), roots = full
-  instance id list of a class, scope R = reachable closure (open point 1:
-  reachable, not retained).
+  instance id list of a class, scope R = explicitly selected retained or
+  reachable graph over the filtered source references.
 - **Equality rules** — leaf / acyclic / SCC keys exactly as specified.
   Multi-edges preserved (`Object[]{x,x}` ≠ `Object[]{x,y}` when x,y differ
   structurally). SCC: color refinement over `(class, internal-neighbor
-  colors, child-shape colors)`, merge only on discretization, `|SCC| > 64`
-  → unique fallback (`ShapesAnalyzer.MAX_SCC_MERGE`). Self-loops take the
-  SCC path. **shallow is NOT part of the key** (open point 3: resolved OUT).
+  colors, child-shape colors)` and merge on the WL-fixpoint signature;
+  oversized SCCs take the unique fallback (`ShapesAnalyzer.MAX_SCC_MERGE`,
+  64 by default in CLI and 1M in the backend). Self-loops take the SCC path.
+  **shallow is NOT part of the key** (open point 3: resolved OUT).
 - **Hashing discipline** — cons-map key is the full structural tuple
   (`LeafLk`/`NodeLk`/`SccLk`), equality is exact via interned child shape
   identity, never via the digest. Separate 128-bit cross-dump digest over a
@@ -27,17 +30,17 @@ Spec section references below are to SHAPES.md.
 - **Aggregates** — `instanceCount`, `shallowTotal/Min/Max`, `rootCount`,
   complete edge table `(shapeId, childShapeId, multiplicity)`. Edge
   multiplicity is **per member** of the source shape (expanded totals =
-  mult × instanceCount), except `SCC_UNIQUE` where edges are totals
-  (`edgesPerMember = false` on the entry).
+  mult × instanceCount). `SCC_UNIQUE` and non-uniform merged SCCs emit
+  per-collapsed-instance totals instead (`edgesPerMember = false`).
 - **Phase 5 emit** — binary artifact (`SHP1` magic; layout documented in
   `Emit.kt`). 18001 objects → 627 bytes.
 - **Correctness invariants** — `verifyInvariants` implements smoke tests
   1–4; 6 (determinism) is a test. 5 (match vs sampling payload) needs MAT.
 
-## Deferred (spec paths not in this experiment)
+## Deferred / current limitations
 
-- MAT integration (bulk int APIs, `IObject`-free hot loops, retained-size
-  pass → `retainedTotal` column).
+- Per-object retained-size annotation (`retainedTotal` column). MAT extraction
+  itself is implemented and used by the backend.
 - All parallelism (frontier-split BFS, level-synchronous striped cons) —
   v1 here is single-threaded; the spec presents these as scale
   optimizations, not semantics. Sequential Tarjan stands as spec'd.
@@ -47,21 +50,24 @@ Spec section references below are to SHAPES.md.
 
 ## Layout
 
-- `Graph.kt` — `ObjectGraph` model, text format
-  (`<id> <class> <shallow> [refs]`), synthetic "N modules" generator.
+- `Graph.kt` — compact `ObjectGraph` model, text/GRPH formats, synthetic graphs.
 - `XxHash64.kt` / `Digest.kt` — hash + 128-bit canonical digests.
-- `Shapes.kt` — the pipeline (this is the file to review).
+- `Shapes.kt` — the collapse pipeline.
 - `Verify.kt` — invariant checker (`--verify` and tests).
 - `Emit.kt` — binary artifact writer.
+- `JsonSupport.kt` — shared `kotlinx.serialization` JSON output; emitted
+  schemas are typed (`ExtractionStats`, `RelaxStats`), never concatenated.
+- `mat/ReferencePolicy.kt` — one side-effect-free reference filtering policy
+  shared by scope traversal, map projection, emission, and accounting.
 - `Main.kt` — CLI.
 
 ## Run
 
 ```bash
-gradle build                                            # tests (14)
-gradle run --args="demo --modules 3000 --verify"        # in-memory demo
-gradle run --args="generate --modules 3000 --out heap.txt"
-gradle run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
+./gradlew build                                          # compile + all tests
+./gradlew run --args="demo --modules 3000 --verify"      # in-memory demo
+./gradlew run --args="generate --modules 3000 --out heap.txt"
+./gradlew run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
 ./gradlew fatJar   # build/libs/shapes-experiment-all.jar — what the heap-report
                    # backend runs (SHAPES_JAR; mat-extract + analyze-grph)
 ```

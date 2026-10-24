@@ -1,5 +1,7 @@
 package shapes
 
+import kotlinx.serialization.Serializable
+
 /**
  * Class relaxation rules (SHAPES.md "Relaxed classes"): for selected classes
  * the exact structural key is deliberately weakened so that known
@@ -102,7 +104,15 @@ object Relax {
 /** Exact accounting of what relaxation concealed (for verification and the
  *  backend's edge-total validation: emitted edges = projected graph edges
  *  minus these). */
+@Serializable
 class RelaxStats {
+    fun reset() {
+        relaxedObjects = 0
+        classOnlyHiddenEdges = 0
+        setChildrenHiddenEdges = 0
+        setChildrenConcealedObjects = 0
+    }
+
     /** refs hidden by class-only rules (external refs of those objects). */
     var classOnlyHiddenEdges: Long = 0
     /** multiplicity collapse by set-children rules: Σ (refs − distinct child shapes). */

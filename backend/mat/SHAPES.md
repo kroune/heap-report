@@ -1,10 +1,10 @@
 # SHAPES.md — exact structural collapse for class anatomy
 
-Status: **experimental implementation; pipeline v2 supports explicit scope and map projection.** When it and the code disagree, one of
-them is wrong — update both in the same commit.
+Status: **supported implementation; pipeline v4.** When this document and
+the code disagree, one of them is wrong — update both in the same commit.
 
 Replaces the sampling path in `engine._analyze_class` with exact
-counting: collapse the object graph reachable from **all** instances of the
+counting: collapse the selected object graph of **all** instances of the
 queried class into a shape-DAG, where each node groups structurally
 identical objects. Everything served is exact: counts, shallow sums, edge
 multiplicities.
@@ -22,7 +22,7 @@ multiplicities.
   `B→D`, `C→D`; the dom tree would hang D directly under A and destroy
   exactly the edges we want to show).
 
-## UI/backend pipeline v2
+## UI/backend pipeline
 
 The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the server.
 New analyses default to **retained scope + unordered map entries**, the measured
@@ -33,9 +33,12 @@ legacy label and must be re-analyzed to obtain the new semantics.
 
 Scope is selected on the original filtered object graph **before** map
 projection. Retained scope uses MAT `getRetainedSet` for all queried instances
-(with MAT's standalone-compatible ObjectMarker factory switch). The analyzer
-keeps every preselected object even if projection removes its path from a root;
-only actual queried instances count as roots.
+(with MAT's standalone-compatible ObjectMarker factory switch), then restricts
+that set to objects reachable over the filtered source references. Reference
+mechanics and `conceal-field` rules participate in this traversal for both
+retained and reachable scope. Map projection never adds or removes objects.
+The analyzer keeps every preselected object even if projection removes its path
+from a root; only actual queried instances count as roots.
 
 Projection is field-aware and supports the exact JDK classes `HashMap$Node`,
 `LinkedHashMap$Entry`, `LinkedHashMap`, and `HashMap$Node[]`. It removes only
@@ -55,6 +58,10 @@ ID), not field/array-slot multiplicities. Displayed edges are explicitly
 **projected** edges when projection is enabled; do not compare them as raw
 heap edges. Before atomic publication the backend checks all object, root,
 shallow and expanded projected-edge totals against extraction statistics.
+The served `reachableCount` includes `setChildrenConcealedObjects`: it is the
+real scope population, not merely the sum of visible quotient-SCC counts.
+Pipeline v4 also makes extraction reference filtering side-effect free, so
+repeated projection reads cannot inflate concealed-field statistics.
 
 Backend SCC refinement uses cap 1,000,000 (`SHAPES_MAX_SCC_MERGE` override)
 to avoid the old 64-member artifact in container graphs. Larger components

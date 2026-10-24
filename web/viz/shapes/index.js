@@ -1,6 +1,6 @@
-/* Shapes viz (experimental) — the exact structural collapse (backend/mat/
-   SHAPES.md, implemented by experiments/shapes): every object reachable from
-   ALL instances of the queried class, collapsed into a shape-DAG. Fed by the
+/* Shapes viz — the exact structural collapse (backend/mat/
+   SHAPES.md, implemented by experiments/shapes): objects in the selected
+   scope of ALL instances of the queried class, collapsed into a shape-DAG. Fed by the
    shapes payload (GET /api/dumps/{id}/shapes?class=…, from the SHP1 artifact
    produced by the SHAPES job).
 
@@ -11,9 +11,12 @@
      layout.js    computeShapesLayout — pure DAG layout (no DOM, no fetch);
                   fully iterative + column-folded, runs the full 1.37M-shape
                   payload in ~3 s
-     prepare.js   data step: fetch + viewModel
-     render.js    Canvas-2D renderer (grid culling + overview bitmap + CSR
-                  adjacency) + side panel (dumb: no fetch, no repo imports)
+     prepare.js   data step: fetch + pure viewModel mapping
+     controls.js  metric and exact-analysis controls
+     details.js   summary, node detail and lazy reference lists
+     scene.js     pure spatial/adjacency indexes and view transforms
+     canvas.js    Canvas-2D painting, bitmap LOD and interaction lifecycle
+     render.js    renderer composition; returns cleanup
      index.js     this file: the viz module contract (kind/prepare/render)
 
    analyzeOp = "shapesAnalyze": the popup's analyze affordance (ctx.analyze in
@@ -30,5 +33,5 @@ export async function prepare(repo, dumpId, className, params = {}) {
 }
 
 export function render(container, vm, ctx) {
-  rend.render(container, vm, ctx);
+  return rend.render(container, vm, ctx);
 }

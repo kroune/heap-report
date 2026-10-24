@@ -432,11 +432,11 @@ class MatQueryEngine:
             self._store.await_indexes(dump_id, job)
             fn()
 
-    # ---------------------------------------------------------- shapes (experimental)
+    # ---------------------------------------------------------- shapes
 
     def shapes(self, dump_id, cls):
-        """Exact structural-collapse payload for one class (SHAPES.md;
-        experimental). None = not analyzed yet. Served from the SHP1 artifact
+        """Exact structural-collapse payload for one class (SHAPES.md).
+        None = not analyzed yet. Served from the SHP1 artifact
         the SHAPES job landed at data/shapes/; fp-cached on its mtime."""
         data = self._data_dir(dump_id)
         p = shapesmod.artifact_path(data, cls)
@@ -447,8 +447,8 @@ class MatQueryEngine:
                             lambda: shapesmod.parse_shp1(p))
 
     def analyze_shapes(self, dump_id, cls, scope="retained", normalize_maps=True):
-        """Queue the exact shapes analysis for one class (experimental): the
-        prebuilt shapes jar (SHAPES_JAR) runs mat-extract + analyze-grph on
+        """Queue the exact shapes analysis for one class: the prebuilt
+        shapes jar (SHAPES_JAR) runs mat-extract + analyze-grph on
         the serial MAT queue — it reads the MAT indexes directly, so it needs
         the same acquisition/restore discipline as MAT itself."""
         shapesmod.analysis_options(scope, normalize_maps)
@@ -459,8 +459,7 @@ class MatQueryEngine:
             dump_dir = self._store.dir_of(dump_id)
             data = os.path.join(dump_dir, "data")
             dst = shapesmod.artifact_path(data, cls)
-            self._jobs.log(job, f"shapes analysis of {cls} (exact structural "
-                                "collapse, experimental)")
+            self._jobs.log(job, f"shapes analysis of {cls} (exact structural collapse)")
             self._with_indexes(job, dump_id, lambda: shapesmod.analyze_class(
                 job, self._jobs, self._runner, dump_dir, hprof, cls, dst,
                 abort=self._store.abort_event(dump_id),
@@ -468,7 +467,10 @@ class MatQueryEngine:
             self.invalidate(dump_id)
             self._jobs.log(job, f"done: {cls}")
 
-        return self._jobs.submit(core.JobKind.SHAPES, dump_id, cls, fn)
+        # Analysis options are part of job identity: attaching a request to an
+        # active job with different semantics would reopen the wrong view.
+        detail = f"{cls} · {scope}, maps={'normalized' if normalize_maps else 'raw'}"
+        return self._jobs.submit(core.JobKind.SHAPES, dump_id, detail, fn)
 
     def _has_indexes(self, dump_id):
         raws, zsts = raws_zsts(self._store.dir_of(dump_id))

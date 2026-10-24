@@ -1,6 +1,7 @@
 package shapes.mat
 
 import org.eclipse.mat.collect.BitField
+import shapes.writeJson
 import org.eclipse.mat.collect.HashMapIntObject
 import org.eclipse.mat.parser.index.IndexManager
 import org.eclipse.mat.parser.internal.SnapshotImpl
@@ -18,7 +19,7 @@ import java.nio.file.Path
 import java.util.BitSet
 
 /**
- * Heap-dump extraction for the shapes experiment: pulls the reachable object
+ * Heap-dump extraction for structural shapes: pulls the selected object
  * graph (SHAPES.md scope R) for one class out of a MAT snapshot and writes it
  * as GRPH (see Graph.kt). Runs standalone against pre-built MAT indexes —
  * SnapshotFactory (the facade) resolves its implementation via the Eclipse
@@ -109,12 +110,19 @@ object MatExtract {
             for ((pattern, fields) in fieldRules) {
                 var n = 0
                 for (cl in s.getClassesByName(pattern, true) ?: emptyList()) {
-                    concealFields[cl.objectId] = fields; n++
+                    concealFields[cl.objectId] = concealFields[cl.objectId].orEmpty() + fields
+                    n++
                 }
                 println("conceal-field rule: $pattern + subclasses = $n classes, drop fields $fields")
                 if (n == 0) println("conceal-field: WARNING $pattern matches no class in the dump")
             }
-            fun droppedFieldsOf(id: Int): Set<String>? = concealFields[s.getClassOf(id).objectId]
+            val referencePolicy = ReferencePolicy(
+                indexedRefs = { id -> s.getOutboundReferentIds(id) },
+                rawNamedRefs = { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
+                isReference = { id -> s.getClassOf(id).objectId in refClassIds },
+                concealedFields = { id -> concealFields[s.getClassOf(id).objectId] },
+                filterReferences = filterReferences,
+            )
 
             // java.lang.Class instances MISSING from the class table: the 9
             // primitive class objects (int.class..void.class) have no
@@ -136,44 +144,27 @@ object MatExtract {
             // phase 1: BFS over outbound refs, visited bitmap over MAT id space
             val n = s.snapshotInfo.numberOfObjects
             val visited = BitSet(n)
-            val stack = IntStack()
-            val rIds = IntStack() // no boxing: at 100M objects boxed Ints alone OOM a 2g heap
+            // Reachable BFS uses one dense list as both visited order and queue.
+            // Retained scope is already selected by MAT and needs no id list at all.
+            val rIds = IntStack()
             var retainedCount = 0
             if (scope == "retained") {
                 val retained = s.getRetainedSet(roots.toIntArray(), VoidProgressListener())
                 retainedCount = retained.size
                 for (id in retained) if (!isExcludedClass(id)) visited.set(id)
-                var retainedId = visited.nextSetBit(0)
-                while (retainedId >= 0) {
-                    rIds.push(retainedId)
-                    retainedId = visited.nextSetBit(retainedId + 1)
-                }
                 println("retained: $retainedCount MAT objects, ${visited.cardinality()} non-class objects")
-            } else for (root in roots) if (!visited.get(root)) {
-                visited.set(root); stack.push(root)
+            } else for (root in roots) if (!visited.get(root) && !isExcludedClass(root)) {
+                visited.set(root); rIds.push(root)
             }
+            var head = 0
             var progressAt = 1_000_000
-            while (stack.sp > 0) {
-                val v = stack.pop()
-                rIds.push(v)
-                if (refClassIds.contains(s.getClassOf(v).objectId)) {
-                    for (ref in s.getObject(v).outboundReferences) {
-                        if (ref.name in droppedRefFields) continue
-                        val w = ref.objectId
-                        if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
-                            visited.set(w); stack.push(w)
-                        }
-                    }
-                } else {
-                    for (w in s.getOutboundReferentIds(v)) {
-                        // MAT's outbound index includes the pseudo-reference to the
-                        // object's java.lang.Class: following it pulls in statics and
-                        // (via the class loader) most of the heap. SHAPES.md's
-                        // "dependencies in code" view is instance fields/array
-                        // elements only, so class objects never enter R here.
-                        if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
-                            visited.set(w); stack.push(w)
-                        }
+            while (head < rIds.sp) {
+                val v = rIds.a[head++]
+                // MAT's outbound index includes the pseudo-reference to the
+                // object's java.lang.Class. Class objects/statics never enter R.
+                for (w in referencePolicy.refs(v)) {
+                    if (w >= 0 && !visited.get(w) && !isExcludedClass(w)) {
+                        visited.set(w); rIds.push(w)
                     }
                 }
                 if (rIds.sp >= progressAt) {
@@ -182,24 +173,11 @@ object MatExtract {
                     progressAt += 1_000_000
                 }
             }
-            // Scope is selected BEFORE projection. Raw counts remain available
-            // even though projected refs intentionally hide map implementation links.
-            var concealedFieldEdges = 0L
-            fun sourceRefs(id: Int): IntArray {
-                val dropped = droppedFieldsOf(id)
-                if (dropped != null) {
-                    val named = s.getObject(id).outboundReferences
-                    concealedFieldEdges += named.count { it.name in dropped }
-                    return named.filter { it.name !in dropped }.map { it.objectId }.toIntArray()
-                }
-                return if (refClassIds.contains(s.getClassOf(id).objectId))
-                    s.getObject(id).outboundReferences.filter { it.name !in droppedRefFields }
-                        .map { it.objectId }.toIntArray()
-                else s.getOutboundReferentIds(id)
-            }
+            // Scope is selected BEFORE map projection. Raw counts remain
+            // available even though projected refs hide implementation links.
+            fun sourceRefs(id: Int): IntArray = referencePolicy.refs(id)
             val projection = if (normalizeMaps) MapProjection(
-                { id -> s.getClassOf(id).name }, ::sourceRefs,
-                { id -> s.getObject(id).outboundReferences.map { it.name to it.objectId } },
+                { id -> s.getClassOf(id).name }, ::sourceRefs, referencePolicy::namedRefs,
             ) else null
             val structuralClass = if (projection == null) ({ id: Int -> s.getClassOf(id).name })
             else ({ id: Int -> projection.structuralClassName(s.getClassOf(id).name) })
@@ -208,23 +186,25 @@ object MatExtract {
             // to crosses a filtered edge is NOT retained by the queried class
             // (the GC would collect it — a soft/weak/phantom edge, or an edge
             // concealed as state by a level-3 field rule). Restrict the scope
-            // to objects reachable from the roots over the FINAL (projected,
-            // filtered) edges. MAT's retained set still contains those
+            // to objects reachable from the roots over the filtered SOURCE
+            // edges (before map projection). MAT's retained set still contains those
             // objects — it counts soft/weak edges as strong — so `visited`
             // must shrink here, and the totals diverge from MAT's retained
             // histogram ON PURPOSE (reported in the stats).
             var droppedSoftOnly = 0L
             var droppedSoftShallow = 0L
-            if ((filterReferences || concealFields.isNotEmpty()) && scope == "retained") {
+            if (scope == "retained") {
                 val strong = BitSet(n)
+                val strongStack = IntStack()
                 for (root in roots) if (visited.get(root)) {
-                    strong.set(root); stack.push(root)
+                    strong.set(root); strongStack.push(root)
                 }
-                while (stack.sp > 0) {
-                    val v = stack.pop()
-                    val refs = projection?.refs(v) ?: sourceRefs(v)
-                    for (w in refs) if (w >= 0 && visited.get(w) && !strong.get(w)) {
-                        strong.set(w); stack.push(w)
+                while (strongStack.sp > 0) {
+                    val v = strongStack.pop()
+                    // Restrict MAT's retained set over the filtered SOURCE graph.
+                    // Map projection changes shape semantics, never population.
+                    for (w in sourceRefs(v)) if (w >= 0 && visited.get(w) && !strong.get(w)) {
+                        strong.set(w); strongStack.push(w)
                     }
                 }
                 var o = visited.nextSetBit(0)
@@ -237,8 +217,8 @@ object MatExtract {
                 }
                 visited.clear()
                 visited.or(strong)
-                println("reference filter: $droppedSoftOnly objects ($droppedSoftShallow shallow bytes) " +
-                    "dropped — reachable only through soft/weak/phantom references")
+                println("scope filter: $droppedSoftOnly objects ($droppedSoftShallow shallow bytes) " +
+                    "dropped — unreachable over filtered source references")
             }
 
             val t1 = System.nanoTime()
@@ -278,6 +258,7 @@ object MatExtract {
             while (o >= 0) {
                 val cl = structuralClass(o)
                 val cidx = classIdxOf.getOrPut(cl) {
+                    check(classNames.size < 65535) { "class table exceeds 65535 entries" }
                     classNames.add(cl)
                     classNames.size - 1
                 }
@@ -301,6 +282,7 @@ object MatExtract {
                         val clsObj = s.getClassOf(w)
                         stubOfClass.getOrPut(clsObj.objectId) {
                             val cidx = classIdxOf.getOrPut(clsObj.name) {
+                                check(classNames.size < 65535) { "class table exceeds 65535 entries" }
                                 classNames.add(clsObj.name); classNames.size - 1
                             }
                             stubClassIdx.add(cidx)
@@ -323,6 +305,7 @@ object MatExtract {
             var projectedEdges = 0L
             var shallowTotal = 0L
             var projectedBoundaryEdges = 0L
+            var concealedFieldEdges = 0L
 
             // pass 2: emit GRPH (set-bit order; refs remapped O(1) via rank)
             Files.newOutputStream(out).use { raw ->
@@ -344,7 +327,9 @@ object MatExtract {
                     val shallow = s.getHeapSize(o)
                     shallowTotal += shallow
                     d.writeLong(shallow)
-                    val original = sourceRefs(o)
+                    val read = referencePolicy.read(o)
+                    val original = read.refs
+                    concealedFieldEdges += read.concealedFieldEdges
                     for (w in original) if (w >= 0 && !isExcludedClass(w)) {
                         if (visited.get(w)) sourceEdges++ else {
                             check(scope == "retained") { "ref $w of $o escaped the reachable set" }
@@ -374,10 +359,27 @@ object MatExtract {
             println("written: $out (${Files.size(out) / 1_000_000} MB), pass 2 in ${(t3 - t2) / 1_000_000} ms")
             println("edges: source=$sourceEdges projected=$projectedEdges outside-scope=$boundaryEdges")
             statsOut?.let { path ->
-                val fieldRulesJson = if (fieldRules.isEmpty()) "[]" else
-                    fieldRules.entries.joinToString(",", "[", "]") { (c, f) ->
-                        "{\"class\":\"$c\",\"fields\":[${f.joinToString(",") { "\"$it\"" }}]}" }
-                Files.writeString(path, """{"scope":"$scope","mapProjection":"${if (normalizeMaps) "unordered-entries-v1" else "raw"}","objects":$nR,"roots":${roots.size},"shallowTotal":$shallowTotal,"sourceEdges":$sourceEdges,"scopeBoundaryEdges":$boundaryEdges,"projectedEdges":$projectedEdges,"projectedBoundaryEdges":$projectedBoundaryEdges,"matRetainedObjects":$retainedCount,"referenceFiltered":$filterReferences,"softReachableOnlyDropped":$droppedSoftOnly,"softReachableOnlyDroppedShallow":$droppedSoftShallow,"concealedFieldEdges":$concealedFieldEdges,"fieldRules":$fieldRulesJson}""")
+                writeJson(path, ExtractionStats(
+                    scope = scope,
+                    mapProjection = if (normalizeMaps) "unordered-entries-v1" else "raw",
+                    objects = nR,
+                    roots = roots.size,
+                    shallowTotal = shallowTotal,
+                    sourceEdges = sourceEdges,
+                    scopeBoundaryEdges = boundaryEdges,
+                    projectedEdges = projectedEdges,
+                    projectedBoundaryEdges = projectedBoundaryEdges,
+                    matRetainedObjects = retainedCount,
+                    referenceFiltered = filterReferences,
+                    softReachableOnlyDropped = droppedSoftOnly,
+                    softReachableOnlyDroppedShallow = droppedSoftShallow,
+                    scopeFilteredOutObjects = droppedSoftOnly,
+                    scopeFilteredOutShallow = droppedSoftShallow,
+                    concealedFieldEdges = concealedFieldEdges,
+                    fieldRules = fieldRules.entries.sortedBy { it.key }.map { (name, fields) ->
+                        ExtractionFieldRule(name, fields.sorted())
+                    },
+                ))
             }
         } finally {
             s.dispose()
@@ -718,8 +720,6 @@ object MatExtract {
             s.dispose()
         }
     }
-
-    // ids.size used below as rIds.sp equivalent
 
     private const val GRPH_MAGIC = 0x47525048 // "GRPH"
 

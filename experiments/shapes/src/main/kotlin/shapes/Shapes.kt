@@ -141,6 +141,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
     fun relaxLevels(): IntArray = levelOfClass
 
     fun analyze(roots: IntArray, wholeGraph: Boolean = false): ShapeTable {
+        relaxStats.reset()
         var t = System.nanoTime()
         val (inR, rList, rCount) = scopeForAnalyze(roots, wholeGraph)
         progress("reach: $rCount objects in ${(System.nanoTime() - t) / 1_000_000} ms")
@@ -184,6 +185,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
     )
 
     fun analyzeDebug(roots: IntArray, wholeGraph: Boolean = false): DebugResult {
+        relaxStats.reset()
         val (inR, rList, rCount) = scopeForAnalyze(roots, wholeGraph)
         val (compEnc, comps) = scc(inR, rList, rCount)
         val (shapes, shapeOfComp) = cons(compEnc, comps)

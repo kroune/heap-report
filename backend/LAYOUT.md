@@ -13,7 +13,7 @@ dumps/<id>/
   data/
     meta.json             # store-owned state (see below)
     analysis.db           # SQLite: every extract, ingested at landing (see below)
-    shapes/<cls>-<sha>.shp1  # EXPERIMENTAL exact structural collapse (SHAPES.md),
+    shapes/<cls>-<sha>.shp1  # exact structural collapse (SHAPES.md),
                           #   written atomically by the SHAPES job; deterministic
                           #   name from the class (no index file); optional SMD1
                           #   JSON trailer carries scope/projection and exact

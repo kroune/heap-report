@@ -6,7 +6,7 @@ import kotlin.io.path.readLines
 import kotlin.io.path.writeText
 
 /**
- * In-memory stand-in for the MAT object graph (SHAPES.md "Definitions"):
+ * Compact object graph used by the analyzer (SHAPES.md "Definitions"):
  * objects + outbound references. Object ids are dense, 0-based.
  *
  * CSR storage (flat refs + offsets, class table + per-object index): at

@@ -32,13 +32,22 @@ web/viz/flow/prepare.js flow data step (fetch, scale/extrapolation, viewModel)  
 web/viz/flow/controls.js flow toolbar, pins editor, help overlay, pin storage       (viz-graph)
 web/viz/flow/detail.js  flow side panel (click detail) HTML builders                (viz-graph)
 web/viz/flow/render.js  flow canvas/edges/nodes + interaction wiring                (viz-graph)
+web/viz/shapes/index.js shapes viz module contract (kind/prepare/render)           (viz-shapes)
+web/viz/shapes/layout.js pure iterative full-graph DAG layout                      (viz-shapes)
+web/viz/shapes/prepare.js shapes fetch + pure payload/viewModel mapping            (viz-shapes)
+web/viz/shapes/controls.js shapes metric + exact-analysis controls                 (viz-shapes)
+web/viz/shapes/details.js shapes summary/detail HTML + lazy reference lists        (viz-shapes)
+web/viz/shapes/scene.js  pure spatial/adjacency indexes + view transforms          (viz-shapes)
+web/viz/shapes/canvas.js full-graph Canvas/bitmap LOD + interaction lifecycle      (viz-shapes)
+web/viz/shapes/render.js shapes renderer composition + cleanup                     (viz-shapes)
 ```
 
 ## Module style (HARD rules — the snapshot bundler depends on them)
 
 1. Only **named imports** (`import {a, b}`) or **namespace imports**
    (`import * as x`) from relative sibling paths (`./x.js`,
-   `../data/http.js`). No default exports, no re-exports, no dynamic imports,
+   `../data/http.js`), each import on one line (the snapshot rewriter is
+   line-based). No default exports, no re-exports, no dynamic imports,
    no named-import aliases (`{a as b}`). Namespace imports exist for the
    multi-`mount`/`prepare` wiring (boot, tabs) — prefer named imports
    otherwise.
@@ -158,11 +167,16 @@ Queued/running cards also get a cancel button (`cancelJob(id)` →
 
 ```js
 // each viz module:
-export const kind = 'anatomy' | 'hierarchy' | 'graph' | 'flow'
+export const kind = 'anatomy' | 'hierarchy' | 'graph' | 'flow' | 'shapes'
 export async function prepare(repo, dumpId, className) -> viewModel
 //   ^ pure data step: fetches via the passed dumpdatarepo, computes everything
-export function render(container, viewModel, ctx) -> void
+export function render(container, viewModel, ctx) -> void | cleanupFn
 //   ^ dumb: no fetch, no data-repo imports, no mutation of shared state.
+//     Optional cleanupFn releases listeners, rAF/timers/observers and large
+//     renderer-owned references. viz/common calls it before every refetch or
+//     kind switch and on close; close also invalidates pending prepares.
+//     Existing void renderers remain valid. Render exceptions become the
+//     popup's rendered error state.
 //     ctx = {esc, fmtB, fmtN, catColor, catOf, shortClass, onOpenViz, refetch,
 //            analyze} (shared helpers from viz/common; analyze is null in
 //            INLINE mode, otherwise analyze(onStatus, samples?) queues

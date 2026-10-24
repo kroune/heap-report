@@ -41,7 +41,7 @@ export const compare = (aId, bId) =>
   cached(aId, `compare|${bId}`, () =>
     api(`/api/compare?a=${encodeURIComponent(aId)}&b=${encodeURIComponent(bId)}`));
 
-/* exact structural-collapse payload (experimental); same 404 contract as composition */
+/* exact structural-collapse payload; same 404 contract as composition */
 export const shapes = (id, className) =>
   cached(id, `shapes|${className}`, () =>
     api(`${dq(id)}/shapes?class=${encodeURIComponent(className)}`));

@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.4.10"
+    kotlin("plugin.serialization") version "2.4.10"
     application
 }
 
@@ -10,6 +11,7 @@ repositories {
 val matPlugins = rootDir.toPath().parent.parent.resolve(".tools/mat/plugins").toFile()
 
 dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
     // MAT library, for the heap-dump extractor only: compile against the MAT
     // jars, run with the whole plugins dir on the classpath (equinox deps of MAT).
@@ -29,7 +31,7 @@ tasks.test {
 
 application {
     mainClass.set("shapes.MainKt")
-    // experiment budget: both the MAT extractor and the analyzer run capped
+    // Direct CLI runs stay bounded; the backend sizes each analysis explicitly.
     applicationDefaultJvmArgs = listOf("-Xmx2g")
 }
 

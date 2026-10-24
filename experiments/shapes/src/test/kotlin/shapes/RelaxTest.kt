@@ -71,6 +71,20 @@ class RelaxTest {
     }
 
     @Test
+    fun `analyzer reuse resets relaxation accounting`() {
+        val b = ObjectGraph.Builder()
+        val state = b.add("State", 10)
+        val relaxed = b.add("Relaxed", 20, intArrayOf(state))
+        val root = b.add("Root", 30, intArrayOf(relaxed))
+        val analyzer = ShapesAnalyzer(b.build(), mapOf("Relaxed" to Relax.CLASS_ONLY))
+        repeat(2) {
+            analyzer.analyze(intArrayOf(root))
+            assertEquals(1, analyzer.relaxStats.relaxedObjects)
+            assertEquals(1, analyzer.relaxStats.classOnlyHiddenEdges)
+        }
+    }
+
+    @Test
     fun `class-only does NOT merge different classes`() {
         val b = ObjectGraph.Builder()
         val a1 = b.add("RelaxedA", 20, intArrayOf(b.add("State", 10)))
