@@ -35,6 +35,7 @@ web/viz/flow/render.js  flow canvas/edges/nodes + interaction wiring            
 web/viz/shapes/index.js shapes viz module contract (kind/prepare/render)           (viz-shapes)
 web/viz/shapes/layout.js pure iterative full-graph DAG layout                      (viz-shapes)
 web/viz/shapes/prepare.js shapes fetch + pure payload/viewModel mapping            (viz-shapes)
+web/viz/shapes/scc-layout.js pure nested SCC member/connection layout             (viz-shapes)
 web/viz/shapes/controls.js shapes metric + exact-analysis controls                 (viz-shapes)
 web/viz/shapes/details.js shapes summary/detail HTML + lazy reference lists        (viz-shapes)
 web/viz/shapes/scene.js  pure spatial/adjacency indexes + view transforms          (viz-shapes)
@@ -105,6 +106,8 @@ anatomy(id, className, {samples=null})   -> Result<payload|same 404>
 compare(aId, bId)                          -> Result<payload>
 analyze(id, className, {samples=8, anatomy=true}) -> Result<Job>
 shapes(id, className)                      -> Result<{shapes,edges,rootsHistogram,reachableCount,analysis}>; same 404
+// SCC1 also gives SCC shapes members:[{label,internal:[[target,mult]]}] and
+// membersComplete. Complete additionally requires members.length===sccSize; legacy SHP1 omits both.
 shapesAnalyze(id, className, {scope='retained', normalizeMaps=true}) -> Result<Job>
 // analysis=null on legacy artifacts; otherwise includes scope, mapProjection,
 // objects, roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges,

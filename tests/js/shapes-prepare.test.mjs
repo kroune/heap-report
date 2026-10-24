@@ -81,4 +81,24 @@ test("view-model mapping preserves SCC full labels and compact canvas labels", (
   assert.equal(vm.nodes[0].label, "scc[org.example.A,org.example.B]");
   assert.equal(vm.nodes[0].short, "scc[A +1]");
   assert.equal(vm.nodes[0].plain, false);
+  assert.equal(vm.nodes[0].sccComplete, false, "legacy SCCs have no member graph");
+});
+
+test("SCC member graphs retain labels, colors and exact internal connections", () => {
+  const data = payload();
+  data.shapes[0] = { ...data.shapes[0], kind: "scc",
+    label: "scc[org.example.A,org.example.B]", sccSize: 2, internalEdges: 3,
+    membersComplete: true,
+    members: [
+      { label: "org.example.A", internal: [[1, 2]] },
+      { label: "org.example.B", internal: [[0, 1]] },
+    ] };
+  const before = structuredClone(data);
+  const vm = shapesViewModel(data, "d", "C");
+  assert.deepEqual(data, before);
+  assert.equal(vm.nodes[0].sccComplete, true);
+  assert.deepEqual(vm.nodes[0].members.map(m => m.short), ["A", "B"]);
+  assert.deepEqual(vm.nodes[0].members[0].internal, [[1, 2]]);
+  assert.equal(vm.layout.nodes[0].scc.edges.length, 2);
+  assert.equal(vm.layout.nodes[0].scc.edges[0].mult, 2);
 });

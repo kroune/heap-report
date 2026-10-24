@@ -62,6 +62,22 @@ test("parallel edges retain exact totals for both multiplicity modes", () => {
   assert.equal(result.emax, 210);
 });
 
+test("complete SCCs become structured containers while legacy SCCs stay circular", () => {
+  const complete = node(0, { kind: "scc", sccSize: 2, sccComplete: true,
+    members: [
+      { label: "A", short: "A", cat: "other", internal: [[1, 1]] },
+      { label: "B", short: "B", cat: "other", internal: [[0, 1]] },
+    ] });
+  const legacy = node(1, { kind: "scc", sccSize: 2, sccComplete: false });
+  const result = computeShapesLayout([complete, legacy], [[0, 1, 1]], "shallow");
+  assert.equal(result.nodes[0].scc.edges.length, 2);
+  assert.ok(result.nodes[0].hw > 0 && result.nodes[0].hh > 0);
+  assert.equal(result.nodes[0].rad, Math.hypot(result.nodes[0].hw, result.nodes[0].hh));
+  assert.equal(result.nodes[1].scc, undefined);
+  assert.equal(result.nodes[1].hw, result.nodes[1].rad);
+  assert.equal(result.nodes[1].hh, result.nodes[1].rad);
+});
+
 test("zero-valued metrics still produce finite radii and coordinates", () => {
   const result = computeShapesLayout([
     node(0, { roots: 0 }), node(1, { roots: 0 }),

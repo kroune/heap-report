@@ -20,6 +20,10 @@ export function shapesViewModel(p, dumpId, className, params = {}) {
 
   const nodes = p.shapes.map(s => {
     const plain = s.kind === "leaf" || s.kind === "node";   // label is a real class name
+    const members = Array.isArray(s.members) ? s.members.map(m => ({
+      label: m.label, short: shortClass(m.label), cat: catOf(m.label),
+      internal: m.internal || [],
+    })) : null;
     // SCC labels are the full member list; the full list stays in the detail.
     let short = plain ? shortClass(s.label) : s.label;
     if (!plain) {
@@ -36,6 +40,8 @@ export function shapesViewModel(p, dumpId, className, params = {}) {
       st: s.shallowTotal, smin: s.shallowMin, smax: s.shallowMax,
       roots: s.roots,
       sccSize: s.sccSize,
+      members,
+      sccComplete: s.membersComplete === true && !!members && members.length === s.sccSize,
       internalEdges: s.internalEdges,
       edgesPerMember: s.edgesPerMember,
       cat: catOf(s.label),

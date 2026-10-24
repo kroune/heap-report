@@ -24,13 +24,16 @@ enum class ShapeKind { LEAF, NODE, SCC, SCC_UNIQUE }
 /** One edge in a shape key / shape-DAG. Multiplicity = refs held by ONE member. */
 data class Edge(val child: Shape, val mult: Int)
 
-/** Canonical SCC member (SHAPES.md "SCC node"): neighbor identity by color rank. */
+/** One unique member-to-member connection; parallel refs are folded into [mult]. */
+data class SccInternalEdge(val target: Int, val mult: Int)
+
+/** Canonical SCC member, including the exact graph needed by the shapes UI. */
 data class SccMember(
     val className: String,
     /** refs into the same SCC, per member (with multiplicity). */
     val internalCount: Int,
-    /** sorted color ranks of internal neighbors — the isomorphism certificate. */
-    val internalRanks: List<Int>,
+    /** targets are indices in the canonical member list, sorted by target. */
+    val internal: List<SccInternalEdge>,
     /** external edges of this member (identical for all members of a merged SCC). */
     val external: List<Edge>,
 )
@@ -85,6 +88,11 @@ private data class SccLk(val members: List<MemLk>)
 
 // ---- public result ----
 
+data class SccMemberEntry(
+    val className: String,
+    val internal: List<SccInternalEdge>,
+)
+
 class ShapeEntry(
     val id: Int,
     val digest: Digest128,
@@ -102,6 +110,10 @@ class ShapeEntry(
     val internalEdgesPerInstance: Int,
     /** false only for SCC_UNIQUE: its edges are totals, not per-member. */
     val edgesPerMember: Boolean,
+    /** canonical SCC graph; null for LEAF/NODE, truncated for a mega SCC_UNIQUE. */
+    val members: List<SccMemberEntry>?,
+    /** explicit even when a small merge cap leaves memberCount == sccSize. */
+    val membersComplete: Boolean,
 )
 
 data class EdgeEntry(val shapeId: Int, val childShapeId: Int, val mult: Long)
@@ -710,38 +722,49 @@ class ShapesAnalyzer @JvmOverloads constructor(
         // it is exact in practice; totals/counts stay exact regardless
         // (same-color members carry identical edges).
         val order = (0 until n).sortedWith { a, b -> colorCmp(colors[a], colors[b]) }
-        val canonical = order.map { i ->
+        val pre = order.map { i ->
             MemLk(
                 g.className(members[off + i]),
                 intNeigh[i].map { ranks[it] }.let { if (anySet) it.distinct() else it }.sorted(),
                 extKids[i],
             )
-        }.let { pre ->
-            if (!anySet) pre else {
-                // set semantics: the SCC is its WL-color quotient graph.
-                // Account the concealed edges per SCC INSTANCE (consScc runs
-                // per instance; only the Shape is cached): a kept color's
-                // internal ranks were distincted, a dropped duplicate's
-                // internal + (multiplicity-normalized) external edges vanish.
-                val seen = HashSet<MemLk>()
-                val out = ArrayList<MemLk>(pre.size)
-                for (idx in pre.indices) {
-                    val m = pre[idx]
-                    if (seen.add(m)) {
-                        out += m
-                        relaxStats.setChildrenHiddenEdges +=
-                            intNeigh[order[idx]].size - m.internalRanks.size
-                    } else {
-                        relaxStats.setChildrenHiddenEdges +=
-                            intNeigh[order[idx]].size + m.ext.size
-                    }
+        }
+        // Keep target identity alongside the WL certificate. The canonical
+        // member order (and, for set-children, its quotient) is what the UI
+        // renders; color ranks alone cannot distinguish symmetric members.
+        val keptByPre = IntArray(pre.size) { it }
+        var memberPre = IntArray(pre.size) { it }
+        val canonical = if (!anySet) pre else {
+            // set semantics: the SCC is its WL-color quotient graph.
+            // Account the concealed edges per SCC INSTANCE (consScc runs
+            // per instance; only the Shape is cached): a kept color's
+            // internal ranks were distincted, a dropped duplicate's
+            // internal + (multiplicity-normalized) external edges vanish.
+            val seen = HashMap<MemLk, Int>()
+            val out = ArrayList<MemLk>(pre.size)
+            val sources = ArrayList<Int>(pre.size)
+            for (idx in pre.indices) {
+                val m = pre[idx]
+                val kept = seen[m]
+                if (kept == null) {
+                    seen[m] = out.size
+                    keptByPre[idx] = out.size
+                    sources += idx
+                    out += m
+                    relaxStats.setChildrenHiddenEdges +=
+                        intNeigh[order[idx]].size - m.internalRanks.size
+                } else {
+                    keptByPre[idx] = kept
+                    relaxStats.setChildrenHiddenEdges +=
+                        intNeigh[order[idx]].size + m.ext.size
                 }
-                // the dropped members are real objects concealed from the
-                // artifact's count (quotient-size per instance instead of
-                // the true member count) — account them like concealed edges
-                relaxStats.setChildrenConcealedObjects += (pre.size - out.size).toLong()
-                out
             }
+            // the dropped members are real objects concealed from the
+            // artifact's count (quotient-size per instance instead of
+            // the true member count) — account them like concealed edges
+            relaxStats.setChildrenConcealedObjects += (pre.size - out.size).toLong()
+            memberPre = sources.toIntArray()
+            out
         }
         val lk = SccLk(canonical)
         // "per member" edge semantics is exact only when every canonical
@@ -761,8 +784,24 @@ class ShapesAnalyzer @JvmOverloads constructor(
         // "× collapsedInstances", exactly like SCC_UNIQUE (which has one).
         val uniformExt = canonical.all { it.ext == canonical[0].ext }
         return consMap.getOrPut(lk) {
-            val memPayload = canonical.map { m ->
-                SccMember(m.cls, m.internalRanks.size, m.internalRanks,
+            val originalToPre = IntArray(n)
+            for (p in order.indices) originalToPre[order[p]] = p
+            val memPayload = canonical.mapIndexed { mi, m ->
+                val source = order[memberPre[mi]]
+                val targets = intNeigh[source].map { keptByPre[originalToPre[it]] }.sorted()
+                val internal = ArrayList<SccInternalEdge>(targets.size)
+                var previous = -1
+                var mult = 0
+                for (target in targets) {
+                    if (target == previous) mult++
+                    else {
+                        if (previous >= 0) internal += SccInternalEdge(previous, if (anySet) 1 else mult)
+                        previous = target
+                        mult = 1
+                    }
+                }
+                if (previous >= 0) internal += SccInternalEdge(previous, if (anySet) 1 else mult)
+                SccMember(m.cls, m.internalRanks.size, internal,
                     m.ext.map { Edge(shapes[it.childId], it.mult) })
             }
             val totals: List<Edge> = if (uniformExt) emptyList() else {
@@ -861,6 +900,8 @@ class ShapesAnalyzer @JvmOverloads constructor(
                 internalEdgesPerInstance = if (s.membersTotal > 0) s.internalEdgesTotal
                     else (s.members?.sumOf { it.internalCount } ?: 0),
                 edgesPerMember = s.kind != ShapeKind.SCC_UNIQUE && s.packedKids.isNotEmpty(),
+                members = s.members?.map { SccMemberEntry(it.className, it.internal) },
+                membersComplete = s.members != null && s.membersTotal == 0,
             )
         }
         val edges = ArrayList<EdgeEntry>()

@@ -161,6 +161,12 @@ class RelaxTest {
         assertEquals(3, sccs[0].sccInstanceSize) // quotient: x-color, y-color, z-color
         assertEquals(2, sccs[0].instanceCount / sccs[0].sccInstanceSize,
             "collapsed instances = both SCC instances")
+        val members = sccs[0].members!!
+        assertEquals(3, members.size)
+        assertEquals(4, members.sumOf { m -> m.internal.sumOf { it.mult } },
+            "quotient adjacency is the visible x↔y↔z graph")
+        assertEquals(sccs[0].internalEdgesPerInstance,
+            members.sumOf { m -> m.internal.sumOf { it.mult } })
         assertTrue(z.relaxStats.setChildrenHiddenEdges > 0,
             "the quotient's concealed edges are accounted")
     }
@@ -196,6 +202,7 @@ class RelaxTest {
         assertEquals(1, sccs.size, "with A relaxed, the cycles merge")
         assertEquals(4, sccs[0].instanceCount)
         assertEquals(2, sccs[0].internalEdgesPerInstance, "internal wiring is preserved")
+        assertEquals(2, sccs[0].members!!.sumOf { m -> m.internal.sumOf { it.mult } })
         assertEquals(2, z.relaxStats.classOnlyHiddenEdges, "one external ref concealed per A")
         assertEquals(2, z.relaxStats.relaxedObjects)
     }

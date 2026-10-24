@@ -12,10 +12,11 @@ export function defaultSide(vm, ctx, outAdj) {
     `<div class="gdim">${vm.shapeCount} shapes over ${ctx.esc(ctx.fmtN(vm.reachable))} ` +
     `scope objects · ${ctx.esc(ctx.fmtB(total))} shallow · ${vm.layout.layerCount} layers.</div>` +
     `<div class="fnote">Exact: every instance of <b>${ctx.esc(vm.className)}</b> collapsed by ` +
-    `structure — no sampling. Node size = ${vm.metric === "count" ? "collapsed object count" :
-    vm.metric === "roots" ? "root count" : "shallow total"}; edge width = reference count ` +
-    `(projected references when maps are normalized). Click a shape for details, double-click a plain class to open its flow. ` +
-    `Sub-pixel detail is shown as dots until you zoom in — nothing is removed.</div>` +
+    `structure — no sampling. Plain node size = ${vm.metric === "count" ? "collapsed object count" :
+    vm.metric === "roots" ? "root count" : "shallow total"}; SCC boxes fit their member graph; ` +
+    `edge width = reference count (projected references when maps are normalized). ` +
+    `Zoom into an SCC to see every stored member and internal connection. Click a shape for details, ` +
+    `double-click a plain class to open its flow. Sub-pixel detail is shown as dots until you zoom in — nothing is removed.</div>` +
     (analysis ? `<div class="gdim">Source refs in scope: ${ctx.esc(ctx.fmtN(analysis.sourceEdges))}; ` +
       `projected refs: ${ctx.esc(ctx.fmtN(analysis.projectedEdges))}; ` +
       `refs outside scope: ${ctx.esc(ctx.fmtN(analysis.scopeBoundaryEdges))}.</div>` : "") +
@@ -57,6 +58,13 @@ export function nodeDetailHead(u, vm, ctx) {
                scc: "merged SCC — collapsed cycle",
                "scc-unique": "unique SCC — too exotic to merge" }[nd.kind] || nd.kind;
   const mrow = (k, v) => `<div class="gmrow"><span>${k}</span><span class="v">${v}</span></div>`;
+  const sccNote = nd.kind !== "scc" && nd.kind !== "scc-unique" ? "" :
+    nd.sccComplete ? `<div class="gdim gmeta">${nd.members.length} canonical members and ` +
+      `${nd.internalEdges} internal references are rendered inside the SCC box.</div>` :
+    nd.members ? `<div class="gdim gmeta">This oversized SCC has an incomplete member graph ` +
+      `(${nd.members.length} of ${nd.sccSize} member labels stored), so it cannot be rendered safely.</div>` :
+    `<div class="gdim gmeta">This legacy artifact has no SCC member graph. Re-analyze to render ` +
+      `members and internal connections.</div>`;
   return `<h5 title="${ctx.esc(nd.label)}">${ctx.esc(nd.short)} <span class="gdim">#${u}</span></h5>` +
     `<div class="gfull">${ctx.esc(nd.label)}</div>` +
     `<div class="gdim gmeta">${ctx.esc(kb)}</div>` +
@@ -66,6 +74,7 @@ export function nodeDetailHead(u, vm, ctx) {
     mrow("shallow min … max", `${ctx.esc(ctx.fmtB(nd.smin))} … ${ctx.esc(ctx.fmtB(nd.smax))}`) +
     (nd.roots ? mrow("roots", `${ctx.esc(ctx.fmtN(nd.roots))} of the queried class`) : "") +
     (nd.internalEdges ? mrow("internal edges", `${nd.internalEdges} per instance (inside the cycle)`) : "") +
+    sccNote +
     (nd.plain ? `<div class="gopenrow"><button class="gopen">open flow ▸</button></div>` : "");
 }
 

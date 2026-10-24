@@ -22,6 +22,10 @@ const C_ROOT_STROKE = "#e8edf5";
 const C_SEL = "#e8edf5";
 const C_LABEL = "#9aa4b2";
 const C_LABEL_BG = "#0a0d12";
+const C_INTERNAL = "rgba(154,164,178,0.72)";
+const C_SCC_FILL = "#101721";
+const C_MEMBER_FILL = "#131a24";
+const C_MEMBER_TEXT = "#e8edf5";
 
 export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
   let layout = vm.layout;
@@ -142,8 +146,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       let p = bpaths.get(b);
       if (!p) bpaths.set(b, p = new Path2D());
       const a = N[E[i].s], t = N[E[i].t];
-      const ax = (a.x - x0) * ps, ay = (a.y + a.rad + 2 - y0) * ps;
-      const tx = (t.x - x0) * ps, ty = (t.y - t.rad - 4 - y0) * ps;
+      const ax = (a.x - x0) * ps, ay = (a.y + a.hh + 2 - y0) * ps;
+      const tx = (t.x - x0) * ps, ty = (t.y - t.hh - 4 - y0) * ps;
       p.moveTo(ax, ay);
       if (Math.abs(ty - ay) < 24) p.lineTo(tx, ty);
       else { const my = (ay + ty) / 2; p.bezierCurveTo(ax, my, tx, my, tx, ty); }
@@ -166,8 +170,9 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
 
     const dot = u => {
       const nd = N[u];
-      const d = Math.max(1, nd.rad * 2 * ps);
-      bg.fillRect((nd.x - x0) * ps - d / 2, (nd.y - y0) * ps - d / 2, d, d);
+      const w = Math.max(1, (nd.scc ? nd.hw : nd.rad) * 2 * ps);
+      const h = Math.max(1, (nd.scc ? nd.hh : nd.rad) * 2 * ps);
+      bg.fillRect((nd.x - x0) * ps - w / 2, (nd.y - y0) * ps - h / 2, w, h);
     };
     if (full) {
       for (const [color, ids] of scene.colorBuckets) {
@@ -253,7 +258,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       const key = (out ? 0 : 1) * EDGE_BUCKETS + edgeWidthBucket(scene.ew[ei]);
       let p = paths.get(key);
       if (!p) paths.set(key, p = new Path2D());
-      const y1 = a.y + a.rad + 2, y2 = t.y - t.rad - 4;
+      const y1 = a.y + a.hh + 2, y2 = t.y - t.hh - 4;
       p.moveTo(a.x, y1);
       if (y2 - y1 < 2000) p.lineTo(t.x, y2);
       else { const my = (y1 + y2) / 2; p.bezierCurveTo(a.x, my, t.x, my, t.x, y2); }
@@ -262,6 +267,85 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     for (const ei of adjSlice(scene.outAdj, u)) add(ei, true);
     for (const ei of adjSlice(scene.inAdj, u)) add(ei, false);
     return { paths, list, degree: list.length };
+  }
+
+  /* Paint one complete SCC in local coordinates. Internal geometry is never
+     capped: LOD only decides when the boxes/edges are large enough to see. */
+  function drawSccNode(u) {
+    const nd = N[u], sc = nd.scc;
+    g.save();
+    g.translate(nd.x, nd.y);
+    g.beginPath();
+    g.rect(-nd.hw, -nd.hh, nd.hw * 2, nd.hh * 2);
+    g.fillStyle = C_SCC_FILL;
+    g.fill();
+    g.strokeStyle = nd.roots ? C_ROOT_STROKE : scene.fills[u];
+    g.lineWidth = (nd.roots ? 1.6 : 1.1) / zm.k;
+    g.setLineDash([4 / zm.k, 3 / zm.k]);
+    g.stroke();
+    g.setLineDash([]);
+
+    let header = false;
+    if (11 * zm.k >= 7) {
+      header = true;
+      g.font = "11px sans-serif";
+      g.textAlign = "left";
+      g.textBaseline = "middle";
+      g.fillStyle = C_MEMBER_TEXT;
+      g.fillText(nd.short, -nd.hw + 8, -nd.hh + sc.headerHeight / 2, sc.width - 16);
+    }
+
+    const showGraph = nd.hh * 2 * zm.k >= 40 && sc.members[0].h * zm.k >= 3;
+    if (showGraph) {
+      g.save();
+      g.beginPath();
+      g.rect(-nd.hw + 1, -nd.hh + 1, sc.width - 2, sc.height - 2);
+      g.clip();
+      g.strokeStyle = C_INTERNAL;
+      g.fillStyle = C_INTERNAL;
+      g.lineWidth = 0.8 / zm.k;
+      const arrowSize = Math.max(2.5, Math.min(6, 3 / zm.k));
+      for (const e of sc.edges) {
+        g.beginPath();
+        g.moveTo(e.x1, e.y1);
+        g.bezierCurveTo(e.c1x, e.c1y, e.c2x, e.c2y, e.x2, e.y2);
+        g.stroke();
+        const angle = Math.atan2(e.y2 - e.c2y, e.x2 - e.c2x);
+        g.beginPath();
+        g.moveTo(e.x2, e.y2);
+        g.lineTo(e.x2 - arrowSize * Math.cos(angle - Math.PI / 6),
+          e.y2 - arrowSize * Math.sin(angle - Math.PI / 6));
+        g.lineTo(e.x2 - arrowSize * Math.cos(angle + Math.PI / 6),
+          e.y2 - arrowSize * Math.sin(angle + Math.PI / 6));
+        g.closePath();
+        g.fill();
+      }
+      g.lineWidth = 0.8 / zm.k;
+      for (const m of sc.members) {
+        g.fillStyle = C_MEMBER_FILL;
+        g.strokeStyle = ctx.catColor(m.cat);
+        g.beginPath();
+        g.rect(m.x - m.w / 2, m.y - m.h / 2, m.w, m.h);
+        g.fill();
+        g.stroke();
+      }
+      if (9 * zm.k >= 7) {
+        g.font = "9px sans-serif";
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.fillStyle = C_MEMBER_TEXT;
+        for (const m of sc.members) g.fillText(m.short, m.x, m.y + 0.5, m.w - 6);
+        g.lineWidth = 2.5;
+        g.strokeStyle = C_LABEL_BG;
+        for (const e of sc.edges) if (e.mult > 1) {
+          g.strokeText(`×${e.mult}`, e.mx, e.my);
+          g.fillText(`×${e.mult}`, e.mx, e.my);
+        }
+      }
+      g.restore();
+    }
+    g.restore();
+    return header;
   }
 
   function draw() {
@@ -297,6 +381,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     const labeled = [];
     const drawNode = u => {
       const nd = N[u];
+      if (nd.scc) return;   // bbox-indexed containers are painted below
       const rpx = nd.rad * zm.k;
       if (rpx < TINY_R) {
         g.fillStyle = scene.fills[u];
@@ -355,6 +440,23 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       }
     }
 
+    // SCC boxes can cover cells that do not contain their center; their
+    // separate bbox index both finds and de-duplicates them for this frame.
+    if (range) {
+      const stamp = scene.nextNodeStamp();
+      for (let cx = range.cx0; cx <= range.cx1; cx++) {
+        for (let cy = range.cy0; cy <= range.cy1; cy++) {
+          const cell = scene.grid.index(cx, cy);
+          for (let p = scene.boxOff[cell]; p < scene.boxOff[cell + 1]; p++) {
+            const u = scene.boxIds[p];
+            if (scene.nStamp[u] === stamp) continue;
+            scene.nStamp[u] = stamp;
+            if (!drawSccNode(u) && N[u].rad * zm.k >= LABEL_R) labeled.push(u);
+          }
+        }
+      }
+    }
+
     if (labeled.length) {
       g.font = `${11 / zm.k}px sans-serif`;
       g.textAlign = "center";
@@ -364,8 +466,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       if (halo) { g.lineWidth = 3 / zm.k; g.strokeStyle = C_LABEL_BG; }
       for (const u of labeled) {
         const nd = N[u];
-        if (halo) g.strokeText(nd.short, nd.x, nd.y + nd.rad + 2 / zm.k);
-        g.fillText(nd.short, nd.x, nd.y + nd.rad + 2 / zm.k);
+        if (halo) g.strokeText(nd.short, nd.x, nd.y + nd.hh + 2 / zm.k);
+        g.fillText(nd.short, nd.x, nd.y + nd.hh + 2 / zm.k);
       }
     }
     dbg.labels = labeled.length;
@@ -385,7 +487,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
         for (const [ei, out] of selPaths.list) {
           if (scene.ew[ei] * zm.k < 3) continue;
           const e = E[ei], t = N[e.t];
-          const y2 = t.y - t.rad - 4;
+          const y2 = t.y - t.hh - 4;
           const s = 2.2 * scene.ew[ei], dir = y2 >= N[e.s].y ? 1 : -1;
           g.beginPath();
           g.moveTo(t.x - s * 0.45, y2 - dir * s);
@@ -403,7 +505,9 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       g.lineWidth = 1.4 / zm.k;
       g.setLineDash([3 / zm.k, 3 / zm.k]);
       g.beginPath();
-      g.arc(nd.x, nd.y, nd.rad + 4 / zm.k, 0, 6.2831853);
+      if (nd.scc) g.rect(nd.x - nd.hw - 4 / zm.k, nd.y - nd.hh - 4 / zm.k,
+        nd.hw * 2 + 8 / zm.k, nd.hh * 2 + 8 / zm.k);
+      else g.arc(nd.x, nd.y, nd.rad + 4 / zm.k, 0, 6.2831853);
       g.stroke();
       g.setLineDash([]);
     }

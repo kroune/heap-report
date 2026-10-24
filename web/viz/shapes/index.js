@@ -12,6 +12,7 @@
                   fully iterative + column-folded, runs the full 1.37M-shape
                   payload in ~3 s
      prepare.js   data step: fetch + pure viewModel mapping
+     scc-layout.js pure nested member/connection layout for complete SCCs
      controls.js  metric and exact-analysis controls
      details.js   summary, node detail and lazy reference lists
      scene.js     pure spatial/adjacency indexes and view transforms

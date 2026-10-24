@@ -38,6 +38,16 @@ test("hit testing works at negative coordinates and outside the world", () => {
   assert.equal(hitTest(scene, 100000, 100000), -1);
 });
 
+test("SCC containers hit-test as rectangles across their full bbox", () => {
+  const scene = buildScene({
+    nodes: [{ x: 0, y: 0, hw: 100, hh: 40, rad: Math.hypot(100, 40), scc: {} }],
+    edges: [], emax: 1, width: 300, height: 300,
+  }, ["#fff"]);
+  assert.equal(hitTest(scene, 90, 30), 0, "point far from the center cell");
+  assert.equal(hitTest(scene, 0, 60), -1, "bounding circle outside the actual box is not a hit");
+  assert.equal(hitTest(scene, 0, 0), 0);
+});
+
 test("scene adjacency and flat edge indexes include every edge", () => {
   const scene = buildScene(sceneLayout(), ["#fff", "#000"]);
   assert.deepEqual(adjSlice(scene.outAdj, 0), [0]);

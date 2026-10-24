@@ -15,10 +15,11 @@ export function edgeWidthBucket(w) {
 export function makeSpatialGrid(nodes, cell = CELL) {
   let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
   for (const nd of nodes) {
-    if (nd.x < gxMin) gxMin = nd.x;
-    if (nd.y < gyMin) gyMin = nd.y;
-    if (nd.x > gxMax) gxMax = nd.x;
-    if (nd.y > gyMax) gyMax = nd.y;
+    const hw = nd.hw ?? nd.rad, hh = nd.hh ?? nd.rad;
+    if (nd.x - hw < gxMin) gxMin = nd.x - hw;
+    if (nd.y - hh < gyMin) gyMin = nd.y - hh;
+    if (nd.x + hw > gxMax) gxMax = nd.x + hw;
+    if (nd.y + hh > gyMax) gyMax = nd.y + hh;
   }
   if (!nodes.length) { gxMin = 0; gyMin = 0; gxMax = 0; gyMax = 0; }
   const cbx = Math.floor(gxMin / cell) - 1;
@@ -84,6 +85,34 @@ export function buildScene(layout, fills) {
   byRad.sort((a, b) => N[b].rad - N[a].rad);
   const radOf = new Float64Array(N.length);
   for (let u = 0; u < N.length; u++) radOf[u] = N[u].rad;
+
+  // Container boxes have a separate bbox index. The center-cell index above
+  // remains duplicate-free for painting; hit-testing must also find an SCC
+  // when the pointer is far from its center.
+  const boxOff = new Int32Array(grid.cellCount + 1);
+  let boxRefs = 0;
+  for (let u = 0; u < N.length; u++) {
+    const nd = N[u];
+    if (!nd.scc) continue;
+    const r = grid.range(nd.x - nd.hw, nd.y - nd.hh, nd.x + nd.hw, nd.y + nd.hh);
+    if (!r) continue;
+    for (let cx = r.cx0; cx <= r.cx1; cx++) for (let cy = r.cy0; cy <= r.cy1; cy++) {
+      boxOff[grid.index(cx, cy) + 1]++; boxRefs++;
+    }
+  }
+  for (let c = 0; c < grid.cellCount; c++) boxOff[c + 1] += boxOff[c];
+  const boxIds = new Int32Array(boxRefs);
+  {
+    const cur = boxOff.slice(0, grid.cellCount);
+    for (let u = 0; u < N.length; u++) {
+      const nd = N[u];
+      if (!nd.scc) continue;
+      const r = grid.range(nd.x - nd.hw, nd.y - nd.hh, nd.x + nd.hw, nd.y + nd.hh);
+      if (!r) continue;
+      for (let cx = r.cx0; cx <= r.cx1; cx++) for (let cy = r.cy0; cy <= r.cy1; cy++)
+        boxIds[cur[grid.index(cx, cy)]++] = u;
+    }
+  }
 
   const outAdj = buildAdjacency(N, E, e => e.s);
   const inAdj = buildAdjacency(N, E, e => e.t);
@@ -154,16 +183,22 @@ export function buildScene(layout, fills) {
     spans[span <= 1 ? 0 : span <= 2 ? 1 : span <= 4 ? 2 : span <= 8 ? 3 : span <= 16 ? 4 : span <= 32 ? 5 : 6]++;
   }
 
-  let stamp = 0;
+  let stamp = 0, nodeStamp = 0;
   const eStamp = new Int32Array(E.length);
+  const nStamp = new Int32Array(N.length);
+  const nextNodeStamp = () => {
+    nodeStamp++;
+    if (nodeStamp >= 2147483647) { nStamp.fill(0); nodeStamp = 1; }
+    return nodeStamp;
+  };
   const nextEdgeStamp = () => {
     stamp++;
     if (stamp >= 2147483647) { eStamp.fill(0); stamp = 1; }
     return stamp;
   };
-  return { layout, fills, grid, nOff, nIds, byRad, radOf, outAdj, inAdj,
+  return { layout, fills, grid, nOff, nIds, boxOff, boxIds, byRad, radOf, outAdj, inAdj,
     ex0, ey0, ex1, ey1, ew, eOff, eIds, roamers, eStamp, nextEdgeStamp,
-    colorBuckets, spans };
+    nStamp, nextNodeStamp, colorBuckets, spans };
 }
 
 export function hitTest(scene, wx, wy) {
@@ -175,8 +210,24 @@ export function hitTest(scene, wx, wy) {
       const c = scene.grid.index(cx, cy);
       for (let p = scene.nOff[c]; p < scene.nOff[c + 1]; p++) {
         const u = scene.nIds[p], nd = scene.layout.nodes[u];
+        if (nd.scc) continue;
         const d = Math.hypot(nd.x - wx, nd.y - wy);
         if (d <= nd.rad && d < bestD) { best = u; bestD = d; }
+      }
+    }
+  }
+  const boxes = scene.grid.range(wx, wy, wx, wy);
+  if (boxes) {
+    for (let cx = boxes.cx0; cx <= boxes.cx1; cx++) {
+      for (let cy = boxes.cy0; cy <= boxes.cy1; cy++) {
+        const c = scene.grid.index(cx, cy);
+        for (let p = scene.boxOff[c]; p < scene.boxOff[c + 1]; p++) {
+          const u = scene.boxIds[p], nd = scene.layout.nodes[u];
+          if (Math.abs(nd.x - wx) <= nd.hw && Math.abs(nd.y - wy) <= nd.hh) {
+            const d = Math.hypot(nd.x - wx, nd.y - wy);
+            if (d < bestD) { best = u; bestD = d; }
+          }
+        }
       }
     }
   }

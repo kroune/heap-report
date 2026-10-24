@@ -1,6 +1,6 @@
 # SHAPES.md — exact structural collapse for class anatomy
 
-Status: **supported implementation; pipeline v4.** When this document and
+Status: **supported implementation; pipeline v5.** When this document and
 the code disagree, one of them is wrong — update both in the same commit.
 
 Replaces the sampling path in `engine._analyze_class` with exact
@@ -62,6 +62,16 @@ The served `reachableCount` includes `setChildrenConcealedObjects`: it is the
 real scope population, not merely the sum of visible quotient-SCC counts.
 Pipeline v4 also makes extraction reference filtering side-effect free, so
 repeated projection reads cannot inflate concealed-field statistics.
+
+Pipeline v5 appends an optional `SCC1` section (after the roots histogram,
+before `SMD1`) containing each stored SCC member's class and exact internal
+`(targetMember, multiplicity)` connections. The shapes canvas uses it to
+render the member graph inside an SCC box instead of treating the cycle as an
+opaque circle. Old SHP1 artifacts without SCC1 remain readable and retain the
+legacy circle until re-analyzed. Mega `SCC_UNIQUE` payloads still store only
+the first 8 members; an explicit `membersComplete` flag marks the graph as
+incomplete (even with a custom merge cap below 8), so the UI never pretends to
+show missing members or connections.
 
 Backend SCC refinement uses cap 1,000,000 (`SHAPES_MAX_SCC_MERGE` override)
 to avoid the old 64-member artifact in container graphs. Larger components
@@ -250,7 +260,8 @@ class hierarchy — a rule on `DefaultConfiguration` covers the runtime
    class-name table; shape table `(digest128, kind: leaf|tree|scc, class |
    scc-member payload, count, shallowTotal, shallowMin, shallowMax,
    retainedTotal, rootCount)`; edge table `(shapeId, childShapeId, multiplicity)`; roots
-   histogram `(shapeId, count)` over class instances.
+   histogram `(shapeId, count)` over class instances; `SCC1` member labels
+   and exact internal target/multiplicity tables for nested rendering.
    Ingested into `analysis.db` as part `shapes:<key>` with the usual
    marker-row resumability (per-phase markers 1–4 so a crash mid-pipeline
    doesn't redo Tarjan).

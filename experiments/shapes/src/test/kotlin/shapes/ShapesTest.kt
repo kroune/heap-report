@@ -108,6 +108,11 @@ class ShapesTest {
         assertEquals(2, s.rootCount)
         assertEquals(2, s.internalEdgesPerInstance) // p->c and c->p
         assertEquals("scc[Child,Parent]", s.label)
+        assertTrue(s.membersComplete)
+        assertEquals(listOf(
+            SccMemberEntry("Child", listOf(SccInternalEdge(1, 1))),
+            SccMemberEntry("Parent", listOf(SccInternalEdge(0, 1))),
+        ), s.members)
     }
 
     @Test
@@ -123,6 +128,24 @@ class ShapesTest {
         assertEquals(ShapeKind.SCC, s.kind)
         assertEquals(2, s.instanceCount)
         assertEquals(1, s.internalEdgesPerInstance)
+        assertEquals(listOf(SccMemberEntry("N", listOf(SccInternalEdge(0, 1)))), s.members)
+    }
+
+    @Test
+    fun `scc member graph folds only parallel refs not distinct connections`() {
+        val g = ObjectGraph.of(
+            classes = arrayOf("A", "B"),
+            shallow = longArrayOf(5, 5),
+            refs = arrayOf(intArrayOf(1, 1), intArrayOf(0)),
+        )
+        val t = analyze(g, intArrayOf(0))
+
+        val s = t.entries.single { it.kind == ShapeKind.SCC }
+        assertEquals(3, s.internalEdgesPerInstance)
+        assertEquals(listOf(
+            SccMemberEntry("A", listOf(SccInternalEdge(1, 2))),
+            SccMemberEntry("B", listOf(SccInternalEdge(0, 1))),
+        ), s.members)
     }
 
     @Test
@@ -160,6 +183,9 @@ class ShapesTest {
         val sccs = t.entries.filter { it.kind == ShapeKind.SCC_UNIQUE }
         assertEquals(2, sccs.size)
         assertEquals(n.toLong(), sccs[0].instanceCount)
+        assertEquals(8, sccs[0].members!!.size)
+        assertEquals(false, sccs[0].membersComplete)
+        assertTrue(sccs[0].members!!.size < sccs[0].sccInstanceSize)
     }
 
     @Test

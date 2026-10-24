@@ -13,6 +13,7 @@ import struct
 
 
 _METADATA_MAGIC = b"SMD1"
+_SCC_MAGIC = b"SCC1"
 _KINDS = ("leaf", "node", "scc", "scc-unique")
 _SHAPE_ROW_SIZE = 70
 _EDGE_ROW_SIZE = 16
@@ -66,7 +67,9 @@ def parse_shp1(path):
     """Parse a SHP1 artifact into the JSON payload served by the engine.
 
     Parsing is streaming and validates every count, index, enum, and trailer
-    boundary.  ``reachableCount`` is the real scope population: quotient SCCs
+    boundary. New artifacts carry an optional SCC1 section with canonical
+    member labels and exact internal connections; old SHP1 files simply omit
+    it. ``reachableCount`` is the real scope population: quotient SCCs
     conceal members from the visible shape counts, but their exact counter is
     stored in the SMD1 relaxation metadata and must be added back here.
     """
@@ -135,9 +138,57 @@ def parse_shp1(path):
             roots_histogram.append([shape_id, count])
         roots_histogram.sort(key=lambda row: -row[1])
 
-        metadata = None
+        marker = None
         if reader.offset < reader.size:
-            if reader.read(4, "metadata magic") != _METADATA_MAGIC:
+            marker = reader.read(4, "SHP1 section magic")
+        if marker == _SCC_MAGIC:
+            described = set()
+            for _ in range(reader.count("SCC shape", 9)):
+                shape_id, member_count, flags = reader.unpack(">iiB", "SCC shape header")
+                if (not 0 <= shape_id < len(shapes) or shape_id in described
+                        or shapes[shape_id]["kind"] not in ("scc", "scc-unique")):
+                    raise ShapesArtifactError(f"invalid SCC shape id {shape_id} in {path}")
+                if flags not in (0, 1):
+                    raise ShapesArtifactError(f"invalid SCC flags {flags} in {path}")
+                described.add(shape_id)
+                shape = shapes[shape_id]
+                complete = bool(flags)
+                if (not 0 < member_count <= shape["sccSize"]
+                        or (complete and member_count != shape["sccSize"])):
+                    raise ShapesArtifactError(
+                        f"invalid SCC member count {member_count} for shape #{shape_id} in {path}")
+                members = []
+                internal_total = 0
+                for _member_index in range(member_count):
+                    label_idx = reader.unpack(">i", "SCC member label index")
+                    if not 0 <= label_idx < len(labels):
+                        raise ShapesArtifactError(
+                            f"invalid SCC member label index {label_idx} in {path}")
+                    internal = []
+                    previous_target = -1
+                    for _ in range(reader.count("SCC internal connection", 8)):
+                        target, mult = reader.unpack(">ii", "SCC internal connection")
+                        if (not 0 <= target < member_count or target <= previous_target
+                                or mult <= 0):
+                            raise ShapesArtifactError(
+                                f"invalid SCC internal connection {target} ({mult}) in {path}")
+                        previous_target = target
+                        internal.append([target, mult])
+                        internal_total += mult
+                    members.append({"label": labels[label_idx], "internal": internal})
+                if complete and internal_total != shape["internalEdges"]:
+                    raise ShapesArtifactError(
+                        f"SCC shape #{shape_id} has {internal_total} detailed internal edges, "
+                        f"expected {shape['internalEdges']} in {path}")
+                shape["members"] = members
+                shape["membersComplete"] = complete
+            marker = None
+            if reader.offset < reader.size:
+                marker = reader.read(4, "metadata magic")
+
+        metadata = None
+        if marker is not None:
+            if marker != _METADATA_MAGIC:
                 raise ShapesArtifactError(f"unknown SHP1 metadata in {path}")
             length = reader.unpack(">i", "metadata length")
             raw = reader.read(length, "metadata")

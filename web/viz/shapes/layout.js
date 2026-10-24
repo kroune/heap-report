@@ -9,6 +9,8 @@
    longest path can be tens of thousands of levels).
    See index.js for the module map. */
 
+import { computeSccLayout } from "./scc-layout.js";
+
 const R_MIN = 7, R_MAX = 42;      // node radius clamp
 const X_GAP = 30;                 // horizontal clearance between node edges
 const Y_GAP = 76;                 // vertical clearance between layers
@@ -39,6 +41,13 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
   for (let i = 0; i < mvals.length; i++) if (mvals[i] > mmax) mmax = mvals[i];
   N.forEach((nd, u) => {
     nd.rad = Math.max(R_MIN, Math.min(R_MAX, R_MIN + (R_MAX - R_MIN) * Math.sqrt(mvals[u] / mmax)));
+    nd.hw = nd.rad; nd.hh = nd.rad;
+    if (nd.sccComplete) {
+      nd.scc = computeSccLayout(nd.members);
+      nd.hw = nd.scc.width / 2; nd.hh = nd.scc.height / 2;
+      // rad remains the broad-phase/LOD bound; hw/hh are exact box extents.
+      nd.rad = Math.hypot(nd.hw, nd.hh);
+    }
   });
 
   // adjacency (defensive: drop self-loops — they can't exist on the condensation)
@@ -101,7 +110,7 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
   // renders as an unreadable line. Layering is untouched: layer k is always
   // strictly below/right of layer k-1 inside its column band. ----
   let area = 0;
-  for (const nd of N) area += (2 * nd.rad + X_GAP) * (2 * nd.rad + ROW_GAP);
+  for (const nd of N) area += (2 * nd.hw + X_GAP) * (2 * nd.hh + ROW_GAP);
   const targetW = Math.max(1200, Math.sqrt(area));   // aim for a square-ish graph
   // pass 1: split each layer into rows
   const layerRows = byLayer.map(l => {
@@ -109,9 +118,9 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
     const rows = [];
     let ns = [], w = 0, h = 0;
     for (const u of l) {
-      const uw = 2 * N[u].rad + X_GAP;
+      const uw = 2 * N[u].hw + X_GAP;
       if (ns.length && w + uw > targetW) { rows.push({ ns, w: w - X_GAP, h }); ns = []; w = 0; h = 0; }
-      if (2 * N[u].rad > h) h = 2 * N[u].rad;
+      if (2 * N[u].hh > h) h = 2 * N[u].hh;
       ns.push(u); w += uw;
     }
     if (ns.length) rows.push({ ns, w: w - X_GAP, h });
@@ -142,9 +151,9 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
         let nx = x0 + Math.max(0, (colW - r.w) / 2);
         const cy = y + r.h / 2;
         for (const u of r.ns) {
-          nx += N[u].rad;
+          nx += N[u].hw;
           N[u].x = nx; N[u].y = cy;
-          nx += N[u].rad + X_GAP;
+          nx += N[u].hw + X_GAP;
         }
         y += r.h + ROW_GAP;
       }
@@ -160,7 +169,7 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
   let emax = 1;
   const edges = E.map(([s, t, mult]) => {
     const a = N[s], b = N[t];
-    const y1 = a.y + a.rad + 2, y2 = b.y - b.rad - 4;
+    const y1 = a.y + a.hh + 2, y2 = b.y - b.hh - 4;
     const my = (y1 + y2) / 2;
     // total refs: per-member mult × instance count; per-instance totals
     // (SCC_UNIQUE and non-uniform merged SCCs) × collapsed instances

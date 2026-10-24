@@ -33,7 +33,7 @@ SHAPES_XMX = os.environ.get("SHAPES_XMX", "2g")
 SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE")
 SHAPES_XMX_RETAINED = os.environ.get("SHAPES_XMX_RETAINED", "8g")
 SHAPES_RELAX_FILE = os.environ.get("SHAPES_RELAX_FILE", _DEFAULT_RELAX_FILE)
-PIPELINE_VERSION = 4
+PIPELINE_VERSION = 5
 _METADATA_MAGIC = b"SMD1"
 # Measured analyzer live set + GC headroom on the 257M-object scope; see
 # experiments/shapes/README.md. Reference storage is added separately.

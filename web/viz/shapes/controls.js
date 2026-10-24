@@ -70,7 +70,7 @@ export function shapesToolbar(vm, ctx) {
   grp.className = "fgroup";
   const lab = document.createElement("span");
   lab.className = "flab";
-  lab.textContent = "node size";
+  lab.textContent = "plain node size";
   grp.appendChild(lab);
   grp.appendChild(buildSeg([
     { value: "shallow", label: "shallow", title: "total shallow bytes of the shape's instances" },

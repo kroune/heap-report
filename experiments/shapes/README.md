@@ -32,8 +32,11 @@ Spec section references below are to SHAPES.md.
   multiplicity is **per member** of the source shape (expanded totals =
   mult × instanceCount). `SCC_UNIQUE` and non-uniform merged SCCs emit
   per-collapsed-instance totals instead (`edgesPerMember = false`).
-- **Phase 5 emit** — binary artifact (`SHP1` magic; layout documented in
-  `Emit.kt`). 18001 objects → 627 bytes.
+- **Phase 5 emit** — binary artifact (`SHP1` magic plus `SCC1` member-graph
+  section; layout documented in `Emit.kt`). SCC1 preserves canonical member
+  classes and every internal target/multiplicity for the nested shapes UI.
+  Legacy SHP1 files without it remain readable; oversized unique SCCs keep
+  the explicit 8-member truncation rather than allocating an unbounded DTO.
 - **Correctness invariants** — `verifyInvariants` implements smoke tests
   1–4; 6 (determinism) is a test. 5 (match vs sampling payload) needs MAT.
 

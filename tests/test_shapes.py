@@ -12,9 +12,8 @@ from backend.mat.shapes import (artifact_path, parse_shp1, analysis_options,
                                 _grph_stats, _analyze_xmx)
 
 
-def build_shp1(labels, shapes, edges, roots):
-    """Mirror of ShapesEmit.write: magic, label table, shapes, edges, roots
-    histogram — all big-endian."""
+def build_shp1(labels, shapes, edges, roots, scc_details=None):
+    """Mirror ShapesEmit.write, including optional SCC1 member graphs."""
     out = [b"SHP1"]
     out.append(struct.pack(">i", len(labels)))
     for l in labels:
@@ -34,6 +33,17 @@ def build_shp1(labels, shapes, edges, roots):
     out.append(struct.pack(">i", len(roots)))
     for r in roots:
         out.append(struct.pack(">iq", *r))
+    if scc_details is not None:
+        out.append(b"SCC1")
+        out.append(struct.pack(">i", len(scc_details)))
+        for detail in scc_details:
+            shape_id, members = detail[:2]
+            complete = detail[2] if len(detail) > 2 else True
+            out.append(struct.pack(">iiB", shape_id, len(members), 1 if complete else 0))
+            for member in members:
+                out.append(struct.pack(">ii", member["labelIdx"], len(member["internal"])))
+                for target, mult in member["internal"]:
+                    out.append(struct.pack(">ii", target, mult))
     return b"".join(out)
 
 
@@ -75,6 +85,88 @@ class TestShp1(unittest.TestCase):
         # aggregate() counts OBJECTS per shape for every kind: 30 + 9
         self.assertEqual(p["reachableCount"], 39)
 
+    def test_parse_scc_member_graph(self):
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 4,
+               "shallowTotal": 40, "shallowMin": 5, "shallowMax": 5,
+               "roots": 2, "sccSize": 2, "internalEdges": 3,
+               "edgesPerMember": False}
+        details = [(0, [
+            {"labelIdx": 1, "internal": [[1, 2]]},
+            {"labelIdx": 2, "internal": [[0, 1]]},
+        ])]
+        fixture = build_shp1(["scc[A,B]", "A", "B"], [row], [], [(0, 2)], details)
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            shape = parse_shp1(path)["shapes"][0]
+        finally:
+            os.remove(path)
+        self.assertEqual(shape["members"], [
+            {"label": "A", "internal": [[1, 2]]},
+            {"label": "B", "internal": [[0, 1]]},
+        ])
+        self.assertTrue(shape["membersComplete"])
+
+    def test_rejects_invalid_scc_member_graph(self):
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 2,
+               "shallowTotal": 10, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 2, "internalEdges": 2,
+               "edgesPerMember": False}
+        bad_target = [(0, [{"labelIdx": 1, "internal": [[2, 1]]},
+                           {"labelIdx": 2, "internal": [[0, 1]]}])]
+        bad_total = [(0, [{"labelIdx": 1, "internal": []},
+                          {"labelIdx": 2, "internal": [[0, 1]]}])]
+        duplicate = [(0, [{"labelIdx": 1, "internal": [[1, 1], [1, 1]]},
+                          {"labelIdx": 2, "internal": []}])]
+        for details in (bad_target, bad_total, duplicate):
+            fixture = build_shp1(["scc[A,B]", "A", "B"], [row], [], [], details)
+            with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+                f.write(fixture)
+                path = f.name
+            try:
+                with self.assertRaisesRegex(RuntimeError, "SCC"):
+                    parse_shp1(path)
+            finally:
+                os.remove(path)
+
+    def test_incomplete_scc_graph_is_explicit_not_count_inferred(self):
+        row = {"hi": 0, "lo": 1, "kind": 3, "labelIdx": 0, "count": 2,
+               "shallowTotal": 10, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 2, "internalEdges": 2,
+               "edgesPerMember": False}
+        details = [(0, [{"labelIdx": 1, "internal": []},
+                          {"labelIdx": 2, "internal": []}], False)]
+        fixture = build_shp1(["scc![A,B]", "A", "B"], [row], [], [], details)
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            shape = parse_shp1(path)["shapes"][0]
+        finally:
+            os.remove(path)
+        self.assertEqual(len(shape["members"]), 2)
+        self.assertFalse(shape["membersComplete"])
+
+    def test_empty_scc_section_can_be_followed_by_metadata(self):
+        import json
+        row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 1,
+               "shallowTotal": 5, "shallowMin": 5, "shallowMax": 5,
+               "roots": 1, "sccSize": 1, "internalEdges": 0,
+               "edgesPerMember": False}
+        encoded = json.dumps({"objects": 1}).encode()
+        fixture = build_shp1(["C"], [row], [], [(0, 1)], []) + b"SMD1" + \
+            struct.pack(">i", len(encoded)) + encoded
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            payload = parse_shp1(path)
+        finally:
+            os.remove(path)
+        self.assertNotIn("members", payload["shapes"][0])
+        self.assertEqual(payload["analysis"], {"objects": 1})
+
     def test_analysis_options(self):
         self.assertEqual(analysis_options(), {"scope": "retained", "normalizeMaps": True})
         from backend.core import ApiError
@@ -101,7 +193,7 @@ class TestShp1(unittest.TestCase):
                     json.dump(metadata, f)
             else:
                 with open(target, "wb") as f:
-                    f.write(build_shp1(["C"], [row], [], [(0, 2)]))
+                    f.write(build_shp1(["C"], [row], [], [(0, 2)], []))
                 with open(args[args.index("--relax-stats") + 1], "w") as f:
                     json.dump({"classOnlyHiddenEdges": 0,
                                "setChildrenHiddenEdges": 0,
@@ -116,7 +208,7 @@ class TestShp1(unittest.TestCase):
             p = parse_shp1(dst)
             self.assertEqual(p["analysis"]["scope"], "retained")
             self.assertEqual(p["analysis"]["sourceEdges"], 1)
-            self.assertEqual(p["analysis"]["pipelineVersion"], 4)
+            self.assertEqual(p["analysis"]["pipelineVersion"], 5)
             self.assertIn("--normalize-maps", calls[0][0])
             self.assertIn("--whole-graph", calls[1][0])
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
