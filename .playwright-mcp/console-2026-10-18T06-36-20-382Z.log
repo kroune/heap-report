@@ -1,7 +1,0 @@
-[   21328ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8321/api/jobs:0
-[   21329ms] [WARNING] pollJobs: poll failed: Failed to fetch @ http://127.0.0.1:8321/data/dumprepo.js:37
-[   22181ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8321/api/dumps/run-jfr-38/classes?filter=defaultlegacyconfiguration_decorated&sort=-s&page=0:0
-[   22843ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8321/api/jobs:0
-[   22843ms] [WARNING] pollJobs: poll failed: Failed to fetch @ http://127.0.0.1:8321/data/dumprepo.js:37
-[   23830ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:8321/api/jobs:0
-[   23830ms] [WARNING] pollJobs: poll failed: Failed to fetch @ http://127.0.0.1:8321/data/dumprepo.js:37

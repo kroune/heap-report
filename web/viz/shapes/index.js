@@ -9,8 +9,8 @@
    rewrites each module independently):
 
      layout.js    computeShapesLayout — pure DAG layout (no DOM, no fetch);
-                  fully iterative + column-folded, runs the full 1.37M-shape
-                  payload in ~3 s
+                  fully iterative, top-down by default with adaptive compact
+                  mode for extreme graphs
      prepare.js   data step: fetch + pure viewModel mapping
      scc-layout.js pure nested member/connection layout for complete SCCs
      controls.js  metric and exact-analysis controls

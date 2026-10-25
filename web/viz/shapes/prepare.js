@@ -11,6 +11,7 @@ function baseModel(dumpId, className, params) {
     kind: "shapes", dumpId, className,
     requestedScope: params.scope || "retained",
     normalizeMaps: params.normalizeMaps ?? true,
+    layoutMode: params.layoutMode || "auto",
   };
 }
 
@@ -48,7 +49,7 @@ export function shapesViewModel(p, dumpId, className, params = {}) {
     };
   });
   const metric = params.metric || "shallow";
-  const layout = computeShapesLayout(nodes, p.edges || [], metric);
+  const layout = computeShapesLayout(nodes, p.edges || [], metric, params.layoutMode || "auto");
   const analysis = p.analysis || null;
 
   return {

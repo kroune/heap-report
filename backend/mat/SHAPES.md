@@ -141,9 +141,10 @@ backend default; every rule must state which merge it unblocks):
 
 - **class-only**: only the class matters. The object conses as a LEAF of
   its class; its children stay in scope and keep their counts but are not
-  part of the key. For infrastructure objects whose internal state is
-  irrelevant to the owner graph (e.g. an HTTP client that may or may not
-  have been instantiated yet — the cold-cache first resolutions of a sync).
+  part of the key. For objects whose children are deliberately irrelevant
+  to the owner graph: lazy infrastructure state (e.g. an HTTP client that
+  may or may not have been instantiated yet), or resolved-artifact contents
+  when the requested class-anatomy view is closure-insensitive.
 - **set-children**: class + SET of child shapes; multiplicities collapse
   to 1 for that class's outgoing edges. On an SCC member the rule
   quotients the **whole SCC**: the SCC is one strongly-connected object,

@@ -48,6 +48,8 @@ test("single-node payload tolerates omitted optional collections", async () => {
   assert.equal(vm.notAnalyzed, undefined);
   assert.equal(vm.shapeCount, 1);
   assert.equal(vm.metric, "shallow");
+  assert.equal(vm.layoutMode, "auto");
+  assert.equal(vm.layout.layoutMode, "dag");
   assert.equal(vm.nodes[0].short, "Widget");
   assert.equal(vm.nodes[0].plain, true);
   assert.deepEqual(vm.rootsHistogram, []);
@@ -69,6 +71,12 @@ test("artifact analysis supplies defaults and explicit params win", () => {
   assert.equal(overridden.requestedScope, "retained");
   assert.equal(overridden.normalizeMaps, true);
   assert.equal(overridden.metric, "count");
+});
+
+test("explicit layout mode reaches the pure layout", () => {
+  const vm = shapesViewModel(payload(), "d", "C", { layoutMode: "compact" });
+  assert.equal(vm.layoutMode, "compact");
+  assert.equal(vm.layout.layoutMode, "compact");
 });
 
 test("view-model mapping preserves SCC full labels and compact canvas labels", () => {

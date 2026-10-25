@@ -41,7 +41,8 @@ verified to match MAT's histogram exactly.
 | + relaxed classes (2 analyzer rules) | 7,259 | 947 |
 | + field concealment (2 extraction rules) | 6,953 | 877 |
 | + set-children rule (config SCC quotient) | 6,880 | 858 |
-| + serializer cache concealment (traced owner) | **3,168** | **268** |
+| + serializer cache concealment (traced owner) | 3,168 | 268 |
+| + resolved-closure concealment (`DefaultVisitedArtifactResults`) | **1,713** | **81** |
 | global set semantics (every class, reference point) | 1,598 | 113 |
 
 ## Why raw exact shapes explode: physical map topology
@@ -74,7 +75,7 @@ Caveat: the normalization erases insertion order along with collisions, and
 insertion order can be meaningful. Don't describe the map effect as "hash
 collisions only".
 
-## What the 977 root shapes were (877 after artifact removal, 268 after the children-list collapse)
+## What the 977 root shapes were (877 after artifact removal, 268 after the children-list collapse, before closure relaxation)
 
 Across 122 configuration roles the residual decomposes exactly — real
 content plus three dump-time artifacts, zero unexplained among 2,989
@@ -109,7 +110,8 @@ combinations.
 Lesson: variant counts this small are real content plus dump accidents.
 The accidents are now removed by the mechanisms in the next section — each
 only after its exact merge-blocker was traced. Don't "fix" the collapse to
-make the real content go away.
+make the real content go away. The later closure exclusion is instead an
+explicit, deliberate loss of semantic resolution.
 
 ## Removing the dump-time artifacts: reference filtering + relaxed classes
 
@@ -184,13 +186,44 @@ shortcut) and `Object[]` set-children (traced to the
 RESOLVED CLASSPATH CARDINALITY, i.e. resolution content, not dump noise).
 
 Cumulative: 877 → 858 (config SCC quotient) → **268 root shapes / 3,168
-shapes** (serializer concealment). The 268 is the content floor: 0
-(tier,closure) signature splits, 48 content groups per resolved role, the
-implementation family at 3 (population + build-logic + app), kotlin at 3 —
-and every remaining variant is a module that genuinely resolved or
-depends-on something different. The global-set-semantics reference (113)
-is LOWER only because it also erases resolution-content cardinality — a
-semantic step this pipeline deliberately does not take.
+shapes** (serializer concealment). Before the deliberate closure exclusion
+below, 268 was the content floor: 0 (tier,closure) signature splits, 48
+content groups per resolved role, the implementation family at 3
+(population + build-logic + app), kotlin at 3 — and every remaining variant
+was a module that genuinely resolved or depends-on something different. At
+that point the global-set-semantics reference (113) was lower because it
+also erased resolution-content cardinality.
+
+## Deliberate resolved-closure exclusion
+
+The 268-shape result preserves resolved content. A later inspection of the
+24-member lint-classpath SCCs found 102 byte-identical SCC member graphs,
+with identical internal wiring and immediate child classes/multiplicities.
+Only the `extendsFrom` `LinkedHashSet` child differed. Same-role pairs led
+downstream to `DefaultVisitedArtifactResults`: a closure-25 configuration
+had a terminal `Object[]` holding `VariantResolvingArtifactSet ×26`, versus
+×25 for closure 24.
+
+For class anatomy, resolved closure cardinality is now deliberately excluded
+at that owner with `DefaultVisitedArtifactResults class-only`. This is a
+semantic relaxation, not a claim that the content is dump noise. On the same
+63.9M-object graph it changes 3,168 → **1,713 shapes**, 268 → **81 root
+shapes**, and the displayed SCC family 102 → **10**. Both 48-variant
+test-lint roles become three (app, foundation, general population); the
+other two lint roles stay at three. All 268 previous root shapes map into
+the 81 without splitting, and the implementation family stays at three.
+The 109 `DefaultVisitedArtifactResults` shapes become one 39,008-object leaf; its
+children remain in scope. Since `class-only` conceals the whole
+`artifactsById` subtree from referrer keys, this excludes resolved-artifact
+composition as well as cardinality; it is not just list-length
+normalization. Object, root, shallow and projected-edge accounting still
+matches exactly.
+
+The broader `ExtendedConfigurations class-only` alternative was measured and
+rejected: it collapses this family 102 → 1 only by hiding declared
+`extendsFrom` structure too, while leaving other closure variants untouched
+(162 root shapes overall). Global `Object[] set-children` remains rejected
+as over-broad; the exclusion is at the resolution-result owner.
 
 ## Multiplicity is the encoding channel, not the origin
 

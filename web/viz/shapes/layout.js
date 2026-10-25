@@ -15,6 +15,7 @@ const R_MIN = 7, R_MAX = 42;      // node radius clamp
 const X_GAP = 30;                 // horizontal clearance between node edges
 const Y_GAP = 76;                 // vertical clearance between layers
 const ROW_GAP = 56;               // vertical clearance between wrapped rows of one layer
+const DAG_EXTENT_LIMIT = 100000;  // auto-compact beyond this natural width/height
 
 const METRIC = {
   shallow: s => s.st,
@@ -25,15 +26,20 @@ const METRIC = {
 /* nodes: [{id,label,kind,count,st,smin,smax,roots,sccSize,internalEdges,
             edgesPerMember,cat}], edges: [[s, t, multPerMember]].
    metric: "shallow" | "count" | "roots".
+   layoutMode: "auto" | "dag" | "compact". Auto uses the natural top-down
+   layout unless its unwrapped world exceeds DAG_EXTENT_LIMIT in either axis.
    Returns {nodes: [...+{rad,x,y,layer}], edges: [{s,t,mult,total,mx,my}],
-            width, height, layerCount}. Inputs are not mutated. */
-export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallow") {
+            width, height, layerCount, layoutMode}. Inputs are not mutated. */
+export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallow",
+                                    layoutMode = "auto") {
   if (!Array.isArray(nodesIn) || !Array.isArray(edgesIn))
     throw new TypeError("shapes layout expects node and edge arrays");
   const mv = METRIC[metric] || METRIC.shallow;
+  const requestedMode = layoutMode === "dag" || layoutMode === "compact" ? layoutMode : "auto";
   const N = nodesIn.map(s => ({ ...s }));
   if (!N.length)
-    return { nodes: N, edges: [], width: 0, height: 0, layerCount: 0, emax: 1 };
+    return { nodes: N, edges: [], width: 0, height: 0, layerCount: 0, emax: 1,
+      layoutMode: requestedMode === "compact" ? "compact" : "dag" };
 
   // radii by metric (iterative max — the payload can be >1M nodes)
   const mvals = N.map(mv);
@@ -102,16 +108,28 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
   };
   sweep(true); sweep(false); sweep(true);
 
-  // ---- coordinates: nodes of one layer are packed into WRAPPED ROWS (a
-  // single row per layer would be ~40M px wide on a 1M-shape payload), and
-  // the layer sequence is folded into COLUMNS of roughly equal height — a
-  // deep graph (real payload: 30k layers, mostly one-node WeakReference
-  // chains) would otherwise be a multi-megapixel-tall strip that fit-to-view
-  // renders as an unreadable line. Layering is untouched: layer k is always
-  // strictly below/right of layer k-1 inside its column band. ----
-  let area = 0;
-  for (const nd of N) area += (2 * nd.hw + X_GAP) * (2 * nd.hh + ROW_GAP);
-  const targetW = Math.max(1200, Math.sqrt(area));   // aim for a square-ish graph
+  // ---- coordinates: prefer one global top-down DAG. Estimate the natural
+  // one-row-per-layer bounds without allocating a second row representation.
+  // Only extreme graphs use the legacy square-ish compaction: a single row
+  // per layer would be ~40M px wide on a 1M-shape payload, and a 30k-layer
+  // chain would be a multi-megapixel-tall strip. Forced DAG mode never folds
+  // columns, but wraps rows beyond the same extent limit. ----
+  let area = 0, naturalW = 0, naturalH = 0;
+  for (const l of byLayer) {
+    if (!l || !l.length) continue;
+    let rowW = 0, rowH = 0;
+    for (const u of l) {
+      const nd = N[u], w = 2 * nd.hw + X_GAP, h = 2 * nd.hh;
+      area += w * (h + ROW_GAP);
+      rowW += w;
+      if (h > rowH) rowH = h;
+    }
+    if (rowW - X_GAP > naturalW) naturalW = rowW - X_GAP;
+    naturalH += rowH + ROW_GAP + Y_GAP;
+  }
+  const compact = requestedMode === "compact" || (requestedMode === "auto" &&
+    (naturalW > DAG_EXTENT_LIMIT || naturalH > DAG_EXTENT_LIMIT));
+  const targetW = compact ? Math.max(1200, Math.sqrt(area)) : DAG_EXTENT_LIMIT;
   // pass 1: split each layer into rows
   const layerRows = byLayer.map(l => {
     if (!l || !l.length) return [];
@@ -126,11 +144,12 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
     if (ns.length) rows.push({ ns, w: w - X_GAP, h });
     return rows;
   });
-  // pass 2: fold whole layers into columns of ~equal height
+  // pass 2: compact mode folds whole layers into columns of ~equal height;
+  // DAG mode keeps one vertical sequence so every edge points downward.
   const layerH = layerRows.map(rows =>
     rows.length ? rows.reduce((a, r) => a + r.h + ROW_GAP, Y_GAP) : 0);
   const totalH = layerH.reduce((a, h) => a + h, 0);
-  const nCols = Math.max(1, Math.round(totalH / targetW));
+  const nCols = compact ? Math.max(1, Math.round(totalH / targetW)) : 1;
   const colTarget = totalH / nCols;
   const cols = [[]];
   let acc = 0;
@@ -178,5 +197,6 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
     return { s, t, mult, total, mx: (a.x + b.x) / 2, my };
   });
 
-  return { nodes: N, edges, width, height, layerCount: byLayer.length, emax };
+  return { nodes: N, edges, width, height, layerCount: byLayer.length, emax,
+    layoutMode: compact ? "compact" : "dag" };
 }

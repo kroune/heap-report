@@ -9,7 +9,7 @@ function node(id, extra = {}) {
 
 test("empty layout is finite and invalid containers fail clearly", () => {
   assert.deepEqual(computeShapesLayout(), {
-    nodes: [], edges: [], width: 0, height: 0, layerCount: 0, emax: 1,
+    nodes: [], edges: [], width: 0, height: 0, layerCount: 0, emax: 1, layoutMode: "dag",
   });
   assert.throws(() => computeShapesLayout(null, []), /node and edge arrays/);
   assert.throws(() => computeShapesLayout([], null), /node and edge arrays/);
@@ -21,6 +21,7 @@ test("single-node layout works without mutating input", () => {
   const result = computeShapesLayout(input, [], "shallow");
   assert.deepEqual(input, snapshot);
   assert.equal(result.layerCount, 1);
+  assert.equal(result.layoutMode, "dag");
   assert.equal(result.edges.length, 0);
   assert.equal(result.nodes[0].layer, 0);
   assert.ok(result.nodes[0].rad >= 7);
@@ -35,10 +36,47 @@ test("deep chains are layered iteratively without recursion", () => {
   const edges = Array.from({ length: count - 1 }, (_, i) => [i, i + 1, 1]);
   const result = computeShapesLayout(nodes, edges, "count");
   assert.equal(result.layerCount, count);
+  assert.equal(result.layoutMode, "compact", "extreme natural height retains compact mode");
   assert.equal(result.nodes[count - 1].layer, count - 1);
   assert.equal(result.edges.length, count - 1);
   assert.ok(Number.isFinite(result.width));
   assert.ok(Number.isFinite(result.height));
+});
+
+test("auto DAG keeps moderate ranks in one global downward sequence", () => {
+  const levels = 20, width = 4;
+  const nodes = Array.from({ length: levels * width }, (_, i) => node(i));
+  const edges = [];
+  for (let l = 0; l < levels - 1; l++) {
+    for (let x = 0; x < width; x++) edges.push([l * width + x, (l + 1) * width + x, 1]);
+  }
+  const result = computeShapesLayout(nodes, edges, "count");
+  assert.equal(result.layoutMode, "dag");
+  const bands = Array.from({ length: levels }, () => []);
+  for (const nd of result.nodes) bands[nd.layer].push(nd);
+  let previousBottom = -Infinity;
+  for (const band of bands) {
+    assert.equal(new Set(band.map(nd => nd.y)).size, 1, "moderate ranks stay on one row");
+    const top = Math.min(...band.map(nd => nd.y - nd.hh));
+    assert.ok(top > previousBottom, "rank bands never reset to the top of another column");
+    previousBottom = Math.max(...band.map(nd => nd.y + nd.hh));
+  }
+  for (const e of result.edges)
+    assert.ok(result.nodes[e.t].y > result.nodes[e.s].y, "every DAG edge points downward");
+
+  const compact = computeShapesLayout(nodes, edges, "count", "compact");
+  assert.equal(compact.layoutMode, "compact");
+  assert.ok(compact.edges.some(e => compact.nodes[e.t].y < compact.nodes[e.s].y),
+    "the explicit legacy mode still exercises column folding");
+});
+
+test("forced DAG wraps extreme-wide ranks without folding columns", () => {
+  const nodes = Array.from({ length: 2500 }, (_, i) => node(i));
+  const result = computeShapesLayout(nodes, [], "count", "dag");
+  assert.equal(result.layoutMode, "dag");
+  assert.equal(result.layerCount, 1);
+  assert.ok(new Set(result.nodes.map(nd => nd.y)).size > 1, "the extreme rank wraps");
+  assert.equal(computeShapesLayout(nodes, [], "count").layoutMode, "compact");
 });
 
 test("parallel edges retain exact totals for both multiplicity modes", () => {

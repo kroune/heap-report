@@ -78,6 +78,21 @@ export function shapesToolbar(vm, ctx) {
     { value: "roots", label: "roots", title: "instances of the queried class" },
   ], vm.metric, v => ctx.refetch({ metric: v })));
   bar.appendChild(grp);
+  const layoutGrp = document.createElement("div");
+  layoutGrp.className = "fgroup";
+  const layoutLab = document.createElement("span");
+  layoutLab.className = "flab";
+  layoutLab.textContent = "layout";
+  layoutGrp.appendChild(layoutLab);
+  layoutGrp.appendChild(buildSeg([
+    { value: "auto", label: "auto",
+      title: `top-down DAG unless its natural bounds are extreme (currently ${vm.layout.layoutMode})` },
+    { value: "dag", label: "DAG",
+      title: "one global top-down rank sequence; never fold layers into columns" },
+    { value: "compact", label: "compact",
+      title: "square-ish wrapped rows and folded columns for extreme graphs" },
+  ], vm.layoutMode, v => ctx.refetch({ layoutMode: v })));
+  bar.appendChild(layoutGrp);
   const note = document.createElement("span");
   note.className = "flab";
   note.textContent = `exact structural collapse, ${ctx.fmtN(vm.shapeCount)} shapes`;

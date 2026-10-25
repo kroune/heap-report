@@ -103,17 +103,22 @@ validated on this dataset as follows, cumulative on the strong graph:
 | + `LocalCache$LocalManualCache` class-only | 7,259 | 947 |
 | + `DefaultConfiguration.description` conceal-field | 6,953 | 877 |
 | + `DefaultLegacyConfiguration_Decorated` set-children (SCC quotient) | 6,880 | 858 |
-| + `DeduplicatingComponentSelectorSerializer` class-only (traced owner) | **3,168** | **268** |
+| + `DeduplicatingComponentSelectorSerializer` class-only (traced owner) | 3,168 | 268 |
+| + `DefaultVisitedArtifactResults` class-only (deliberate closure exclusion) | **1,713** | **81** |
 
 Reference point: global set semantics (`SHAPES_SET_SEMANTICS=1`, no relax
-file) on the same v4 graph gives 1,598 shapes / 113 root shapes — lower
-than the surgical 268 only because it also erases resolution-content
-cardinality (list element counts), a semantic step rejected here: the
-traced owner of the array divergence was `DefaultVisitedArtifactResults`,
-whose element count IS the resolved classpath. Two JDK-wide rules
-(`HashMap$Node[]`, `Object[]` set-children) were tried, traced, and
-rejected as over-broad; the HashMap divergence belonged entirely to the
-serializer's `writeIndex` dedup cache.
+file) on the same v4 graph gives 1,598 shapes / 113 root shapes. The 268
+result preserved resolution-content cardinality; the subsequent targeted
+`DefaultVisitedArtifactResults` rule deliberately conceals the whole
+`artifactsById` subtree (composition and cardinality) from referrer keys
+after the lint-classpath SCC investigation (102 visually identical SCCs →
+10; each affected test-lint role goes 48 → 3, with no split of any previous
+root shape). This is a semantic relaxation, not noise removal. The broader
+`ExtendedConfigurations class-only` alternative was rejected because it
+also hides declared `extendsFrom` structure and leaves other closure
+variants intact (162 root shapes). Two JDK-wide rules (`HashMap$Node[]`,
+`Object[]` set-children) remain rejected as over-broad; the HashMap
+divergence belonged entirely to the serializer's `writeIndex` dedup cache.
 
 Surgical-merge evidence: after all rules, every f1..f4-impl AND every
 IDE-model (DEV6) module shares **exactly** its `(tier,ndirect,closure)`
