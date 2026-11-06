@@ -31,59 +31,66 @@ import java.nio.file.Path
  */
 object ShapesEmit {
 
-    fun write(t: ShapeTable, out: Path) {
-        val labels = (t.entries.map { it.label } + t.entries.flatMap { e ->
-            e.members.orEmpty().map { it.className }
-        }).distinct()
+    fun write(table: ShapeTable, out: Path) {
+        val labels =
+            buildList {
+                addAll(table.entries.map { it.label })
+                addAll(table.entries.flatMap { e ->
+                    // TODO: figure why .name
+                    e.members.orEmpty().map { it.className.name }
+                })
+            }.distinct()
         val labelIdx = labels.withIndex().associate { (i, l) -> l to i }
         Files.newOutputStream(out).use { raw ->
-            val d = DataOutputStream(raw.buffered())
-            d.writeBytes("SHP1")
-            d.writeInt(labels.size)
+            val outputStream = DataOutputStream(raw.buffered())
+            outputStream.writeBytes("SHP1")
+            outputStream.writeInt(labels.size)
             for (l in labels) {
                 val b = l.toByteArray(Charsets.UTF_8)
-                d.writeInt(b.size); d.write(b)
+                outputStream.writeInt(b.size); outputStream.write(b)
             }
-            d.writeInt(t.entries.size)
-            for (e in t.entries) {
-                d.writeLong(e.digest.hi); d.writeLong(e.digest.lo)
-                d.writeByte(e.kind.ordinal)
-                d.writeInt(labelIdx.getValue(e.label))
-                d.writeLong(e.instanceCount)
-                d.writeLong(e.shallowTotal)
-                d.writeLong(e.shallowMin)
-                d.writeLong(e.shallowMax)
-                d.writeLong(e.rootCount)
-                d.writeInt(e.sccInstanceSize)
-                d.writeInt(e.internalEdgesPerInstance)
-                d.writeByte(if (e.edgesPerMember) 1 else 0)
+            outputStream.writeInt(table.entries.size)
+            for (entry in table.entries) {
+                outputStream.writeLong(entry.digest.hi); outputStream.writeLong(entry.digest.lo)
+                outputStream.writeByte(entry.kind.ordinal)
+                outputStream.writeInt(labelIdx.getValue(entry.label))
+                outputStream.writeLong(entry.instanceCount)
+                // TODO
+                outputStream.writeLong(entry.shallowTotal.toLong())
+                outputStream.writeLong(entry.shallowMin.toLong())
+                outputStream.writeLong(entry.shallowMax.toLong())
+                outputStream.writeLong(entry.rootCount)
+                outputStream.writeInt(entry.sccInstanceSize)
+                outputStream.writeInt(entry.internalEdgesPerInstance)
+                outputStream.writeByte(if (entry.edgesPerMember) 1 else 0)
             }
-            d.writeInt(t.edges.size)
-            for (e in t.edges) {
-                d.writeInt(e.shapeId); d.writeInt(e.childShapeId); d.writeLong(e.mult)
+            outputStream.writeInt(table.edges.size)
+            for (e in table.edges) {
+                outputStream.writeInt(e.shapeId); outputStream.writeInt(e.childShapeId); outputStream.writeLong(e.mult)
             }
-            d.writeInt(t.rootsHistogram.size)
-            for ((sid, cnt) in t.rootsHistogram) {
-                d.writeInt(sid); d.writeLong(cnt)
+            outputStream.writeInt(table.rootsHistogram.size)
+            for ((sid, cnt) in table.rootsHistogram) {
+                outputStream.writeInt(sid); outputStream.writeLong(cnt)
             }
-            d.writeBytes("SCC1")
-            val described = t.entries.filter { it.members != null }
-            d.writeInt(described.size)
+            outputStream.writeBytes("SCC1")
+            val described = table.entries.filter { it.members != null }
+            outputStream.writeInt(described.size)
             for (e in described) {
                 val members = e.members!!
-                d.writeInt(e.id)
-                d.writeInt(members.size)
-                d.writeByte(if (e.membersComplete) 1 else 0)
+                outputStream.writeInt(e.id)
+                outputStream.writeInt(members.size)
+                outputStream.writeByte(if (e.membersComplete) 1 else 0)
                 for (m in members) {
-                    d.writeInt(labelIdx.getValue(m.className))
-                    d.writeInt(m.internal.size)
+                    // TODO: figure out why .name
+                    outputStream.writeInt(labelIdx.getValue(m.className.name))
+                    outputStream.writeInt(m.internal.size)
                     for (edge in m.internal) {
-                        d.writeInt(edge.target)
-                        d.writeInt(edge.mult)
+                        outputStream.writeInt(edge.target)
+                        outputStream.writeInt(edge.mult)
                     }
                 }
             }
-            d.flush()
+            outputStream.flush()
         }
     }
 }

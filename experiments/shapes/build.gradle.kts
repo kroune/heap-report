@@ -22,6 +22,7 @@ dependencies {
 kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        optIn.add("kotlin.ExperimentalUnsignedTypes")
     }
 }
 

@@ -42,7 +42,8 @@ verified to match MAT's histogram exactly.
 | + field concealment (2 extraction rules) | 6,953 | 877 |
 | + set-children rule (config SCC quotient) | 6,880 | 858 |
 | + serializer cache concealment (traced owner) | 3,168 | 268 |
-| + resolved-closure concealment (`DefaultVisitedArtifactResults`) | **1,713** | **81** |
+| + resolved-closure concealment (`DefaultVisitedArtifactResults`) | 1,713 | 81 |
+| + cached resolution-result concealment (2 targeted owners) | **1,656** | **78** |
 | global set semantics (every class, reference point) | 1,598 | 113 |
 
 ## Why raw exact shapes explode: physical map topology
@@ -218,6 +219,31 @@ children remain in scope. Since `class-only` conceals the whole
 composition as well as cardinality; it is not just list-length
 normalization. Object, root, shallow and projected-edge accounting still
 matches exactly.
+
+That artifact-list rule leaves two other entrances to cached resolution state:
+`DefaultConfiguration.currentResolveState → DefaultResolverResults`, and
+`ResolutionResultProviderBackedSelectedArtifactSet.delegate →
+DefaultSelectedArtifactSet`. The first carries graph results, the resolved
+configuration and selection services; the second carries graph results and
+the selected artifact composition. `class-only` on those two owners excludes
+both paths without relaxing generic `DefaultCalculatedModelValue` (which
+would also hide unresolved/resolved state). Children remain in scope, while
+`Optional` and delegate absence/presence remain visible.
+
+On the same graph, these two rules change 1,713 → **1,656 shapes** and 81 →
+**78 root shapes**. The exact merges are `:classpath` 5 → 4,
+`incomingCatalogForLibs0` 2 → 1, and `kotlinBuildToolsApiClasspath` 3 → 2
+(the 2,900-module population and 100-module f0 cohort merge). No previous
+root shape splits, and the per-role join still has zero ambiguous
+`(tier,ndirect,closure)` signatures. Edge accounting is exact.
+
+This still does not force visually similar SCCs together. In the inspected
+five-SCC window (`#1703`, `#10`, `#904`, `#1579`, `#938` in the 1,713-shape
+artifact), only `#10` and `#1579` have exactly isomorphic internal graphs.
+They remain distinct after closure relaxation because heap field inspection
+finds two registered filtered add-actions on `ownDependencies` in one and
+none in the other. The other boxes differ by dependency kind and by
+Kotlin/action members. Those non-closure distinctions are intentional.
 
 The broader `ExtendedConfigurations class-only` alternative was measured and
 rejected: it collapses this family 102 → 1 only by hiding declared

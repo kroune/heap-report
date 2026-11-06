@@ -1,5 +1,6 @@
 package shapes
 
+import shapes.models.ClassName
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -25,10 +26,10 @@ class ShapesTest {
     @Test
     fun `identical subgraphs collapse to one shape`() {
         val b = ObjectGraph.Builder()
-        val l1 = b.add("L", 10)
-        val l2 = b.add("L", 10)
-        val m1 = b.add("M", 20, intArrayOf(l1))
-        val m2 = b.add("M", 20, intArrayOf(l2))
+        val l1 = b.add(ClassName("L"), 10U)
+        val l2 = b.add(ClassName("L"), 10U)
+        val m1 = b.add(ClassName("M"), 20U, intArrayOf(l1))
+        val m2 = b.add(ClassName("M"), 20U, intArrayOf(l2))
         val t = analyze(b.build(), intArrayOf(m1, m2))
 
         assertEquals(2, t.entries.size)
@@ -42,10 +43,10 @@ class ShapesTest {
     fun `diamond keeps both edges to shared child`() {
         // A -> B -> D, A -> C -> D: B and C differ by class, D is shared (in-degree 2)
         val b = ObjectGraph.Builder()
-        val d = b.add("D", 5)
-        val bb = b.add("B", 5, intArrayOf(d))
-        val c = b.add("C", 5, intArrayOf(d))
-        val a = b.add("A", 5, intArrayOf(bb, c))
+        val d = b.add(ClassName("D"), 5U)
+        val bb = b.add(ClassName("B"), 5U, intArrayOf(d))
+        val c = b.add(ClassName("C"), 5U, intArrayOf(d))
+        val a = b.add(ClassName("A"), 5U, intArrayOf(bb, c))
         val t = analyze(b.build(), intArrayOf(a))
 
         assertEquals(1, t.entry("D").instanceCount)
@@ -57,11 +58,11 @@ class ShapesTest {
     fun `multi-edges are preserved`() {
         // Object[]{x, x} != Object[]{x, y} when x and y differ structurally
         val b = ObjectGraph.Builder()
-        val x1 = b.add("X", 5)
-        val x2 = b.add("X", 5)
-        val y = b.add("Y", 5)
-        val a1 = b.add("A", 5, intArrayOf(x1, x2))
-        val a2 = b.add("A", 5, intArrayOf(x1, y))
+        val x1 = b.add(ClassName("X"), 5U)
+        val x2 = b.add(ClassName("X"), 5U)
+        val y = b.add(ClassName("Y"), 5U)
+        val a1 = b.add(ClassName("A"), 5U, intArrayOf(x1, x2))
+        val a2 = b.add(ClassName("A"), 5U, intArrayOf(x1, y))
         val t = analyze(b.build(), intArrayOf(a1, a2))
 
         val aShapes = t.entries.filter { it.label == "A" }
@@ -79,23 +80,23 @@ class ShapesTest {
     @Test
     fun `shallow size is not part of the key`() {
         val b = ObjectGraph.Builder()
-        val small = b.add("byte[]", 16)
-        val big = b.add("byte[]", 1_000_000)
+        val small = b.add(ClassName("byte[]"), 16U)
+        val big = b.add(ClassName("byte[]"), 1_000_000U)
         val t = analyze(b.build(), intArrayOf(small, big))
 
         val e = t.entry("byte[]")
         assertEquals(2, e.instanceCount)
-        assertEquals(16, e.shallowMin)
-        assertEquals(1_000_000, e.shallowMax)
-        assertEquals(1_000_016, e.shallowTotal)
+        assertEquals(16U, e.shallowMin)
+        assertEquals(1_000_000U, e.shallowMax)
+        assertEquals(1_000_016U, e.shallowTotal)
     }
 
     @Test
     fun `back-pointer scc collapses (discretized by class)`() {
         // two independent parent<->child cycles: common in Gradle heaps (SHAPES.md open point 4)
         val g = ObjectGraph.of(
-            classes = arrayOf("Child", "Parent", "Child", "Parent"),
-            shallow = longArrayOf(5, 5, 5, 5),
+            classes = listOf("Child", "Parent", "Child", "Parent").map { ClassName(it) }.toTypedArray(),
+            shallow = ulongArrayOf(5U, 5U, 5U, 5U),
             refs = arrayOf(intArrayOf(1), intArrayOf(0), intArrayOf(3), intArrayOf(2)),
         )
         val t = analyze(g, intArrayOf(1, 3))
@@ -110,16 +111,16 @@ class ShapesTest {
         assertEquals("scc[Child,Parent]", s.label)
         assertTrue(s.membersComplete)
         assertEquals(listOf(
-            SccMemberEntry("Child", listOf(SccInternalEdge(1, 1))),
-            SccMemberEntry("Parent", listOf(SccInternalEdge(0, 1))),
+            SccMemberEntry(ClassName("Child"), listOf(SccInternalEdge(1, 1))),
+            SccMemberEntry(ClassName("Parent"), listOf(SccInternalEdge(0, 1))),
         ), s.members)
     }
 
     @Test
     fun `self-loop objects merge via scc path`() {
         val g = ObjectGraph.of(
-            classes = arrayOf("N", "N"),
-            shallow = longArrayOf(7, 7),
+            classes = listOf("N", "N").map { ClassName(it) }.toTypedArray(),
+            shallow = ulongArrayOf(7U, 7U),
             refs = arrayOf(intArrayOf(0), intArrayOf(1)),
         )
         val t = analyze(g, intArrayOf(0, 1))
@@ -128,14 +129,14 @@ class ShapesTest {
         assertEquals(ShapeKind.SCC, s.kind)
         assertEquals(2, s.instanceCount)
         assertEquals(1, s.internalEdgesPerInstance)
-        assertEquals(listOf(SccMemberEntry("N", listOf(SccInternalEdge(0, 1)))), s.members)
+        assertEquals(listOf(SccMemberEntry(ClassName("N"), listOf(SccInternalEdge(0, 1)))), s.members)
     }
 
     @Test
     fun `scc member graph folds only parallel refs not distinct connections`() {
         val g = ObjectGraph.of(
-            classes = arrayOf("A", "B"),
-            shallow = longArrayOf(5, 5),
+            classes = listOf("A", "B").map { ClassName(it) }.toTypedArray(),
+            shallow = ulongArrayOf(5U, 5U),
             refs = arrayOf(intArrayOf(1, 1), intArrayOf(0)),
         )
         val t = analyze(g, intArrayOf(0))
@@ -143,8 +144,8 @@ class ShapesTest {
         val s = t.entries.single { it.kind == ShapeKind.SCC }
         assertEquals(3, s.internalEdgesPerInstance)
         assertEquals(listOf(
-            SccMemberEntry("A", listOf(SccInternalEdge(1, 2))),
-            SccMemberEntry("B", listOf(SccInternalEdge(0, 1))),
+            SccMemberEntry(ClassName("A"), listOf(SccInternalEdge(1, 2))),
+            SccMemberEntry(ClassName("B"), listOf(SccInternalEdge(0, 1))),
         ), s.members)
     }
 
@@ -155,8 +156,8 @@ class ShapesTest {
         // fixpoint signature is automorphism-invariant -> the cycles merge
         // (the old discretize-or-unique rule kept them as 2 unique shapes)
         val g = ObjectGraph.of(
-            classes = Array(6) { "N" },
-            shallow = LongArray(6) { 5 },
+            classes = Array(6) { ClassName("N") },
+            shallow = ULongArray(6) { 5U },
             refs = arrayOf(intArrayOf(1), intArrayOf(2), intArrayOf(0),
                            intArrayOf(4), intArrayOf(5), intArrayOf(3)),
         )
@@ -174,8 +175,8 @@ class ShapesTest {
         // but |SCC| > 64 forces the unique fallback
         val n = ShapesAnalyzer.MAX_SCC_MERGE + 1
         val g = ObjectGraph.of(
-            classes = Array(2 * n) { "C${it % n}" },
-            shallow = LongArray(2 * n) { 5 },
+            classes = Array(2 * n) { ClassName("C${it % n}") },
+            shallow = ULongArray(2 * n) { 5U },
             refs = Array(2 * n) { intArrayOf((it + 1) % n + if (it < n) 0 else n) },
         )
         val t = analyze(g, intArrayOf(0, n))
@@ -217,22 +218,37 @@ class ShapesTest {
     @Test
     fun `preselected scope keeps disconnected objects without making them roots`() {
         val g = ObjectGraph.of(
-            arrayOf("Root", "Detached"), longArrayOf(8, 24),
+            listOf("Root", "Detached").map { ClassName(it) }.toTypedArray(),
+            ulongArrayOf(8u, 24u),
             arrayOf(intArrayOf(), intArrayOf()),
         )
         val t = ShapesAnalyzer(g).analyze(intArrayOf(0), wholeGraph = true)
         assertEquals(2, t.reachableCount)
-        assertEquals(32, t.entries.sumOf { it.shallowTotal })
+        assertEquals(32U, t.entries.sumOf { it.shallowTotal })
         assertEquals(1, t.entries.sumOf { it.rootCount })
         assertEquals(0, t.entry("Detached").rootCount)
     }
 
     @Test
+    fun `heap-wide analysis needs no class roots`() {
+        val g = ObjectGraph.of(
+            listOf("A", "B").map { ClassName(it) }.toTypedArray(),
+            ulongArrayOf(8U, 24U),
+            arrayOf(intArrayOf(1), intArrayOf()),
+        )
+        val t = ShapesAnalyzer(g).analyze(IntArray(0), wholeGraph = true)
+        assertEquals(2, t.reachableCount)
+        assertEquals(32U, t.entries.sumOf { it.shallowTotal })
+        assertEquals(0, t.entries.sumOf { it.rootCount })
+        assertTrue(t.rootsHistogram.isEmpty())
+    }
+
+    @Test
     fun `unreachable objects are out of scope`() {
         val b = ObjectGraph.Builder()
-        val stray = b.add("Stray", 1000)
-        val l = b.add("L", 10)
-        val m = b.add("M", 20, intArrayOf(l))
+        val stray = b.add(ClassName("Stray"), 1000U)
+        val l = b.add(ClassName("L"), 10U)
+        val m = b.add(ClassName("M"), 20U, intArrayOf(l))
         val t = analyze(b.build(), intArrayOf(m))
 
         assertEquals(2, t.reachableCount)

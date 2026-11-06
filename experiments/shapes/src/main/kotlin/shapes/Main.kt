@@ -1,5 +1,7 @@
 package shapes
 
+import shapes.mat.MatExtract
+import shapes.models.ClassName
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
@@ -17,13 +19,15 @@ common options:
 real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
-  mat-extract --hprof <file.hprof> --class <className> --out <r.grph>
+  mat-extract --hprof <file.hprof> [--class <className> | --whole-heap] --out <r.grph>
       [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>] [--boundary-stubs]
+      --whole-heap selects every non-class object (with --scope heap) and has no class roots
       [--raw-references]  keep soft/weak/phantom-reference edges (default: filtered —
                           the GC clears them, so they do not retain their referents)
   mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
-  analyze-grph --graph <r.grph> --class <className> [--out <shapes.bin>] [--verify]
+  analyze-grph --graph <r.grph> [--class <className> | --whole-heap] [--out <shapes.bin>] [--verify]
       [--whole-graph]  include all preselected objects, preserving original roots
+      --whole-heap requires --whole-graph and emits zero class-root counts
 
 graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line, '#' comments
 """
@@ -32,19 +36,19 @@ fun main(args: Array<String>) {
     val opts = parseOpts(args.toList())
     when (opts.cmd) {
         "analyze" -> {
-            val g = ObjectGraph.load(Path.of(opts.require("graph")))
-            val cls = opts.require("class")
-            val roots = g.instancesOf(cls)
-            println("class $cls: ${roots.size} instances (roots)")
-            val z = ShapesAnalyzer(g, relaxOf(opts))
-            val t = z.analyze(roots)
-            printRelax(z)
+            val graph = ObjectGraph.load(Path.of(opts.require("graph")))
+            val className = ClassName(opts.require("class"))
+            val roots = graph.instancesOf(className)
+            println("class $className: ${roots.size} instances (roots)")
+            val analyzer = ShapesAnalyzer(graph, relaxOf(opts))
+            val t = analyzer.analyze(roots)
+            printRelax(analyzer)
             printReport(t)
             opts["out"]?.let {
                 ShapesEmit.write(t, Path.of(it))
                 println("artifact written: $it")
             }
-            if (opts.flag("verify")) runVerify(g, roots, t)
+            if (opts.flag("verify")) runVerify(graph, roots, t)
         }
         "generate" -> {
             val (g, _) = SynthGraphs.modules(opts.require("modules").toInt())
@@ -58,9 +62,12 @@ fun main(args: Array<String>) {
             printReport(t)
             if (opts.flag("verify")) runVerify(g, roots, t)
         }
-        "mat-info" -> shapes.mat.MatExtract.info(opts.require("hprof"))
-        "mat-histogram" -> shapes.mat.MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
+        "mat-info" -> MatExtract.info(opts.require("hprof"))
+        "mat-histogram" -> MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
         "mat-extract" -> {
+            val wholeHeap = opts.flag("whole-heap")
+            require(!wholeHeap || opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
+            val className = if (wholeHeap) "" else opts.require("class")
             val fieldRules = opts["relax"]?.let { path ->
                 val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
                 if (rules.classRules.isNotEmpty())
@@ -68,33 +75,33 @@ fun main(args: Array<String>) {
                         "(pass the same file to analyze-grph)")
                 rules.fieldRules
             } ?: emptyMap()
-            shapes.mat.MatExtract.extract(
-                opts.require("hprof"), opts.require("class"), Path.of(opts.require("out")),
-                opts["scope"] ?: "reachable", opts.flag("normalize-maps"),
+            MatExtract.extract(
+                opts.require("hprof"), className, Path.of(opts.require("out")),
+                opts["scope"] ?: if (wholeHeap) "heap" else "reachable", opts.flag("normalize-maps"),
                 opts["stats"]?.let { Path.of(it) }, opts.flag("boundary-stubs"),
                 filterReferences = !opts.flag("raw-references"),
-                fieldRules = fieldRules,
+                fieldRules = fieldRules, wholeHeap = wholeHeap,
             )
         }
-        "mat-trace" -> shapes.mat.MatExtract.trace(
+        "mat-trace" -> MatExtract.trace(
             opts.require("hprof"), opts.require("class"),
             (opts["targets"] ?: "DefaultGradleBuild,DefaultGradle,BuildState,DefaultProject").split(","),
             (opts["maxlevel"] ?: "15").toInt(),
             (opts["maxobjs"] ?: "80000000").toInt(),
         )
-        "mat-fields" -> shapes.mat.MatExtract.fields(
+        "mat-fields" -> MatExtract.fields(
             opts.require("hprof"), opts.require("class"),
             (opts["limit"] ?: "5").toInt(), !opts.flag("all"),
         )
-        "mat-ref-targets" -> shapes.mat.MatExtract.refTargets(
+        "mat-ref-targets" -> MatExtract.refTargets(
             opts.require("hprof"), opts.require("class"),
             (opts["maxscan"] ?: "1000000000").toInt(),
         )
-        "mat-isclass" -> shapes.mat.MatExtract.isClassCheck(
+        "mat-isclass" -> MatExtract.isClassCheck(
             opts.require("hprof"),
             (opts["limit"] ?: "5").toInt(),
         )
-        "mat-reachback" -> shapes.mat.MatExtract.reachBack(
+        "mat-reachback" -> MatExtract.reachBack(
             opts.require("hprof"), opts.require("class"),
             (opts["limit"] ?: "3").toInt(),
             (opts["maxlevel"] ?: "30").toInt(),
@@ -102,9 +109,13 @@ fun main(args: Array<String>) {
         )
         "analyze-grph" -> {
             val g = ObjectGraph.loadGrph(Path.of(opts.require("graph")))
-            val cls = opts.require("class")
-            val roots = g.instancesOf(cls)
-            println("loaded ${g.size} objects (source heap ${g.sourceObjectCount}), class $cls: ${roots.size} roots")
+            val wholeHeap = opts.flag("whole-heap")
+            require(!wholeHeap || opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
+            require(!wholeHeap || opts.flag("whole-graph")) { "--whole-heap requires --whole-graph" }
+            val className = if (wholeHeap) null else ClassName(opts.require("class"))
+            val roots = className?.let { g.instancesOf(it) } ?: IntArray(0)
+            println("loaded ${g.size} objects (source heap ${g.sourceObjectCount}), " +
+                (className?.let { "class $it: ${roots.size} roots" } ?: "whole heap: no class roots"))
             val t0 = System.nanoTime()
             if (opts.flag("verify-edges")) {
                 // inv3 audit: analyze once, then check every ref against the artifact
@@ -146,7 +157,7 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun relaxOf(opts: Opts): Map<String, Int> =
+private fun relaxOf(opts: Opts): Map<ClassName, Int> =
     opts["relax"]?.let { path ->
         val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
         println("relax: ${rules.classRules.size} analyzer rules from $path" +
@@ -192,9 +203,15 @@ private fun printReport(t: ShapeTable) {
     println("shapes (by shallowTotal):")
     for (e in t.entries.sortedByDescending { it.shallowTotal }.take(20)) {
         println(
-            "  #%-4d %-52s %-9s count=%-7d shallowTotal=%-11d min=%-7d max=%-7d roots=%d".format(
-                e.id, e.label.take(52), e.kind, e.instanceCount, e.shallowTotal,
-                e.shallowMin, e.shallowMax, e.rootCount
+            "  #%-4d %-52s %-9s count=%-7d shallowTotal=%-11s min=%-7s max=%-7s roots=%d".format(
+                e.id,
+                e.label.take(52),
+                e.kind,
+                e.instanceCount,
+                e.shallowTotal,
+                e.shallowMin,
+                e.shallowMax,
+                e.rootCount
             )
         )
         for (edge in t.edgesOf(e.id).take(10)) {

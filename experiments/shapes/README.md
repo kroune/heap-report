@@ -9,9 +9,10 @@ Spec section references below are to SHAPES.md.
 
 ## What is implemented
 
-- **Definitions** — `ObjectGraph` (objects + outbound refs), roots = full
-  instance id list of a class, scope R = explicitly selected retained or
-  reachable graph over the filtered source references.
+- **Definitions** — `ObjectGraph` (objects + outbound refs). Class diagnostics
+  use roots = full instance id list and an explicitly selected retained or
+  reachable graph. The backend's heap-wide mode selects every non-class object
+  and intentionally has no class-root counts.
 - **Equality rules** — leaf / acyclic / SCC keys exactly as specified.
   Multi-edges preserved (`Object[]{x,x}` ≠ `Object[]{x,y}` when x,y differ
   structurally). SCC: color refinement over `(class, internal-neighbor
@@ -48,8 +49,8 @@ Spec section references below are to SHAPES.md.
   v1 here is single-threaded; the spec presents these as scale
   optimizations, not semantics. Sequential Tarjan stands as spec'd.
 - `IDS_LIMIT` paging (open point 5), per-instance drill-down, strings/values.
-- Whole-heap global pass (open point 2) — analysis is per-(graph, class),
-  matching the current job flow.
+- Per-class drill-down from the heap-wide artifact requires a persisted
+  object→shape mapping; the current UI serves the aggregate graph only.
 
 ## Layout
 
@@ -98,12 +99,13 @@ missing from the class table — the 9 primitive class objects),
 `mat-reachback` (reverse BFS over the inbound index — quantifies which
 classes carry back-paths into the mega-SCC).
 
-Backend/UI pipeline v2 defaults to `--scope retained --normalize-maps` and
-uses `SHAPES_MAX_SCC_MERGE=1000000` (override supported). The UI exposes raw /
-normalized maps and retained / reachable scope plus re-analysis for existing
-artifacts. CLI flags `--stats <json>` preserve source/projected reference
-counts; `analyze-grph --whole-graph` retains all preselected objects without
-turning them into roots. `SHAPES_XMX_RETAINED` defaults to 8g; the analyzer
+Backend/UI uses `--whole-heap --scope heap --normalize-maps` and
+`SHAPES_MAX_SCC_MERGE=1000000` (override supported). The dedicated Shapes tab
+exposes raw / normalized maps and re-analysis of the single heap artifact.
+Class-scoped retained / reachable extraction remains available in the CLI for
+diagnostics. `--stats <json>` preserves source/projected reference counts;
+`analyze-grph --whole-graph` retains all preselected objects without turning
+them into roots. `SHAPES_XMX_RETAINED` defaults to 8g; the analyzer
 heap is sized from the graph. The server requires a built fat jar and never
 runs Gradle. See `backend/mat/SHAPES.md` for projection and artifact metadata.
 

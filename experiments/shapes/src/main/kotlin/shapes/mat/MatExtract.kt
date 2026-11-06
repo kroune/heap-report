@@ -9,6 +9,7 @@ import org.eclipse.mat.parser.model.ClassImpl
 import org.eclipse.mat.parser.model.XSnapshotInfo
 import org.eclipse.mat.snapshot.ISnapshot
 import org.eclipse.mat.util.VoidProgressListener
+import shapes.models.ClassName
 import java.io.BufferedInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -19,9 +20,10 @@ import java.nio.file.Path
 import java.util.BitSet
 
 /**
- * Heap-dump extraction for structural shapes: pulls the selected object
- * graph (SHAPES.md scope R) for one class out of a MAT snapshot and writes it
- * as GRPH (see Graph.kt). Runs standalone against pre-built MAT indexes —
+ * Heap-dump extraction for structural shapes: pulls either the complete
+ * non-class heap or one class's selected graph (SHAPES.md scope R) out of a
+ * MAT snapshot and writes it as GRPH (see Graph.kt). Runs standalone against
+ * pre-built MAT indexes —
  * SnapshotFactory (the facade) resolves its implementation via the Eclipse
  * extension registry, so we instantiate SnapshotFactoryImpl directly; with
  * indexes present no parser extension is needed.
@@ -65,9 +67,12 @@ object MatExtract {
         hprof: String, className: String, out: Path,
         scope: String = "reachable", normalizeMaps: Boolean = false, statsOut: Path? = null,
         boundaryStubs: Boolean = false, filterReferences: Boolean = true,
-        fieldRules: Map<String, Set<String>> = emptyMap(),
+        fieldRules: Map<ClassName, Set<String>> = emptyMap(), wholeHeap: Boolean = false,
     ) {
-        require(scope == "reachable" || scope == "retained") { "scope must be retained or reachable" }
+        require(if (wholeHeap) scope == "heap" else scope == "reachable" || scope == "retained") {
+            "scope must be heap for --whole-heap, otherwise retained or reachable"
+        }
+        require(!wholeHeap || !boundaryStubs) { "--boundary-stubs is incompatible with --whole-heap" }
         // MAT's old marker initializes the Eclipse platform even for index-only
         // reads. The supported new marker works in our standalone snapshot.
         if (scope == "retained") System.setProperty(
@@ -78,11 +83,15 @@ object MatExtract {
         val s = open(hprof, withReader = true)
         try {
             val t0 = System.nanoTime()
-            val classes = s.getClassesByName(className, false)
-                ?: error("class not found: $className")
-            check(classes.isNotEmpty()) { "class not found: $className" }
-            val roots = classes.flatMap { it.objectIds.asIterable() }.distinct()
-            println("class $className: ${classes.size} class object(s), ${roots.size} instances")
+            val classes = if (wholeHeap) null else (s.getClassesByName(className, false)
+                ?: error("class not found: $className"))
+            check(wholeHeap || classes!!.isNotEmpty()) { "class not found: $className" }
+            // The heap-wide view has no queried-class roots. The analyzer still
+            // emits the root fields for format compatibility, with zero counts.
+            val roots = classes?.flatMap { it.objectIds.asIterable() }?.distinct()
+                ?: emptyList()
+            if (classes == null) println("whole heap: all non-class objects")
+            else println("class $className: ${classes.size} class object(s), ${roots.size} instances")
 
             // java.lang.ref.Reference mechanics are VM/library bookkeeping,
             // not program structure: `discovered` is the GC's discovered-list
@@ -109,7 +118,7 @@ object MatExtract {
             val concealFields = HashMap<Int, Set<String>>()
             for ((pattern, fields) in fieldRules) {
                 var n = 0
-                for (cl in s.getClassesByName(pattern, true) ?: emptyList()) {
+                for (cl in s.getClassesByName(pattern.name, true) ?: emptyList()) {
                     concealFields[cl.objectId] = concealFields[cl.objectId].orEmpty() + fields
                     n++
                 }
@@ -148,7 +157,10 @@ object MatExtract {
             // Retained scope is already selected by MAT and needs no id list at all.
             val rIds = IntStack()
             var retainedCount = 0
-            if (scope == "retained") {
+            if (wholeHeap) {
+                for (id in 0 until n) if (!isExcludedClass(id)) visited.set(id)
+                println("heap: ${visited.cardinality()} non-class objects")
+            } else if (scope == "retained") {
                 val retained = s.getRetainedSet(roots.toIntArray(), VoidProgressListener())
                 retainedCount = retained.size
                 for (id in retained) if (!isExcludedClass(id)) visited.set(id)
@@ -293,7 +305,7 @@ object MatExtract {
                     o0 = visited.nextSetBit(o0 + 1)
                 }
                 println("boundary stubs: ${stubClassIdx.size} target classes, $stubRefs boundary refs")
-                check(stubOfClass.keys.none { cid -> classes.any { it.objectId == cid } }) {
+                check(stubOfClass.keys.none { cid -> classes!!.any { it.objectId == cid } }) {
                     "a boundary target is an instance of the queried class — roots must all be in scope"
                 }
             }
@@ -309,24 +321,24 @@ object MatExtract {
 
             // pass 2: emit GRPH (set-bit order; refs remapped O(1) via rank)
             Files.newOutputStream(out).use { raw ->
-                val d = DataOutputStream(raw.buffered(1 shl 20))
-                d.writeInt(GRPH_MAGIC)
-                d.writeLong(n.toLong())
-                d.writeInt(classNames.size)
+                val output = DataOutputStream(raw.buffered(1 shl 20))
+                output.writeInt(GRPH_MAGIC)
+                output.writeLong(n.toLong())
+                output.writeInt(classNames.size)
                 for (name in classNames) {
                     val b = name.toByteArray(Charsets.UTF_8)
-                    d.writeInt(b.size); d.write(b)
+                    output.writeInt(b.size); output.write(b)
                 }
-                d.writeInt(nR + nStubs)
+                output.writeInt(nR + nStubs)
                 oi = 0
                 o = visited.nextSetBit(0)
                 fun stubId(w: Int): Int = nR + stubOfClass.getValue(s.getClassOf(w).objectId)
                 while (o >= 0) {
                     val nc = nodeClass[oi++]
-                    d.writeInt(nc)
+                    output.writeInt(nc)
                     val shallow = s.getHeapSize(o)
                     shallowTotal += shallow
-                    d.writeLong(shallow)
+                    output.writeLong(shallow)
                     val read = referencePolicy.read(o)
                     val original = read.refs
                     concealedFieldEdges += read.concealedFieldEdges
@@ -342,18 +354,18 @@ object MatExtract {
                         if (visited.get(w) || boundaryStubs) refCount++ else projectedBoundaryEdges++
                     }
                     projectedEdges += refCount
-                    d.writeInt(refCount)
+                    output.writeInt(refCount)
                     for (w in refs) if (w >= 0 && !isExcludedClass(w)) {
-                        if (visited.get(w)) d.writeInt(remap(w))
-                        else if (boundaryStubs) d.writeInt(stubId(w))
+                        if (visited.get(w)) output.writeInt(remap(w))
+                        else if (boundaryStubs) output.writeInt(stubId(w))
                     }
                     if (oi % 5_000_000 == 0) println("  pass2: $oi/$nR")
                     o = visited.nextSetBit(o + 1)
                 }
                 for (cidx in stubClassIdx) {   // stub rows: class, shallow 0, no refs
-                    d.writeInt(cidx); d.writeLong(0L); d.writeInt(0)
+                    output.writeInt(cidx); output.writeLong(0L); output.writeInt(0)
                 }
-                d.flush()
+                output.flush()
             }
             val t3 = System.nanoTime()
             println("written: $out (${Files.size(out) / 1_000_000} MB), pass 2 in ${(t3 - t2) / 1_000_000} ms")
@@ -376,8 +388,8 @@ object MatExtract {
                     scopeFilteredOutObjects = droppedSoftOnly,
                     scopeFilteredOutShallow = droppedSoftShallow,
                     concealedFieldEdges = concealedFieldEdges,
-                    fieldRules = fieldRules.entries.sortedBy { it.key }.map { (name, fields) ->
-                        ExtractionFieldRule(name, fields.sorted())
+                    fieldRules = fieldRules.entries.sortedBy { it.key.name }.map { (className, fields) ->
+                        ExtractionFieldRule(className.name, fields.sorted())
                     },
                 ))
             }

@@ -16,25 +16,25 @@ import java.util.BitSet
  * (5 — match vs the sampling payload — needs MAT and is out of scope here;
  *  6 — determinism — is covered by tests running analyze twice.)
  */
-fun verifyInvariants(g: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph: Boolean = false): List<String> {
+fun verifyInvariants(graph: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph: Boolean = false): List<String> {
     val problems = mutableListOf<String>()
 
     // independent re-computation of R and its totals
-    val inR = BitSet(g.size)
+    val inR = BitSet(graph.size)
     val stack = ArrayDeque<Int>()
-    val seeds = if (wholeGraph) 0 until g.size else roots.asIterable()
+    val seeds = if (wholeGraph) 0 until graph.size else roots.asIterable()
     for (r in seeds) if (!inR.get(r)) {
         inR.set(r); stack.add(r)
     }
     var rCount = 0L
-    var shallowSum = 0L
+    var shallowSum = 0UL
     var refCount = 0L
     while (stack.isNotEmpty()) {
         val v = stack.removeLast()
         rCount++
-        shallowSum += g.shallowOf(v)
-        refCount += g.refCount(v)
-        g.forEachRef(v) { w ->
+        shallowSum += graph.shallow[v]
+        refCount += graph.refCount(v)
+        graph.forEachRef(v) { w ->
             if (!inR.get(w)) {
                 inR.set(w); stack.add(w)
             }

@@ -1,6 +1,7 @@
 package shapes
 
 import kotlinx.serialization.Serializable
+import shapes.models.ClassName
 
 /**
  * Class relaxation rules (SHAPES.md "Relaxed classes"): for selected classes
@@ -44,16 +45,16 @@ object Relax {
     /** Parsed rule file: [classRules] for the analyzer, [fieldRules]
      *  (class -> field names, applied at extraction) for MatExtract. */
     class Rules(
-        val classRules: Map<String, Int>,
-        val fieldRules: Map<String, Set<String>>,
+        val classRules: Map<ClassName, Int>,
+        val fieldRules: Map<ClassName, Set<String>>,
     ) {
         fun isEmpty() = classRules.isEmpty() && fieldRules.isEmpty()
     }
 
     /** Parse the TSV rule file. Blank lines and `#` comments are ignored. */
     fun parse(text: String): Rules {
-        val classRules = LinkedHashMap<String, Int>()
-        val fieldRules = LinkedHashMap<String, Set<String>>()
+        val classRules = LinkedHashMap<ClassName, Int>()
+        val fieldRules = LinkedHashMap<ClassName, Set<String>>()
         for ((lineNo, raw) in text.lines().withIndex()) {
             val line = raw.trim()
             if (line.isEmpty() || line.startsWith("#")) continue
@@ -62,13 +63,13 @@ object Relax {
             require(parts.size == 3 && parts[2].isNotBlank()) {
                 "relax.tsv:${lineNo + 1}: a reason is required (which merge does this rule unblock?): $raw"
             }
-            val cls = parts[0].trim()
+            val className = ClassName(parts[0].trim())
             val levelStr = parts[1].trim()
             if (levelStr.startsWith(CONCEAL_FIELD_PREFIX)) {
                 val field = levelStr.removePrefix(CONCEAL_FIELD_PREFIX).trim()
                 require(field.isNotEmpty()) { "relax.tsv:${lineNo + 1}: empty field name in $levelStr" }
-                val prev = fieldRules.getOrPut(cls) { sortedSetOf() } as java.util.SortedSet
-                require(prev.add(field)) { "relax.tsv:${lineNo + 1}: duplicate rule $cls.$field" }
+                val prev = fieldRules.getOrPut(className) { sortedSetOf() } as java.util.SortedSet
+                require(prev.add(field)) { "relax.tsv:${lineNo + 1}: duplicate rule $className.$field" }
                 continue
             }
             val level = when (levelStr) {
@@ -76,14 +77,14 @@ object Relax {
                 "set-children" -> SET_CHILDREN
                 else -> error("relax.tsv:${lineNo + 1}: unknown level '$levelStr' (class-only|set-children|conceal-field:<name>)")
             }
-            val prev = classRules.put(cls, level)
-            require(prev == null || prev == level) { "relax.tsv:${lineNo + 1}: conflicting rules for $cls" }
+            val prev = classRules.put(className, level)
+            require(prev == null || prev == level) { "relax.tsv:${lineNo + 1}: conflicting rules for $className" }
         }
         return Rules(classRules, fieldRules)
     }
 
     /** class-table index -> level (0 = exact), for the graph's class table. */
-    fun levels(classNames: Array<String>, rules: Map<String, Int>): IntArray {
+    fun levels(classNames: Array<ClassName>, rules: Map<ClassName, Int>): IntArray {
         if (rules.isEmpty()) return IntArray(0)
         val levels = IntArray(classNames.size)
         val unknown = rules.keys.toMutableSet()

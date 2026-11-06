@@ -1,7 +1,8 @@
 package shapes
 
+import shapes.models.ClassName
 import java.nio.file.Path
-import java.util.BitSet
+import java.util.*
 import kotlin.io.path.readLines
 import kotlin.io.path.writeText
 
@@ -13,12 +14,6 @@ import kotlin.io.path.writeText
  * 10M+ objects, per-node IntArray shells cost more than the refs themselves
  * (measured on real heaps — see README). Hot loops use [forEachRef].
  *
- * Heap footprint per object (JFR-driven, see README):
- *   classIdx 2 B (CharArray — an extracted scope never has 65k classes),
- *   shallow  4 B (IntArray; the rare >2 GB single object — a giant array —
- *   is encoded as a negative index into [shallowBig]),
- *   offsets  4 B, refs 4 B/ref.
- *
  * Text format (one object per line):
  *   # comment
  *   <id> <className> <shallowBytes> [refId,refId,...]
@@ -26,32 +21,25 @@ import kotlin.io.path.writeText
  * (multi-edges, e.g. Object[]{x, x}).
  */
 class ObjectGraph(
-    val classNames: Array<String>,
+    val classNames: Array<ClassName>,
     val classIdx: CharArray,       // per object -> classNames index (classCount <= 65535)
-    private val shallowI: IntArray, // per object: >= 0 -> shallow bytes, < 0 -> ~index into shallowBig
-    private val shallowBig: LongArray, // overflow for objects >= 2^31 bytes
+    val shallow: CompactULongArray,
     val refOffsets: IntArray,     // size+1: refs of object o are refs[refOffsets[o] .. refOffsets[o+1])
     val refs: IntArray,           // flat outbound refs
     /** object count of the source heap (GRPH from a real dump), else == size. */
-    val sourceObjectCount: Long = shallowI.size.toLong(),
+    val sourceObjectCount: Long = shallow.size.toLong(),
 ) {
-    val size: Int get() = shallowI.size
+    val size: Int get() = shallow.size
 
-    fun className(o: Int): String = classNames[classIdx[o].code]
+    fun className(index: Int): ClassName = classNames[classIdx[index].code]
 
-    /** shallow bytes of object o (Long: a single array CAN exceed 2^31 bytes). */
-    fun shallowOf(o: Int): Long {
-        val v = shallowI[o]
-        return if (v >= 0) v.toLong() else shallowBig[-v - 1]
+    fun refCount(index: Int): Int = refOffsets[index + 1] - refOffsets[index]
+
+    inline fun forEachRef(index: Int, block: (Int) -> Unit) {
+        for (i in refOffsets[index] until refOffsets[index + 1]) block(refs[i])
     }
 
-    fun refCount(o: Int): Int = refOffsets[o + 1] - refOffsets[o]
-
-    inline fun forEachRef(o: Int, block: (Int) -> Unit) {
-        for (i in refOffsets[o] until refOffsets[o + 1]) block(refs[i])
-    }
-
-    fun instancesOf(className: String): IntArray {
+    fun instancesOf(className: ClassName): IntArray {
         val idx = classNames.indexOf(className)
         if (idx < 0) return IntArray(0)
         var count = 0
@@ -65,7 +53,12 @@ class ObjectGraph(
     fun save(path: Path) {
         val sb = StringBuilder()
         for (i in 0 until size) {
-            sb.append(i).append(' ').append(className(i)).append(' ').append(shallowOf(i))
+            sb
+                .append(i)
+                .append(' ')
+                .append(className(i).name)
+                .append(' ')
+                .append(shallow[i])
             if (refCount(i) > 0) {
                 sb.append(' ')
                 for (j in refOffsets[i] until refOffsets[i + 1]) {
@@ -79,63 +72,60 @@ class ObjectGraph(
     }
 
     class Builder {
-        private val cls = ArrayList<String>()
-        private val sh = ArrayList<Long>()
-        private val rf = ArrayList<IntArray>()
 
-        fun add(className: String, shallow: Long, refs: IntArray = IntArray(0)): Int {
-            cls.add(className); sh.add(shallow); rf.add(refs)
-            return cls.size - 1
+        private val classNames = ArrayList<ClassName>()
+        private val shallowSizes = CompactULongArray()
+        private val referencesList = ArrayList<IntArray>()
+
+        fun add(className: ClassName, shallow: ULong, references: IntArray = IntArray(0)): Int {
+            classNames.add(className)
+            shallowSizes.add(shallow)
+            referencesList.add(references)
+            return classNames.size - 1
         }
 
         fun build(): ObjectGraph {
-            val n = cls.size
-            val names = ArrayList<String>()
-            val nameIdx = HashMap<String, Int>()
-            val classIdx = CharArray(n)
-            val offsets = IntArray(n + 1)
-            for (i in 0 until n) {
-                classIdx[i] = nameIdx.getOrPut(cls[i]) {
-                    names.add(cls[i])
+            val classNamesSizes = classNames.size
+            val names = ArrayList<ClassName>()
+            val nameIdx = HashMap<ClassName, Int>()
+            val classIdx = CharArray(classNamesSizes)
+            val offsets = IntArray(classNamesSizes + 1)
+            for (i in 0 until classNamesSizes) {
+                classIdx[i] = nameIdx.getOrPut(classNames[i]) {
+                    names.add(classNames[i])
                     require(names.size <= 65535) { "class table exceeds 65535 (CharArray classIdx)" }
                     names.size - 1
                 }.toChar()
-                offsets[i + 1] = offsets[i] + rf[i].size
+                offsets[i + 1] = offsets[i] + referencesList[i].size
             }
-            val refs = IntArray(offsets[n])
-            for (i in 0 until n) rf[i].copyInto(refs, offsets[i])
-            for (i in 0 until n) for (w in rf[i]) {
-                require(w in 0 until n) { "ref out of range: $i -> $w (size $n)" }
+            val refs = IntArray(offsets[classNamesSizes])
+            for (i in 0 until classNamesSizes) {
+                referencesList[i].copyInto(refs, offsets[i])
             }
-            val (shI, shBig) = packShallow(sh.toLongArray())
-            return ObjectGraph(names.toTypedArray(), classIdx, shI, shBig, offsets, refs)
+            for (i in 0 until classNamesSizes) {
+                for (w in referencesList[i]) {
+                    require(w in 0 until classNamesSizes) { "ref out of range: $i -> $w (size $classNamesSizes)" }
+                }
+            }
+            shallowSizes.markImmutable()
+            return ObjectGraph(
+                classNames = names.toTypedArray(),
+                classIdx = classIdx,
+                shallow = shallowSizes,
+                refOffsets = offsets,
+                refs = refs
+            )
         }
     }
 
     companion object {
-        /** Pack shallow sizes: int-direct + a small overflow table for the
-         * rare single object >= 2^31 bytes (a giant array). */
-        private fun packShallow(values: LongArray): Pair<IntArray, LongArray> {
-            val packed = IntArray(values.size)
-            var bigs = LongArray(0)
-            var bigCount = 0
-            for (i in values.indices) {
-                val v = values[i]
-                if (v in 0..Int.MAX_VALUE) {
-                    packed[i] = v.toInt()
-                } else {
-                    if (bigCount == bigs.size) bigs = bigs.copyOf(maxOf(8, bigs.size * 2))
-                    packed[i] = -(bigCount + 1)
-                    bigs[bigCount++] = v
-                }
-            }
-            return packed to bigs.copyOf(bigCount)
-        }
         /** Direct construction from per-node arrays (tests). */
-        fun of(classes: Array<String>, shallow: LongArray, refs: Array<IntArray>): ObjectGraph {
-            val b = Builder()
-            for (i in classes.indices) b.add(classes[i], shallow[i], refs[i])
-            return b.build()
+        fun of(classes: Array<ClassName>, shallow: ULongArray, refs: Array<IntArray>): ObjectGraph {
+            val builder = Builder()
+            for (index in classes.indices) {
+                builder.add(classes[index], shallow[index], refs[index])
+            }
+            return builder.build()
         }
 
         /** Bulk big-endian reader: DataInputStream per-call overhead dominated load time (JFR). */
@@ -201,40 +191,32 @@ class ObjectGraph(
 
         /** GRPH binary, written by shapes.mat.MatExtract (dense ids, refs remapped). */
         fun loadGrph(path: Path): ObjectGraph {
-            val classNames: Array<String>
+            val classNames: Array<ClassName>
             val sourceN: Long
             val n: Int
             val classIdx: CharArray
-            val shI: IntArray
-            var shBig = LongArray(0)
-            var bigCount = 0
+            val shallow = CompactULongArray()
             val offsets: IntArray
-            FastReader(path).use { d ->
-                require(d.int() == 0x47525048) { "bad GRPH magic in $path" }
-                sourceN = d.long()
-                classNames = Array(d.int()) { d.bytes(d.int()).toString(Charsets.UTF_8) }
+            FastReader(path).use { reader ->
+                require(reader.int() == 0x47525048) { "bad GRPH magic in $path" }
+                sourceN = reader.long()
+                classNames = Array(reader.int()) {
+                    ClassName(reader.bytes(reader.int()).toString(Charsets.UTF_8))
+                }
                 require(classNames.size <= 65535) { "class table exceeds 65535 (CharArray classIdx)" }
-                n = d.int()
+                n = reader.int()
                 // pass 1: per-node class, shallow, ref count (refs skipped cheaply)
                 classIdx = CharArray(n)
-                shI = IntArray(n)
                 offsets = IntArray(n + 1)
                 for (i in 0 until n) {
-                    classIdx[i] = d.int().toChar()
-                    val v = d.long()
-                    if (v in 0..Int.MAX_VALUE) {
-                        shI[i] = v.toInt()
-                    } else {   // a single object >= 2^31 bytes: overflow table
-                        if (bigCount == shBig.size) shBig = shBig.copyOf(maxOf(8, shBig.size * 2))
-                        shI[i] = -(bigCount + 1)
-                        shBig[bigCount++] = v
-                    }
-                    val rc = d.int()
+                    classIdx[i] = reader.int().toChar()
+                    val v = reader.long().toULong()
+                    shallow.add(v)
+                    val rc = reader.int()
                     offsets[i + 1] = offsets[i] + rc
-                    d.skip(4L * rc)
+                    reader.skip(4L * rc)
                 }
             }
-            shBig = shBig.copyOf(bigCount)
             // pass 2: refs into the flat array (file is in page cache)
             val refs = IntArray(offsets[n])
             FastReader(path).use { d ->
@@ -249,11 +231,12 @@ class ObjectGraph(
                     for (j in 0 until rc) refs[base + j] = d.int()
                 }
             }
-            return ObjectGraph(classNames, classIdx, shI, shBig, offsets, refs, sourceN)
+            shallow.markImmutable()
+            return ObjectGraph(classNames, classIdx, shallow, offsets, refs, sourceN)
         }
 
         fun load(path: Path): ObjectGraph {
-            data class Row(val id: Int, val cls: String, val shallow: Long, val refs: IntArray)
+            data class Row(val id: Int, val className: ClassName, val shallow: Long, val refs: IntArray)
 
             val rows = ArrayList<Row>()
             path.readLines().forEachIndexed { lineNo, raw ->
@@ -262,9 +245,9 @@ class ObjectGraph(
                 val parts = line.split(Regex("\\s+"))
                 require(parts.size >= 3) { "line ${lineNo + 1}: expected '<id> <class> <shallow> [refs]'" }
                 val refs = if (parts.size >= 4) parts[3].split(',').map { it.toInt() }.toIntArray() else IntArray(0)
-                rows.add(Row(parts[0].toInt(), parts[1], parts[2].toLong(), refs))
+                rows.add(Row(parts[0].toInt(), ClassName(parts[1]), parts[2].toLong(), refs))
             }
-            val b = Builder()
+            val builder = Builder()
             val n = rows.size
             val seen = BitSet(n)
             val byId = arrayOfNulls<Row>(n)
@@ -275,10 +258,11 @@ class ObjectGraph(
                 byId[r.id] = r
             }
             for (i in 0 until n) {
-                val r = byId[i]!!
-                b.add(r.cls, r.shallow, r.refs)
+                val row = byId[i]!!
+                // TODO trace better long and convert in proper place
+                builder.add(row.className, row.shallow.toULong(), row.refs)
             }
-            return b.build()
+            return builder.build()
         }
     }
 }
@@ -291,15 +275,15 @@ object SynthGraphs {
      */
     fun modules(n: Int): Pair<ObjectGraph, IntArray> {
         val b = ObjectGraph.Builder()
-        val shared = b.add("synth.SharedProps", 64)
+        val shared = b.add(ClassName("synth.SharedProps"), 64U)
         val roots = IntArray(n)
         for (i in 0 until n) {
-            val libA = b.add("synth.Lib", 32)
-            val libB = b.add("synth.Lib", 32)
-            val props = b.add("synth.Props", 24)
-            val deps = b.add("synth.Deps", 48, intArrayOf(libA, libB))
-            val conf = b.add("synth.Config", 40, intArrayOf(props, shared))
-            roots[i] = b.add("synth.Module", 120, intArrayOf(deps, conf))
+            val libA = b.add(ClassName("synth.Lib"), 32U)
+            val libB = b.add(ClassName("synth.Lib"), 32U)
+            val props = b.add(ClassName("synth.Props"), 24U)
+            val deps = b.add(ClassName("synth.Deps"), 48U, intArrayOf(libA, libB))
+            val conf = b.add(ClassName("synth.Config"), 40U, intArrayOf(props, shared))
+            roots[i] = b.add(ClassName("synth.Module"), 120U, intArrayOf(deps, conf))
         }
         return b.build() to roots
     }

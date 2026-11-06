@@ -104,7 +104,8 @@ validated on this dataset as follows, cumulative on the strong graph:
 | + `DefaultConfiguration.description` conceal-field | 6,953 | 877 |
 | + `DefaultLegacyConfiguration_Decorated` set-children (SCC quotient) | 6,880 | 858 |
 | + `DeduplicatingComponentSelectorSerializer` class-only (traced owner) | 3,168 | 268 |
-| + `DefaultVisitedArtifactResults` class-only (deliberate closure exclusion) | **1,713** | **81** |
+| + `DefaultVisitedArtifactResults` class-only (deliberate closure exclusion) | 1,713 | 81 |
+| + `DefaultResolverResults` + `DefaultSelectedArtifactSet` class-only (remaining cached-resolution paths) | **1,656** | **78** |
 
 Reference point: global set semantics (`SHAPES_SET_SEMANTICS=1`, no relax
 file) on the same v4 graph gives 1,598 shapes / 113 root shapes. The 268
@@ -119,6 +120,11 @@ also hides declared `extendsFrom` structure and leaves other closure
 variants intact (162 root shapes). Two JDK-wide rules (`HashMap$Node[]`,
 `Object[]` set-children) remain rejected as over-broad; the HashMap
 divergence belonged entirely to the serializer's `writeIndex` dedup cache.
+The two later owner rules cover `currentResolveState` and the selected-artifact
+delegate without hiding `Optional`/delegate presence. Their exact root merges
+are `:classpath` 5 → 4, `incomingCatalogForLibs0` 2 → 1, and
+`kotlinBuildToolsApiClasspath` 3 → 2. They do not erase registered collection
+actions, dependency kinds, or Kotlin/action SCC members.
 
 Surgical-merge evidence: after all rules, every f1..f4-impl AND every
 IDE-model (DEV6) module shares **exactly** its `(tier,ndirect,closure)`
