@@ -1,4 +1,4 @@
-package shapes
+package shapes.models
 
 class CompactULongArray {
     val size: Int
@@ -12,7 +12,7 @@ class CompactULongArray {
 
     fun add(value: ULong) {
         if (isImmutable) {
-            error("CompactULongArray closed")
+            error("CompactULongArray is immutable")
         }
         if (freeIntArrayPosition == intArray.size) {
             intArray = intArray.copyOf((intArray.size * 2).coerceAtLeast(freeIntArrayPosition + 1))

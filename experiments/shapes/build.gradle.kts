@@ -11,6 +11,7 @@ repositories {
 val matPlugins = rootDir.toPath().parent.parent.resolve(".tools/mat/plugins").toFile()
 
 dependencies {
+    implementation("com.dynatrace.hash4j:hash4j:0.31.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
     // MAT library, for the heap-dump extractor only: compile against the MAT

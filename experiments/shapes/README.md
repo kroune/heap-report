@@ -24,7 +24,9 @@ Spec section references below are to SHAPES.md.
   (`LeafLk`/`NodeLk`/`SccLk`), equality is exact via interned child shape
   identity, never via the digest. Separate 128-bit cross-dump digest over a
   canonical binary encoding (class by name, children as sorted 128-bit
-  digests) — XXHash64 ×2 with fixed seeds, verified against `xxhsum`.
+  digests) — XXH3-128 with a fixed zero seed, streamed through hash4j's
+  `HashStream128` (little-endian primitives, length-delimited UTF-8), verified
+  against `xxhsum`.
 - **Pipeline** — reach → iterative Tarjan (components come out in reverse
   topo order, so bottom-up cons = plain component-id order) → cons →
   aggregates. Shape ids assigned post-merge by digest sort → deterministic.
@@ -55,7 +57,7 @@ Spec section references below are to SHAPES.md.
 ## Layout
 
 - `Graph.kt` — compact `ObjectGraph` model, text/GRPH formats, synthetic graphs.
-- `XxHash64.kt` / `Digest.kt` — hash + 128-bit canonical digests.
+- `Digest.kt` — 128-bit canonical digests using hash4j's XXH3-128.
 - `Shapes.kt` — the collapse pipeline.
 - `Verify.kt` — invariant checker (`--verify` and tests).
 - `Emit.kt` — binary artifact writer.
@@ -194,7 +196,7 @@ Perf/memory, JFR-driven (in order of what profiles showed):
 4. Per-lookup cons-key allocations + `LinkedHashMap` kid grouping — top of
    cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
    scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
-5. `DataInputStream` per-field reads dominated GRPH load → bulk reader.
+5. `DataInputStream` per-field reads dominated GRPH load → memory-mapped reader.
 6. `consScc` built boxed per-member refinement structures (~200 B/member)
    BEFORE the `|SCC| > 64 → SCC_UNIQUE` early exit — a 2.6M-member
    service-graph SCC (54k-instance AGP class closing over 98.9% of the heap)

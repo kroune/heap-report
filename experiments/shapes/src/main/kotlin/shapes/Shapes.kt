@@ -156,17 +156,17 @@ class ShapesAnalyzer @JvmOverloads constructor(
     fun analyze(roots: IntArray, wholeGraph: Boolean = false): ShapeTable {
         relaxStats.reset()
         var time = System.nanoTime()
-        val (inR, rList, rCount) = scopeForAnalyze(roots, wholeGraph)
-        progress("reach: $rCount objects in ${(System.nanoTime() - time) / 1_000_000} ms")
+        val (isReachableBitset, reachableList, reachableSize) = scopeForAnalyze(roots, wholeGraph)
+        progress("reach: $reachableSize objects in ${(System.nanoTime() - time) / 1_000_000} ms")
         time = System.nanoTime()
-        val (compEnc, comps) = scc(inR, rList, rCount)
+        val (compEnc, comps) = scc(isReachableBitset, reachableList, reachableSize)
         progress("scc: ${comps.count} components in ${(System.nanoTime() - time) / 1_000_000} ms")
         time = System.nanoTime()
         val (shapes, shapeOfComp) = cons(compEnc, comps)
         progress("cons: ${shapes.size} shapes in ${(System.nanoTime() - time) / 1_000_000} ms")
         time = System.nanoTime()
         // no shapeOfObj array (4 B/object): aggregate resolves via shapeOfComp
-        val table = aggregate(shapes, compEnc, shapeOfComp, comps, roots, rCount)
+        val table = aggregate(shapes, compEnc, shapeOfComp, comps, roots, reachableSize)
         progress("aggregate: ${(System.nanoTime() - time) / 1_000_000} ms")
         return table
     }
@@ -174,17 +174,27 @@ class ShapesAnalyzer @JvmOverloads constructor(
     private fun scopeForAnalyze(roots: IntArray, wholeGraph: Boolean): Triple<BitSet, IntArray?, Int> {
         // mat-extract already selected the scope. Projection may remove paths
         // to an object; keep its counts/bytes without inventing extra roots.
-        if (wholeGraph) return Triple(BitSet(graph.size).apply { set(0, graph.size) }, null, graph.size)
+        if (wholeGraph) {
+            return Triple(
+                BitSet(graph.size).apply { set(0, graph.size) },
+                null,
+                graph.size
+            )
+        }
         return reachForAnalyze(roots)
     }
 
     private fun reachForAnalyze(roots: IntArray): Triple<BitSet, IntArray?, Int> {
-        val (inR, arr) = reach(roots)
+        val (isReachableBitset, reachableList) = reach(roots)
         // whole-graph reach (always the case on the GRPH path): scc iterates
         // 0..n-1 instead, and the 4 B/object id array must become garbage
         // HERE — a method-scope local in analyze() would keep it alive
         // through the scc/cons peaks
-        return Triple(inR, if (arr.size == graph.size) null else arr, arr.size)
+        return Triple(
+            isReachableBitset,
+            if (reachableList.size == graph.size) null else reachableList,
+            reachableList.size
+        )
     }
 
     /** analyze() + the internals, for Verify.verifyEdgeAccounting (inv3 audit). */
@@ -209,27 +219,33 @@ class ShapesAnalyzer @JvmOverloads constructor(
     // ---- phase 1: reachability ----
 
     private fun reach(roots: IntArray): Pair<BitSet, IntArray> {
-        val inR = BitSet(graph.size)
+        val isReachableBitset = BitSet(graph.size)
         // rList doubles as the BFS queue: discovered == queued (no separate
         // stack array, no copy unless R is smaller than the graph)
-        val rList = IntArray(graph.size)
+        var reachableList = IntArray(graph.size)
         var head = 0
         var tail = 0
         for (rootIndex in roots) {
-            if (!inR.get(rootIndex)) {
-                inR.set(rootIndex)
-                rList[tail++] = rootIndex
+            if (!isReachableBitset.get(rootIndex)) {
+                isReachableBitset.set(rootIndex)
+                reachableList[tail] = rootIndex
+                tail++
             }
         }
         while (head < tail) {
-            val v = rList[head++]
-            graph.forEachRef(v) { w ->
-                if (!inR.get(w)) {
-                    inR.set(w); rList[tail++] = w
+            val v = reachableList[head++]
+            graph.referencesList.forEachReference(graph.referencesList[v]) { w ->
+                if (!isReachableBitset.get(w)) {
+                    isReachableBitset.set(w)
+                    reachableList[tail] = w
+                    tail++
                 }
             }
         }
-        return inR to if (tail == rList.size) rList else rList.copyOf(tail)
+        if (tail != reachableList.size) {
+            reachableList = reachableList.copyOf(tail)
+        }
+        return isReachableBitset to reachableList
     }
 
     // ---- phase 2: SCC, iterative Tarjan over R ----
@@ -259,24 +275,23 @@ class ShapesAnalyzer @JvmOverloads constructor(
         }
     }
 
-    private fun scc(inR: BitSet, rList: IntArray?, rCount: Int): Pair<IntArray, Comps> {
-        val n = graph.size
+    private fun scc(isReachableBitset: BitSet, reachableList: IntArray?, reachableCount: Int): Pair<IntArray, Comps> {
         // ONE array for both the dfs index and the component ids (4 B/object
         // saved): -1 = unvisited, >= 0 = dfs index (only while on the dfs
         // path), <= -2 = assigned component encoded as -(comp + 2) — a node's
         // dfs index is dead the moment its component is assigned, so the two
         // never overlap. Decode with compOfEnc().
-        val index = IntArray(n) { -1 }
+        val index = IntArray(graph.size) { -1 }
 
         // iteration order over R; null rList == identity (R is the whole graph)
-        fun rAt(i: Int): Int = rList?.get(i) ?: i
+        fun rAt(i: Int): Int = reachableList?.get(i) ?: i
         // no low[n] array (4 B/object): the low-link is only ever read for
         // nodes on the current dfs path (back edges use index[w]), so it
         // lives in the per-frame lowStack below.
         // hand-rolled bitset, NOT java.util.BitSet: BitSet.clear(i) calls
         // recalculateWordsInUse() (O(words) scan) — that alone was ~99% of scc
         // time on real heaps. XOR flip is O(1) with no such trap.
-        val onStackBits = LongArray((n ushr 6) + 1)
+        val onStackBits = LongArray((graph.size ushr 6) + 1)
         fun isOnStack(i: Int) = (onStackBits[i ushr 6] ushr (i and 63)) and 1L != 0L
         fun flipStack(i: Int) {
             onStackBits[i ushr 6] = onStackBits[i ushr 6] xor (1L shl (i and 63))
@@ -284,8 +299,13 @@ class ShapesAnalyzer @JvmOverloads constructor(
 
         // dfs stacks grow on demand (1.5x: the copyOf transient at 2x is
         // itself a peak); real dfs depth is usually thousands, not n
-        fun grow(a: IntArray, need: Int) =
-            if (need <= a.size) a else a.copyOf(maxOf(need, a.size + (a.size ushr 1)))
+        fun grow(a: IntArray, need: Int): IntArray {
+            return if (need <= a.size) {
+                a
+            } else {
+                a.copyOf(maxOf(need, a.size + (a.size ushr 1)))
+            }
+        }
 
         var tarjanStack = IntArray(1 shl 16)
         var tsp = 0
@@ -296,23 +316,30 @@ class ShapesAnalyzer @JvmOverloads constructor(
         var next = 0
         var compCount = 0
 
-        for (ri in 0 until rCount) {
+        for (ri in 0 until reachableCount) {
             val s = rAt(ri)
-            if (index[s] != -1) continue
+            if (index[s] != -1) {
+                continue
+            }
             index[s] = next++
             tarjanStack = grow(tarjanStack, tsp + 1)
             tarjanStack[tsp++] = s; flipStack(s)
             nodeStack = grow(nodeStack, nsp + 1)
             lowStack = grow(lowStack, nsp + 1)
             ptrStack = grow(ptrStack, nsp + 1)
-            nodeStack[nsp] = s; lowStack[nsp] = index[s]; ptrStack[nsp] = 0; nsp++
+            nodeStack[nsp] = s
+            lowStack[nsp] = index[s]
+            ptrStack[nsp] = 0
+            nsp++
             while (nsp > 0) {
                 val v = nodeStack[nsp - 1]
                 val p = ptrStack[nsp - 1]
-                if (graph.refOffsets[v] + p < graph.refOffsets[v + 1]) {
+                if (graph.referencesList[v].size > p) {
                     ptrStack[nsp - 1] = p + 1
-                    val w = graph.refs[graph.refOffsets[v] + p]
-                    if (!inR.get(w)) continue          // unreachable from roots: outside scope
+                    val w = graph.referencesList.getReference(graph.referencesList[v], p)
+                    if (!isReachableBitset.get(w)) {
+                        continue // unreachable from roots: outside scope
+                    }
                     if (index[w] == -1) {
                         index[w] = next++
                         tarjanStack = grow(tarjanStack, tsp + 1)
@@ -320,9 +347,14 @@ class ShapesAnalyzer @JvmOverloads constructor(
                         nodeStack = grow(nodeStack, nsp + 1)
                         lowStack = grow(lowStack, nsp + 1)
                         ptrStack = grow(ptrStack, nsp + 1)
-                        nodeStack[nsp] = w; lowStack[nsp] = index[w]; ptrStack[nsp] = 0; nsp++
+                        nodeStack[nsp] = w
+                        lowStack[nsp] = index[w]
+                        ptrStack[nsp] = 0
+                        nsp++
                     } else if (isOnStack(w)) {
-                        if (index[w] < lowStack[nsp - 1]) lowStack[nsp - 1] = index[w]
+                        if (index[w] < lowStack[nsp - 1]) {
+                            lowStack[nsp - 1] = index[w]
+                        }
                     }
                 } else {
                     val lowV = lowStack[nsp - 1]
@@ -333,7 +365,9 @@ class ShapesAnalyzer @JvmOverloads constructor(
                             val w = tarjanStack[--tsp]
                             flipStack(w)
                             index[w] = -(compCount + 2)   // dfs index is dead now — encode the component
-                            if (w == v) break
+                            if (w == v) {
+                                break
+                            }
                         }
                         compCount++
                     }
@@ -344,7 +378,9 @@ class ShapesAnalyzer @JvmOverloads constructor(
         // member grouping: singleton comps inline their member in first[];
         // only multi-member comps (rare — real cycles) spill into a small CSR
         val compSize = IntArray(compCount)
-        for (ri in 0 until rCount) compSize[compOfEnc(index, rAt(ri))]++
+        for (ri in 0 until reachableCount) {
+            compSize[compOfEnc(index, rAt(ri))]++
+        }
         var multiCount = 0
         for (c in 0 until compCount) if (compSize[c] > 1) multiCount++
         val multiStart = IntArray(multiCount + 1)
@@ -359,7 +395,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
         }
         val multiMembers = IntArray(multiStart[multiCount])
         val cursor = multiStart.copyOf()
-        for (ri in 0 until rCount) {
+        for (ri in 0 until reachableCount) {
             val o = rAt(ri)
             val c = compOfEnc(index, o)
             if (compSize[c] == 1) first[c] = o
@@ -477,11 +513,12 @@ class ShapesAnalyzer @JvmOverloads constructor(
                         emptyList(),
                         null,
                         digestOf {
-                            tag(if (kind == ShapeKind.LEAF) 1 else 2)
-                            str(className.name)
-                            i32(packed.size)
+                            putByte(if (kind == ShapeKind.LEAF) 1 else 2)
+                            putStringUTF8(className.name)
+                            putInt(packed.size)
                             for (k in packed) {
-                                digest(shapes[packChild(k)].digest); i32(packMult(k))
+                                putDigest(shapes[packChild(k)].digest)
+                                putInt(packMult(k))
                             }
                         },
                     )
@@ -529,13 +566,13 @@ class ShapesAnalyzer @JvmOverloads constructor(
             val shape: Shape
             var selfLoop = false
             if (memberCount == 1) {
-                val o = comps.first[c]
-                graph.forEachRef(o) { if (it == o) selfLoop = true }
+                val index = comps.first[c]
+                graph.referencesList.forEachReference(graph.referencesList[index]) { if (it == index) selfLoop = true }
             }
             if (memberCount == 1 && !selfLoop) {
                 // acyclic single node
                 val obj = comps.first[c]
-                val rc = graph.refCount(obj)
+                val rc = graph.referencesList[obj].size
                 val lvl = levelOf(obj)
                 if (lvl > 0) relaxStats.relaxedObjects++
                 if (rc == 0 || lvl == Relax.CLASS_ONLY) {
@@ -558,7 +595,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
                         kidPacked = LongArray(kidIds.size)
                     }
                     var m = 0
-                    graph.forEachRef(obj) { w ->
+                    graph.referencesList.forEachReference(graph.referencesList[obj]) { w ->
                         kidIds[m++] = shapeOfComp[compOfEnc(compEnc, w)].also {
                             if (it < 0) error(
                                 "child comp ${
@@ -602,20 +639,11 @@ class ShapesAnalyzer @JvmOverloads constructor(
                         kidPacked, nKids
                     )
                 }
-            } else if (memberCount > MAX_SCC_MERGE) {
-                // mega SCC: no 4 B/member copy (568 MB at 142M members — the
-                // OOM spot) — uniqueBig sorts the shared CSR segment in place;
-                // member order inside a component is semantically irrelevant
-                val row = -comps.first[c] - 1
-                shape = consScc(
-                    comps.multiMembers, comps.multiStart[row], memberCount,
-                    compEnc, shapeOfComp, shapes, sccConsMap, ::kidCmp
-                )
             } else {
                 val members = IntArray(memberCount)
                 var p = 0
                 comps.forEachMember(c) { m -> members[p++] = m }
-                shape = consScc(members, 0, memberCount, compEnc, shapeOfComp, shapes, sccConsMap, ::kidCmp)
+                shape = consScc(members, memberCount, compEnc, shapeOfComp, shapes, sccConsMap, ::kidCmp)
             }
             shapeOfComp[c] = shape.internalId
             if (c and 0x7FFFFF == 0x7FFFFF) {   // every 8M comps: where the memory goes
@@ -634,7 +662,6 @@ class ShapesAnalyzer @JvmOverloads constructor(
      *  signature (automorphism-invariant — discretization not required). */
     private fun consScc(
         members: IntArray,
-        off: Int,                // members live in members[off .. off+n)
         n: Int,
         compEnc: IntArray,
         shapeOfComp: IntArray,   // internal shape id per comp, -1 = not consed
@@ -642,46 +669,11 @@ class ShapesAnalyzer @JvmOverloads constructor(
         consMap: HashMap<SccLk, Shape>,
         kidCmp: (Kid, Kid) -> Int,
     ): Shape {
-
-        // |SCC| > MAX_SCC_MERGE -> SCC_UNIQUE, computed WITHOUT the refinement
-        // structures: a mega-SCC never merges, so the boxed per-member
-        // local/extKids/intNeigh maps (~200 B/member) would be allocated only
-        // to be discarded — on a 2.6M-member service-graph SCC that alone
-        // OOM'd the analyzer after an hour of GC thrash.
-        if (n > MAX_SCC_MERGE) {
-            members.sort(off, off + n)   // in place — no copy
-            var internalEdgesTotal = 0
-            val totals = HashMap<Int, Int>()   // child internal shape id -> total mult
-            for (i in off until off + n) {
-                var ic = 0
-                graph.forEachRef(members[i]) { w ->
-                    if (members.binarySearch(w, off, off + n) >= 0) ic++
-                    else totals.merge(shapeOfComp[compOfEnc(compEnc, w)], 1, Int::plus)
-                }
-                internalEdgesTotal += ic
-            }
-            // members list TRUNCATED to the label's needs: 2.6M boxed SccMember
-            // (~100 MB) would be allocated for a label that shows 8 class names
-            val memPayload = (off until minOf(off + 8, off + n)).map { index ->
-                SccMember(graph.className(members[index]), 0, emptyList(), emptyList())
-            }
-            return Shape(
-                shapes.size, ShapeKind.SCC_UNIQUE, null, -1, LongArray(0),
-                totals.map { (id, m) -> Edge(shapes[id], m) }.sortedWith { a, b ->
-                    a.child.digest.compareTo(b.child.digest)
-                },
-                memPayload,
-                digestOf { tag(4); i64(members[off].toLong()); i32(n) },
-                membersTotal = n,
-                internalEdgesTotal = internalEdgesTotal,
-            ).also { shapes.add(it) }
-        }
-
         val local = HashMap<Int, Int>(n * 2)
-        for (i in 0 until n) local[members[off + i]] = i
+        for (i in 0 until n) local[members[0 + i]] = i
 
         // per-member external kids and internal neighbors (local indices, with multiplicity)
-        val lvls = IntArray(n) { levelOf(members[off + it]) }
+        val lvls = IntArray(n) { levelOf(members[0 + it]) }
         // set-children on ANY member makes the whole SCC set-semantic: an SCC
         // is one strongly-connected object, and the multiplicity of identical
         // members inside it (e.g. 7 ElementShadows per project dependency of
@@ -698,7 +690,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
                 // class-only: external children are concealed (internal SCC
                 // wiring stays exact — it is the SCC's own structure)
                 var hidden = 0
-                graph.forEachRef(members[off + i]) { w ->
+                graph.referencesList.forEachReference(graph.referencesList[members[i]]) { w ->
                     val li = local[w]
                     if (li != null) intNeigh[i].add(li) else hidden++
                 }
@@ -707,7 +699,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
                 continue
             }
             val byShape = LinkedHashMap<Int, Int>()   // child internal shape id -> mult
-            graph.forEachRef(members[off + i]) { w ->
+            graph.referencesList.forEachReference(graph.referencesList[members[i]]) { w ->
                 val li = local[w]
                 if (li != null) intNeigh[i].add(li)
                 else byShape.merge(shapeOfComp[compOfEnc(compEnc, w)], 1, Int::plus)
@@ -739,7 +731,9 @@ class ShapesAnalyzer @JvmOverloads constructor(
             return 0
         }
 
-        var colors = Array(n) { i -> Color(graph.className(members[off + i]), extKids[i], emptyList()) }
+        var colors = Array(n) { i ->
+            Color(graph.className(members[i]), extKids[i], emptyList())
+        }
         var ranks = IntArray(n)
         var prevDistinct = -1
         while (true) {
@@ -773,7 +767,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
         val order = (0 until n).sortedWith { a, b -> colorCmp(colors[a], colors[b]) }
         val pre = order.map { i ->
             MemLk(
-                graph.className(members[off + i]),
+                graph.className(members[i]),
                 intNeigh[i].map { ranks[it] }.let { if (anySet) it.distinct() else it }.sorted(),
                 extKids[i],
             )
@@ -800,12 +794,10 @@ class ShapesAnalyzer @JvmOverloads constructor(
                     keptByPre[idx] = out.size
                     sources += idx
                     out += m
-                    relaxStats.setChildrenHiddenEdges +=
-                        intNeigh[order[idx]].size - m.internalRanks.size
+                    relaxStats.setChildrenHiddenEdges += intNeigh[order[idx]].size - m.internalRanks.size
                 } else {
                     keptByPre[idx] = kept
-                    relaxStats.setChildrenHiddenEdges +=
-                        intNeigh[order[idx]].size + m.ext.size
+                    relaxStats.setChildrenHiddenEdges += intNeigh[order[idx]].size + m.ext.size
                 }
             }
             // the dropped members are real objects concealed from the
@@ -876,16 +868,18 @@ class ShapesAnalyzer @JvmOverloads constructor(
                 memPayload,
                 quotient = anySet,
                 digest = digestOf {
-                    tag(3); i32(canonical.size)
+                    putByte(3)
+                    putInt(canonical.size)
                     for (m in canonical) {
-                        str(m.className.name)
-                        i32(m.internalRanks.size)
+                        putStringUTF8(m.className.name)
+                        putInt(m.internalRanks.size)
                         for (r in m.internalRanks) {
-                            i32(r)
+                            putInt(r)
                         }
-                        i32(m.ext.size)
+                        putInt(m.ext.size)
                         for ((childId, mult) in m.ext) {
-                            digest(shapes[childId].digest); i32(mult)
+                            putDigest(shapes[childId].digest)
+                            putInt(mult)
                         }
                     }
                 },
@@ -984,11 +978,6 @@ class ShapesAnalyzer @JvmOverloads constructor(
     }
 
     companion object {
-        /** SHAPES.md: |SCC| > cap → unique, never merged. Env-overridable for
-         *  experiments: the cap exists for the ~200 B/member refinement cost
-         *  — a 141M-member mega-SCC cannot afford it; mid-size SCCs can. */
-        val MAX_SCC_MERGE: Int =
-            System.getenv("SHAPES_MAX_SCC_MERGE")?.toInt() ?: 64
 
         /** EXPERIMENT: set semantics — child multiplicities collapse to 1 and an
          *  SCC is identified by its WL-color quotient graph (members of equal

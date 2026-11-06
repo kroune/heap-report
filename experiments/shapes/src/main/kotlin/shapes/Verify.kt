@@ -33,8 +33,8 @@ fun verifyInvariants(graph: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGr
         val v = stack.removeLast()
         rCount++
         shallowSum += graph.shallow[v]
-        refCount += graph.refCount(v)
-        graph.forEachRef(v) { w ->
+        refCount += graph.referencesList[v].size
+        graph.referencesList.forEachReference(graph.referencesList[v]) { w ->
             if (!inR.get(w)) {
                 inR.set(w); stack.add(w)
             }
@@ -77,13 +77,13 @@ fun verifyInvariants(graph: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGr
  * emitted shape-DAG. Full pass over all refs — minutes at 10⁸ objects.
  * Returns up to 20 mismatch lines; empty = exact.
  */
-fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult,
+fun verifyEdgeAccounting(graph: ObjectGraph, dbg: ShapesAnalyzer.DebugResult,
                          relaxLevels: IntArray = IntArray(0)): List<String> {
     val t = dbg.table
     val pubByDigest = HashMap<Digest128, Int>()
     for (e in t.entries) pubByDigest[e.digest] = e.id
     val pubOfInternal = IntArray(dbg.shapes.size) { pubByDigest.getValue(dbg.shapes[it].digest) }
-    val shapeOfObj = IntArray(g.size) { -1 }
+    val shapeOfObj = IntArray(graph.size) { -1 }
     for (c in 0 until dbg.comps.count) {
         val sid = pubOfInternal[dbg.shapeOfComp[c]]
         dbg.comps.forEachMember(c) { o -> shapeOfObj[o] = sid }
@@ -98,29 +98,29 @@ fun verifyEdgeAccounting(g: ObjectGraph, dbg: ShapesAnalyzer.DebugResult,
     // every member's emitted edges become multiplicity-normalized, so the
     // whole component is exempt from exact edge accounting, not only the
     // relaxed member itself
-    val quotientExempt = BooleanArray(g.size)
+    val quotientExempt = BooleanArray(graph.size)
     if (relaxLevels.isNotEmpty()) {
         for (c in 0 until dbg.comps.count) {
             var anySet = false
             dbg.comps.forEachMember(c) { o ->
-                if (relaxLevels[g.classIdx[o].code] == Relax.SET_CHILDREN) anySet = true
+                if (relaxLevels[graph.classIdx[o].code] == Relax.SET_CHILDREN) anySet = true
             }
             if (anySet) dbg.comps.forEachMember(c) { o -> quotientExempt[o] = true }
         }
     }
-    for (o in 0 until g.size) {
-        val so = shapeOfObj[o]
+    for (index in 0 until graph.size) {
+        val so = shapeOfObj[index]
         if (so < 0) continue   // outside R (partial-reach text graphs)
         // relaxed objects conceal their children (Relax.kt): their refs are
         // neither in the artifact nor expected here — exactness for them is
         // the analyzer's RelaxStats counters instead
-        if (quotientExempt[o] ||
-            (relaxLevels.isNotEmpty() && relaxLevels[g.classIdx[o].code] > 0)) {
+        if (quotientExempt[index] ||
+            (relaxLevels.isNotEmpty() && relaxLevels[graph.classIdx[index].code] > 0)) {
             relaxedSources++
             continue
         }
         nonExemptShapes.add(so)
-        g.forEachRef(o) { w ->
+        graph.referencesList.forEachReference(graph.referencesList[index]) { w ->
             val sw = shapeOfObj[w]
             if (sw == so) intTruth.merge(so, 1L, Long::plus)
             else extTruth.merge((so.toLong() shl 32) or (sw.toLong() and 0xffffffffL), 1L, Long::plus)

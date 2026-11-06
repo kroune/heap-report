@@ -23,21 +23,25 @@ class ReferencePolicy(
     fun refs(id: Int): IntArray = read(id).refs
 
     fun read(id: Int): Read {
-        val concealed = concealedFields(id).orEmpty()
-        val reference = isReference(id)
-        if (concealed.isEmpty() && !reference) return Read(indexedRefs(id), 0)
+        val concealedFields = concealedFields(id).orEmpty()
+        val isReference = isReference(id)
+        if (concealedFields.isEmpty() && !isReference) {
+            return Read(indexedRefs(id), 0)
+        }
 
         var concealedCount = 0
-        val refs = ArrayList<Int>()
+        val references = ArrayList<Int>()
         for ((field, target) in rawNamedRefs(id)) {
-            if (field in concealed) {
+            if (field in concealedFields) {
                 concealedCount++
                 continue
             }
-            if (reference && field in referenceFields) continue
-            refs.add(target)
+            if (isReference && field in referenceFields) {
+                continue
+            }
+            references.add(target)
         }
-        return Read(refs.toIntArray(), concealedCount)
+        return Read(references.toIntArray(), concealedCount)
     }
 
     /** Named view used by map projection; obeys exactly the same filters. */

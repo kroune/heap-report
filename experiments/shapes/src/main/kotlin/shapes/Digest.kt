@@ -1,59 +1,36 @@
 package shapes
 
-import java.io.ByteArrayOutputStream
+import com.dynatrace.hash4j.hashing.HashStream128
+import com.dynatrace.hash4j.hashing.Hashing
+import java.lang.Long.compareUnsigned
 
 /**
- * Cross-dump identity: 128-bit digest over a canonical binary encoding
- * (SHAPES.md "Hashing discipline"). Two fixed-seed XXHash64 passes.
+ * Cross-dump identity: XXH3-128 digest over a canonical binary encoding
+ * streamed through hash4j (SHAPES.md "Hashing discipline"). Uses the fixed zero seed.
  * The digest is used for sorting/identity of *already merged* shapes only —
  * cons-map equality is the full structural tuple, never the digest.
  */
 data class Digest128(val hi: Long, val lo: Long) : Comparable<Digest128> {
     override fun compareTo(other: Digest128): Int {
-        val c = java.lang.Long.compareUnsigned(hi, other.hi)
-        return if (c != 0) c else java.lang.Long.compareUnsigned(lo, other.lo)
+        val c = compareUnsigned(hi, other.hi)
+        return if (c != 0) c else compareUnsigned(lo, other.lo)
     }
 
     fun hex(): String = "%016x%016x".format(hi, lo)
     override fun toString(): String = hex()
 }
 
-private val SEED_HI: Long = 0x243F6A8885A308D3UL.toLong() // pi digits, fixed
-private val SEED_LO: Long = 0x9E3779B97F4A7C15UL.toLong() // golden ratio, fixed
+private val XXH3_128 = Hashing.xxh3_128()
+private val DIGEST_STREAM = ThreadLocal.withInitial(XXH3_128::hashStream)
 
-/** Canonical binary encoding writer. Multi-byte ints are big-endian (fixed choice). */
-class Canon {
-    private val out = ByteArrayOutputStream()
-
-    fun tag(v: Int) {
-        out.write(v)
-    }
-
-    fun i32(v: Int) {
-        out.write((v ushr 24) and 0xFF); out.write((v ushr 16) and 0xFF)
-        out.write((v ushr 8) and 0xFF); out.write(v and 0xFF)
-    }
-
-    fun i64(v: Long) {
-        i32((v ushr 32).toInt()); i32(v.toInt())
-    }
-
-    fun str(s: String) {
-        val b = s.toByteArray(Charsets.UTF_8)
-        i32(b.size)
-        out.write(b)
-    }
-
-    fun digest(d: Digest128) {
-        i64(d.hi); i64(d.lo)
-    }
-
-    fun bytes(): ByteArray = out.toByteArray()
+internal fun HashStream128.putDigest(d: Digest128) {
+    putLong(d.hi)
+    putLong(d.lo)
 }
 
-fun digestOf(build: Canon.() -> Unit): Digest128 {
-    val c = Canon()
-    c.build()
-    val b = c.bytes()
-    return Digest128(XxHash64.hash(b, SEED_HI), XxHash64.hash(b, SEED_LO))
+fun digestOf(build: HashStream128.() -> Unit): Digest128 {
+    val stream = DIGEST_STREAM.get().reset()
+    stream.build()
+    val digest = stream.get()
+    return Digest128(digest.mostSignificantBits, digest.leastSignificantBits)
 }

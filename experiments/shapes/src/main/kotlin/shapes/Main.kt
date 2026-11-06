@@ -76,11 +76,15 @@ fun main(args: Array<String>) {
                 rules.fieldRules
             } ?: emptyMap()
             MatExtract.extract(
-                opts.require("hprof"), className, Path.of(opts.require("out")),
-                opts["scope"] ?: if (wholeHeap) "heap" else "reachable", opts.flag("normalize-maps"),
-                opts["stats"]?.let { Path.of(it) }, opts.flag("boundary-stubs"),
+                hprof = opts.require("hprof"),
+                className = className,
+                out = Path.of(opts.require("out")),
+                scope = opts["scope"] ?: if (wholeHeap) "heap" else "reachable",
+                statsOut = opts["stats"]?.let { Path.of(it) },
+                boundaryStubs = opts.flag("boundary-stubs"),
                 filterReferences = !opts.flag("raw-references"),
-                fieldRules = fieldRules, wholeHeap = wholeHeap,
+                fieldRules = fieldRules,
+                wholeHeap = wholeHeap,
             )
         }
         "mat-trace" -> MatExtract.trace(
@@ -108,7 +112,7 @@ fun main(args: Array<String>) {
             (opts["maxobjs"] ?: "150000000").toInt(),
         )
         "analyze-grph" -> {
-            val g = ObjectGraph.loadGrph(Path.of(opts.require("graph")))
+            val g = ObjectGraph.loadGraph(Path.of(opts.require("graph")))
             val wholeHeap = opts.flag("whole-heap")
             require(!wholeHeap || opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
             require(!wholeHeap || opts.flag("whole-graph")) { "--whole-heap requires --whole-graph" }

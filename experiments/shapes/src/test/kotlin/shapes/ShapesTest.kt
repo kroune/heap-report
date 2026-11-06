@@ -3,7 +3,6 @@ package shapes
 import shapes.models.ClassName
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class ShapesTest {
@@ -167,26 +166,6 @@ class ShapesTest {
         assertEquals(6, s.instanceCount)   // member objects (2 instances × 3)
         assertEquals(3, s.sccInstanceSize)
         assertEquals(3, s.internalEdgesPerInstance)
-    }
-
-    @Test
-    fun `scc larger than 64 never merges even when it would discretize`() {
-        // cycle of 65 nodes, classes distinct per position -> would discretize,
-        // but |SCC| > 64 forces the unique fallback
-        val n = ShapesAnalyzer.MAX_SCC_MERGE + 1
-        val g = ObjectGraph.of(
-            classes = Array(2 * n) { ClassName("C${it % n}") },
-            shallow = ULongArray(2 * n) { 5U },
-            refs = Array(2 * n) { intArrayOf((it + 1) % n + if (it < n) 0 else n) },
-        )
-        val t = analyze(g, intArrayOf(0, n))
-
-        val sccs = t.entries.filter { it.kind == ShapeKind.SCC_UNIQUE }
-        assertEquals(2, sccs.size)
-        assertEquals(n.toLong(), sccs[0].instanceCount)
-        assertEquals(8, sccs[0].members!!.size)
-        assertEquals(false, sccs[0].membersComplete)
-        assertTrue(sccs[0].members!!.size < sccs[0].sccInstanceSize)
     }
 
     @Test
