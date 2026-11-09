@@ -3,21 +3,12 @@
 
 import { buildSeg } from "../common.js";
 
-/* Analysis settings are explicit: scope and container semantics are not
-   inferred from an old artifact. Re-analysis replaces the class artifact. */
+/* Container semantics are explicit and are not inferred from an old artifact.
+   Re-analysis atomically replaces the dump's heap-wide artifact. */
 export function analysisControls(vm, ctx) {
   const row = document.createElement("div");
   row.className = "viz-anrow";
   if (!ctx.analyze) return row;
-  const scope = document.createElement("select");
-  scope.setAttribute("aria-label", "shapes scope");
-  for (const value of ["retained", "reachable"]) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = value;
-    scope.appendChild(opt);
-  }
-  scope.value = vm.requestedScope || "retained";
   const mode = document.createElement("select");
   mode.setAttribute("aria-label", "map structure");
   for (const [value, text] of [["normalized", "maps: unordered entries"], ["raw", "maps: raw topology"]]) {
@@ -37,9 +28,9 @@ export function analysisControls(vm, ctx) {
       status.textContent = text;
       status.classList.toggle("err", !!isErr);
       if (isErr) btn.disabled = false;
-    }, null, { scope: scope.value, normalizeMaps: mode.value === "normalized" });
+    }, null, { normalizeMaps: mode.value === "normalized" });
   };
-  row.append(scope, mode, btn, status);
+  row.append(mode, btn, status);
   return row;
 }
 
@@ -49,8 +40,8 @@ export function notAnalyzedPane(vm, ctx) {
   const d = document.createElement("div");
   d.className = "gnote";
   const msg = document.createElement("div");
-  msg.textContent = "No shapes analysis for this class yet — the exact structural " +
-    "collapse (SHAPES.md) runs over every instance of the class, not a sample.";
+  msg.textContent = "No heap-wide shapes analysis yet — the exact structural " +
+    "collapse (SHAPES.md) covers every non-class object, not a sample.";
   d.appendChild(msg);
   if (!ctx.analyze) {
     const hint = document.createElement("div");
@@ -75,7 +66,6 @@ export function shapesToolbar(vm, ctx) {
   grp.appendChild(buildSeg([
     { value: "shallow", label: "shallow", title: "total shallow bytes of the shape's instances" },
     { value: "count", label: "objects", title: "collapsed object count" },
-    { value: "roots", label: "roots", title: "instances of the queried class" },
   ], vm.metric, v => ctx.refetch({ metric: v })));
   bar.appendChild(grp);
   const layoutGrp = document.createElement("div");

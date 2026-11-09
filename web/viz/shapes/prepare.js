@@ -6,18 +6,17 @@
 import { catOf, shortClass } from "../common.js";
 import { computeShapesLayout } from "./layout.js";
 
-function baseModel(dumpId, className, params) {
+function baseModel(dumpId, params) {
   return {
-    kind: "shapes", dumpId, className,
-    requestedScope: params.scope || "retained",
+    kind: "shapes", dumpId,
     normalizeMaps: params.normalizeMaps ?? true,
     layoutMode: params.layoutMode || "auto",
   };
 }
 
-export function shapesViewModel(p, dumpId, className, params = {}) {
+export function shapesViewModel(p, dumpId, params = {}) {
   if (!p || !Array.isArray(p.shapes) || !p.shapes.length)
-    return { ...baseModel(dumpId, className, params), notAnalyzed: true };
+    return { ...baseModel(dumpId, params), notAnalyzed: true };
 
   const nodes = p.shapes.map(s => {
     const plain = s.kind === "leaf" || s.kind === "node";   // label is a real class name
@@ -53,24 +52,22 @@ export function shapesViewModel(p, dumpId, className, params = {}) {
   const analysis = p.analysis || null;
 
   return {
-    ...baseModel(dumpId, className, params),
+    ...baseModel(dumpId, params),
     metric,
     reachable: p.reachableCount ?? 0,
     shapeCount: p.shapes.length,
-    rootsHistogram: p.rootsHistogram || [],   // [[shapeId, count]] desc
     analysis,
-    requestedScope: params.scope || (analysis && analysis.scope) || "retained",
     normalizeMaps: params.normalizeMaps ?? (analysis ? analysis.mapProjection !== "raw" : true),
     nodes, layout,
   };
 }
 
-export async function prepare(repo, dumpId, className, params = {}) {
-  const res = await repo.shapes(dumpId, className);
+export async function prepare(repo, dumpId, params = {}) {
+  const res = await repo.shapes(dumpId);
   if (!res.ok) {
     if (res.status === 404)
-      return { ...baseModel(dumpId, className, params), notAnalyzed: true };
-    return { kind: "shapes", dumpId, className, error: res.error || "shapes query failed" };
+      return { ...baseModel(dumpId, params), notAnalyzed: true };
+    return { kind: "shapes", dumpId, error: res.error || "shapes query failed" };
   }
-  return shapesViewModel(res.data, dumpId, className, params);
+  return shapesViewModel(res.data, dumpId, params);
 }

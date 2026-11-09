@@ -150,8 +150,8 @@ reachability pass → derived inclusive-retained / split-copy tables),
 budget-bounded so payload size can't grow with the object count),
 `shapes.py` (exact structural collapse orchestration, SHAPES.md — runs the
 prebuilt shapes jar from `experiments/shapes` (SHAPES_JAR): mat-extract over
-the MAT index set under the shared index lock, then analyze-grph → SHP1 at
-`data/shapes/<class>.shp1`), `shapes_artifact.py` (validated streaming SHP1 /
+the MAT index set under the shared index lock, then analyze-grph → one heap-wide
+SHP1 at `data/shapes/heap.shp1`), `shapes_artifact.py` (validated streaming SHP1 /
 GRPH readers and aggregate checks), `shapes_java.py` (subprocess lifecycle).
 Temp workspaces always cleaned up; MAT output streamed to job log, not
 buffered whole.
@@ -233,8 +233,8 @@ DELETE /api/dumps/{id}
 GET    /api/dumps/{id}/stats|trees|classes
 GET    /api/dumps/{id}/composition?class=…
 GET    /api/dumps/{id}/anatomy?class=…&samples=…
-GET    /api/dumps/{id}/shapes?class=…        (exact structural shapes, SHAPES.md)
-POST   /api/dumps/{id}/shapes-analyze        {class} → Job (serial MAT queue)
+GET    /api/dumps/{id}/shapes                (heap-wide structural shapes, SHAPES.md)
+POST   /api/dumps/{id}/shapes-analyze        {normalizeMaps} → Job (serial MAT queue)
 GET    /api/compare?a=…&b=…
 GET    /api/jobs                       all jobs w/ state, progress, log tail
 ```

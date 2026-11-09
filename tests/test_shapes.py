@@ -216,6 +216,44 @@ class TestShp1(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "objects"):
                 _validate_projection(dst, bad)
 
+    def test_publish_heap_wide_pipeline(self):
+        import json
+        from contextlib import nullcontext
+        row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
+               "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
+               "roots": 0, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
+        metadata = dict(scope="heap", mapProjection="raw", objects=2, roots=0,
+                        shallowTotal=32, sourceEdges=0, scopeBoundaryEdges=0,
+                        projectedEdges=0)
+        calls = []
+
+        def run(job, jobs, abort, args, what, xmx=None):
+            calls.append(args)
+            target = args[args.index("--out") + 1]
+            if what == "extract":
+                self._write_grph(target, 2)
+                with open(args[args.index("--stats") + 1], "w") as f:
+                    json.dump(metadata, f)
+            else:
+                with open(target, "wb") as f:
+                    f.write(build_shp1(["C"], [row], [], [], []))
+                with open(args[args.index("--relax-stats") + 1], "w") as f:
+                    json.dump({}, f)
+
+        with tempfile.TemporaryDirectory() as d:
+            dst = artifact_path(d)
+            runner = mock.Mock()
+            runner.index_read_hold.side_effect = lambda *a: nullcontext()
+            with mock.patch("backend.mat.shapes._run_java", side_effect=run), \
+                 mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
+                analyze_class(None, mock.Mock(), runner, d, "heap.hprof", None, dst,
+                              scope="heap", normalize_maps=False)
+            self.assertEqual(parse_shp1(dst)["analysis"]["scope"], "heap")
+            for args in calls:
+                self.assertIn("--whole-heap", args)
+                self.assertNotIn("--class", args)
+            self.assertNotIn("--normalize-maps", calls[0])
+
     def test_reachable_count_includes_quotient_concealed_objects(self):
         import json
         row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 3,
@@ -276,14 +314,14 @@ class TestShp1(unittest.TestCase):
         engine._jobs = mock.Mock()
         engine._jobs.submit.side_effect = lambda *args: args
         with mock.patch("backend.mat.shapes.shapes_jar", return_value="shapes.jar"):
-            first = engine.analyze_shapes("dump", "com.acme.C", "retained", True)
-            second = engine.analyze_shapes("dump", "com.acme.C", "reachable", False)
+            first = engine.analyze_shapes("dump", True)
+            second = engine.analyze_shapes("dump", False)
         self.assertEqual(core.JobKind.SHAPES, first[0])
-        self.assertIn("retained", first[2])
+        self.assertIn("whole heap", first[2])
         self.assertIn("normalized", first[2])
-        self.assertIn("reachable", second[2])
         self.assertIn("raw", second[2])
         self.assertNotEqual(first[2], second[2])
+        engine._prepare_analysis.assert_called_with("dump")
 
     def test_rejects_non_shp1(self):
         with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
@@ -303,6 +341,8 @@ class TestShp1(unittest.TestCase):
         self.assertNotEqual(a, c)
         self.assertTrue(a.startswith(os.path.join("/data", "shapes")))
         self.assertTrue(a.endswith(".shp1"))
+        self.assertEqual(artifact_path("/data"),
+                         os.path.join("/data", "shapes", "heap.shp1"))
 
     def _write_grph(self, path, n, refs_per_node=0):
         """Minimal GRPH: magic, sourceN, 2-class table, n, then n rows.

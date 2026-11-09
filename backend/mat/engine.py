@@ -395,19 +395,19 @@ class MatQueryEngine:
 
         return self._jobs.submit(core.JobKind.ANALYZE, dump_id, cls, fn)
 
-    def _prepare_analysis(self, dump_id, cls):
-        """Shared entry validation of the per-class analysis endpoints:
-        READY gate, class must be in the histogram, hprof must exist; kicks
-        the machine's (sticky) index acquisition so it overlaps the queue
-        wait. Returns the hprof path."""
+    def _prepare_analysis(self, dump_id, cls=None):
+        """Shared analysis validation: READY gate and hprof must exist. Class
+        analyses also require a histogram entry. Kicks the machine's (sticky)
+        index acquisition so it overlaps the queue wait. Returns the hprof."""
         info = self._store.get(dump_id)
         if info.state is not core.DumpState.READY:
             raise core.ApiError("bad_state",
                                 f"dump {dump_id} is {info.state.value} — analysis needs "
                                 "ready (the overview works during the download)", 409)
-        known = {name for name, _, _ in self._load_hist(dump_id)}
-        if cls not in known:
-            raise core.ApiError("not_found", f"class not in histogram: {cls}", 404)
+        if cls is not None:
+            known = {name for name, _, _ in self._load_hist(dump_id)}
+            if cls not in known:
+                raise core.ApiError("not_found", f"class not in histogram: {cls}", 404)
         hprof = self._hprof(dump_id)
         if not hprof:
             raise core.ApiError("bad_state", "hprof not found in the dump dir", 400)
@@ -434,42 +434,42 @@ class MatQueryEngine:
 
     # ---------------------------------------------------------- shapes
 
-    def shapes(self, dump_id, cls):
-        """Exact structural-collapse payload for one class (SHAPES.md).
-        None = not analyzed yet. Served from the SHP1 artifact
-        the SHAPES job landed at data/shapes/; fp-cached on its mtime."""
+    def shapes(self, dump_id):
+        """Exact structural-collapse payload for the complete non-class heap.
+        None = not analyzed yet. Served from the heap-wide SHP1 artifact and
+        fingerprint-cached on its mtime."""
         data = self._data_dir(dump_id)
-        p = shapesmod.artifact_path(data, cls)
+        p = shapesmod.artifact_path(data)
         if not os.path.exists(p):
             return None
-        return self._cached((dump_id, "shapes", cls),
+        return self._cached((dump_id, "shapes", "heap"),
                             self._fp(dump_id, [p]),
                             lambda: shapesmod.parse_shp1(p))
 
-    def analyze_shapes(self, dump_id, cls, scope="retained", normalize_maps=True):
-        """Queue the exact shapes analysis for one class: the prebuilt
-        shapes jar (SHAPES_JAR) runs mat-extract + analyze-grph on
-        the serial MAT queue — it reads the MAT indexes directly, so it needs
-        the same acquisition/restore discipline as MAT itself."""
-        shapesmod.analysis_options(scope, normalize_maps)
+    def analyze_shapes(self, dump_id, normalize_maps=True):
+        """Queue one exact structural collapse of the complete heap. The
+        prebuilt shapes jar reads MAT indexes directly, so index acquisition
+        and the serial MAT queue follow the same discipline as MAT itself."""
+        if not isinstance(normalize_maps, bool):
+            raise core.ApiError("bad_request", "normalizeMaps must be a boolean", 400)
         shapesmod.shapes_jar()   # fail fast at request time, not inside the job
-        hprof = self._prepare_analysis(dump_id, cls)
+        hprof = self._prepare_analysis(dump_id)
 
         def fn(job):
             dump_dir = self._store.dir_of(dump_id)
             data = os.path.join(dump_dir, "data")
-            dst = shapesmod.artifact_path(data, cls)
-            self._jobs.log(job, f"shapes analysis of {cls} (exact structural collapse)")
+            dst = shapesmod.artifact_path(data)
+            self._jobs.log(job, "shapes analysis of the whole heap (exact structural collapse)")
             self._with_indexes(job, dump_id, lambda: shapesmod.analyze_class(
-                job, self._jobs, self._runner, dump_dir, hprof, cls, dst,
+                job, self._jobs, self._runner, dump_dir, hprof, None, dst,
                 abort=self._store.abort_event(dump_id),
-                scope=scope, normalize_maps=normalize_maps))
+                scope="heap", normalize_maps=normalize_maps))
             self.invalidate(dump_id)
-            self._jobs.log(job, f"done: {cls}")
+            self._jobs.log(job, "done: whole heap")
 
         # Analysis options are part of job identity: attaching a request to an
         # active job with different semantics would reopen the wrong view.
-        detail = f"{cls} · {scope}, maps={'normalized' if normalize_maps else 'raw'}"
+        detail = f"whole heap · maps={'normalized' if normalize_maps else 'raw'}"
         return self._jobs.submit(core.JobKind.SHAPES, dump_id, detail, fn)
 
     def _has_indexes(self, dump_id):

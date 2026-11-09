@@ -1,13 +1,14 @@
-# SHAPES.md — exact structural collapse for class anatomy
+# SHAPES.md — exact structural collapse for the heap graph
 
-Status: **supported implementation; pipeline v5.** When this document and
-the code disagree, one of them is wrong — update both in the same commit.
+Status: **supported heap-wide implementation; pipeline v5.** When this
+document and the code disagree, one of them is wrong — update both in the
+same commit.
 
-Replaces the sampling path in `engine._analyze_class` with exact
-counting: collapse the selected object graph of **all** instances of the
-queried class into a shape-DAG, where each node groups structurally
-identical objects. Everything served is exact: counts, shallow sums, edge
-multiplicities.
+The Shapes tab collapses the complete non-class object graph into a shape-DAG,
+where each node groups structurally identical objects. Everything served is
+exact: counts, shallow sums, edge multiplicities. Class-scoped extraction
+remains available in the standalone CLI for diagnostics, but is no longer part
+of the web UI or HTTP API.
 
 ## Why (design rationale)
 
@@ -15,8 +16,8 @@ multiplicities.
   tell you nothing about the tail. Exactness must be structural, not
   statistical.
 - The collapse ratio does the scaling work: on repetitive heaps (3000
-  modules) unique shapes ≪ objects, so exact counting is *cheaper* to serve
-  than per-sample extraction, and per-class queries become pure db reads.
+  modules) unique shapes ≪ objects, so one exact heap-wide analysis is much
+  smaller to serve and explore than the original object graph.
 - The collapse target is the **object graph**, not the dominator tree: the
   view must match class dependencies in code (diamond `A→B→D, A→C→D` keeps
   `B→D`, `C→D`; the dom tree would hang D directly under A and destroy
@@ -25,20 +26,21 @@ multiplicities.
 ## UI/backend pipeline
 
 The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the server.
-New analyses default to **retained scope + unordered map entries**, the measured
-flow-comparison configuration. Both choices are explicit controls in the UI:
-`retained` / `reachable`, and normalized / raw maps. Re-analyze replaces the
-per-class artifact atomically; old SHP1 artifacts remain readable but show a
-legacy label and must be re-analyzed to obtain the new semantics.
+One analysis selects the **whole heap + unordered map entries** by default.
+Normalized / raw maps are an explicit UI control; there is no class or
+retained/reachable scope selector. Re-analysis atomically replaces
+`data/shapes/heap.shp1`; old per-class artifacts are not served by the web API.
 
-Scope is selected on the original filtered object graph **before** map
-projection. Retained scope uses MAT `getRetainedSet` for all queried instances
+For the heap-wide pass, scope is every non-class object in the snapshot.
+Class-scoped CLI extraction selects its scope on the original filtered object
+graph **before** map projection. Retained scope uses MAT `getRetainedSet` for all queried instances
 (with MAT's standalone-compatible ObjectMarker factory switch), then restricts
 that set to objects reachable over the filtered source references. Reference
 mechanics and `conceal-field` rules participate in this traversal for both
 retained and reachable scope. Map projection never adds or removes objects.
 The analyzer keeps every preselected object even if projection removes its path
-from a root; only actual queried instances count as roots.
+from a root. Heap-wide artifacts have no queried-class roots: root counts and
+the roots histogram are zero and the UI does not expose root metrics.
 
 Projection is field-aware and supports the exact JDK classes `HashMap$Node`,
 `LinkedHashMap$Entry`, `LinkedHashMap`, and `HashMap$Node[]`. It removes only
@@ -97,12 +99,10 @@ reachable, cap 64 unless overridden. See the measured investigation in
     is a different shape than k−1, so the chain alone produced ~30k
     shapes/layers for 1 MB of data (evidence: run-jfr-38, field-level
     check via `mat-ref-targets`: 105,329 × `discovered -> WeakReference`).
-- **Roots**: every instance of the queried class (full `INSTANCEOF` id list,
-  no sampling).
-- **Scope** R ⊆ G: objects reachable from roots. (Current impl uses
-  `SELECT AS RETAINED SET`; switching to reachable is deliberate — it shows
-  shared objects the roots reference but don't own, which is what
-  "dependencies in code" means. See open point 1.)
+- **Roots** (class-scoped CLI only): every instance of the queried class (full
+  `INSTANCEOF` id list, no sampling). The heap-wide UI has no class roots.
+- **Scope** R: the web pipeline selects every non-class object in G. The CLI can
+  instead select objects retained by or reachable from queried-class roots.
 - **SCC**: maximal strongly connected component. The condensation of R is a
   DAG. Cycles are rare and mostly collections/back-pointers.
 - **Shape**: structural identity of a condensation-DAG node, computed
@@ -229,8 +229,9 @@ class hierarchy — a rule on `DefaultConfiguration` covers the runtime
 - Cross-dump identity: separate **128-bit digest** over a canonical binary
   encoding — class by **name** (MAT class ids are per-snapshot), children as
   sorted 128-bit digests. Stable across runs, JVMs and dumps; this is what
-  the compare tab diffs. Hash function: fixed-seed xxHash64 ×2 (or SipHash),
-  never `Object.hashCode`.
+  the compare tab diffs. Hash function: XXH3-128 with a fixed zero seed,
+  streamed through hash4j's `HashStream128` using little-endian primitives
+  and length-delimited UTF-8 strings; never `Object.hashCode`.
 
 ## Pipeline (one ANALYZE job, runs inside the MAT JVM via MatRunner)
 
@@ -314,13 +315,10 @@ remapping in v1.
 
 ## Open points (iterate here)
 
-1. **Scope**: reachable (v1) vs retained. Retained scope is root-dependent
-   → no cross-class reuse; reachable shapes are context-free (a node's
-   shape depends only on its own subgraph).
-2. **Global vs per-class pass**: because reachable shapes are context-free,
-   one whole-heap pass per dump serves *all* classes (per-class query =
-   aggregate over its instances' shape-ids). v1 stays per-(dump, class) to
-   match the current job flow; global pass is the upgrade.
+1. **Scope**: resolved for the web UI — one whole-heap pass. Retained and
+   reachable class scopes remain CLI diagnostics only.
+2. **Global vs per-class pass**: resolved — one whole-heap artifact per dump.
+   Per-class drill-down from it still needs a persisted object→shape mapping.
 3. **Shallow in label**: resolved — OUT (author). `byte[16]` and
    `byte[1MB]` are one shape; size resolution lives in aggregates
    (sum/min/max per shape). Refinements if the loss hurts: array length

@@ -1,8 +1,7 @@
-/* Shapes viz — the exact structural collapse (backend/mat/
-   SHAPES.md, implemented by experiments/shapes): objects in the selected
-   scope of ALL instances of the queried class, collapsed into a shape-DAG. Fed by the
-   shapes payload (GET /api/dumps/{id}/shapes?class=…, from the SHP1 artifact
-   produced by the SHAPES job).
+/* Shapes renderer — exact structural collapse of the complete non-class heap
+   (backend/mat/SHAPES.md, implemented by experiments/shapes). The Shapes tab
+   owns fetching, job polling and dump switching; this module is the reusable
+   prepare/render pair. It is deliberately NOT in the class-viz registry.
 
    Module map (web/CONTRACTS.md hard rules: named/namespace relative imports
    only, no re-exports, no top-level side effects — the snapshot bundler
@@ -18,19 +17,13 @@
      scene.js     pure spatial/adjacency indexes and view transforms
      canvas.js    Canvas-2D painting, bitmap LOD and interaction lifecycle
      render.js    renderer composition; returns cleanup
-     index.js     this file: the viz module contract (kind/prepare/render)
-
-   analyzeOp = "shapesAnalyze": the popup's analyze affordance (ctx.analyze in
-   viz/common.js) queues the SHAPES job instead of the MAT sampling analysis. */
+     index.js     this file: the Shapes tab renderer contract */
 
 import * as prep from "./prepare.js";
 import * as rend from "./render.js";
 
-export const kind = "shapes";
-export const analyzeOp = "shapesAnalyze";
-
-export async function prepare(repo, dumpId, className, params = {}) {
-  return prep.prepare(repo, dumpId, className, params);
+export async function prepare(repo, dumpId, params = {}) {
+  return prep.prepare(repo, dumpId, params);
 }
 
 export function render(container, vm, ctx) {

@@ -5,10 +5,10 @@ import { prepare, shapesViewModel } from "../../web/viz/shapes/prepare.js";
 function payload() {
   return {
     shapes: [{ id: 0, label: "org.example.Widget", kind: "leaf", count: 2,
-      shallowTotal: 64, shallowMin: 32, shallowMax: 32, roots: 2,
+      shallowTotal: 64, shallowMin: 32, shallowMax: 32, roots: 0,
       sccSize: 1, internalEdges: 0, edgesPerMember: true }],
     edges: [],
-    rootsHistogram: [[0, 2]],
+    rootsHistogram: [],
     reachableCount: 2,
     analysis: null,
   };
@@ -16,22 +16,20 @@ function payload() {
 
 test("prepare passes through request errors", async () => {
   const vm = await prepare({ shapes: async () => ({ ok: false, status: 500, error: "broken" }) },
-    "dump", "C", { metric: "count" });
-  assert.deepEqual(vm, { kind: "shapes", dumpId: "dump", className: "C", error: "broken" });
+    "dump", { metric: "count" });
+  assert.deepEqual(vm, { kind: "shapes", dumpId: "dump", error: "broken" });
 });
 
-test("404 and empty payloads are not-analyzed states with analysis params", async () => {
-  const params = { scope: "reachable", normalizeMaps: false };
+test("404 and empty payloads preserve analysis params", async () => {
+  const params = { normalizeMaps: false };
   const missing = await prepare({ shapes: async () => ({ ok: false, status: 404 }) },
-    "d", "C", params);
+    "d", params);
   assert.equal(missing.notAnalyzed, true);
-  assert.equal(missing.requestedScope, "reachable");
   assert.equal(missing.normalizeMaps, false);
 
   const empty = await prepare({ shapes: async () => ({ ok: true, data: { shapes: [] } }) },
-    "d", "C", params);
+    "d", params);
   assert.equal(empty.notAnalyzed, true);
-  assert.equal(empty.requestedScope, "reachable");
   assert.equal(empty.normalizeMaps, false);
 });
 
@@ -43,8 +41,8 @@ test("single-node payload tolerates omitted optional collections", async () => {
   const vm = await prepare({ shapes: async (...args) => {
     call = args;
     return { ok: true, data };
-  } }, "dump", "org.example.Widget");
-  assert.deepEqual(call, ["dump", "org.example.Widget"]);
+  } }, "dump");
+  assert.deepEqual(call, ["dump"]);
   assert.equal(vm.notAnalyzed, undefined);
   assert.equal(vm.shapeCount, 1);
   assert.equal(vm.metric, "shallow");
@@ -52,29 +50,25 @@ test("single-node payload tolerates omitted optional collections", async () => {
   assert.equal(vm.layout.layoutMode, "dag");
   assert.equal(vm.nodes[0].short, "Widget");
   assert.equal(vm.nodes[0].plain, true);
-  assert.deepEqual(vm.rootsHistogram, []);
   assert.deepEqual(vm.layout.edges, []);
-  assert.equal(vm.requestedScope, "retained");
   assert.equal(vm.normalizeMaps, true);
 });
 
 test("artifact analysis supplies defaults and explicit params win", () => {
   const data = payload();
-  data.analysis = { scope: "reachable", mapProjection: "raw" };
-  const inherited = shapesViewModel(data, "d", "C", { metric: "roots" });
-  assert.equal(inherited.metric, "roots");
-  assert.equal(inherited.requestedScope, "reachable");
+  data.analysis = { scope: "heap", mapProjection: "raw" };
+  const inherited = shapesViewModel(data, "d", { metric: "count" });
+  assert.equal(inherited.metric, "count");
   assert.equal(inherited.normalizeMaps, false);
-  const overridden = shapesViewModel(data, "d", "C", {
-    scope: "retained", normalizeMaps: true, metric: "count",
+  const overridden = shapesViewModel(data, "d", {
+    normalizeMaps: true, metric: "shallow",
   });
-  assert.equal(overridden.requestedScope, "retained");
   assert.equal(overridden.normalizeMaps, true);
-  assert.equal(overridden.metric, "count");
+  assert.equal(overridden.metric, "shallow");
 });
 
 test("explicit layout mode reaches the pure layout", () => {
-  const vm = shapesViewModel(payload(), "d", "C", { layoutMode: "compact" });
+  const vm = shapesViewModel(payload(), "d", { layoutMode: "compact" });
   assert.equal(vm.layoutMode, "compact");
   assert.equal(vm.layout.layoutMode, "compact");
 });
@@ -84,7 +78,7 @@ test("view-model mapping preserves SCC full labels and compact canvas labels", (
   data.shapes[0] = { ...data.shapes[0], kind: "scc",
     label: "scc[org.example.A,org.example.B]", sccSize: 2, edgesPerMember: false };
   const before = structuredClone(data);
-  const vm = shapesViewModel(data, "d", "C");
+  const vm = shapesViewModel(data, "d");
   assert.deepEqual(data, before);
   assert.equal(vm.nodes[0].label, "scc[org.example.A,org.example.B]");
   assert.equal(vm.nodes[0].short, "scc[A +1]");
@@ -102,7 +96,7 @@ test("SCC member graphs retain labels, colors and exact internal connections", (
       { label: "org.example.B", internal: [[0, 1]] },
     ] };
   const before = structuredClone(data);
-  const vm = shapesViewModel(data, "d", "C");
+  const vm = shapesViewModel(data, "d");
   assert.deepEqual(data, before);
   assert.equal(vm.nodes[0].sccComplete, true);
   assert.deepEqual(vm.nodes[0].members.map(m => m.short), ["A", "B"]);

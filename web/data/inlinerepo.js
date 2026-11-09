@@ -16,8 +16,8 @@
  *                                                    -> composition().data
  *   anats:   {className: anatomyPayload}             only analyzed classes,
  *             default sample count                   -> anatomy().data
- *   shapes:  {className: shapesPayload}              only classes with a SHP1
- *             artifact (may be absent entirely)      -> shapes().data
+ *   shapes:  shapesPayload|null                     heap-wide SHP1 artifact
+ *                                                    -> shapes().data
  * }
  *
  * Class rows are mapped to the server class-table shape
@@ -73,10 +73,8 @@ export function makeInlineRepo(payload) {
   const analyze = async () => SNAP();
   const shapesAnalyze = async () => SNAP();
 
-  const shapes = async (id, className) => {
-    const s = (payload.shapes || {})[className];
-    return s ? {ok:true, data: s} : NOT_ANALYZED;
-  };
+  const shapes = async () =>
+    payload.shapes ? {ok:true, data: payload.shapes} : NOT_ANALYZED;
 
   const invalidate = () => {};   // nothing is fetched, so nothing is cached
 

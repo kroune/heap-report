@@ -8,7 +8,7 @@ Talks ONLY to the backend API (`backend/http.py`, see ARCHITECTURE.md).
 ```
 web/index.html          shell page: picker button, tab bar, containers, boot call  (shell)
 web/app.css             shell + shared styles (incl. dump picker)                  (shell)
-web/tabs.css            styles for the three tabs                                   (tabs)
+web/tabs.css            styles for the four tabs                                    (tabs)
 web/viz.css             styles for viz popups                                       (viz)
 web/graph.css           styles for the graph viz                                    (viz-graph)
 web/data/http.js        fetch wrapper — the ONLY place fetch is called              (data)
@@ -21,6 +21,7 @@ web/ui/jobs.js          job status component                                    
 web/ui/dumppicker.js    dump picker overlay (search/tag filter/sort, row actions)  (shell)
 web/ui/tabs/classes.js  classes tab                                                 (tabs)
 web/ui/tabs/treemap.js  treemap tab                                                 (tabs)
+web/ui/tabs/shapes.js   heap-wide shapes tab + analysis-job ownership               (tabs)
 web/ui/tabs/compare.js  compare tab                                                 (tabs)
 web/viz/common.js       viz registry + popup host + openViz() + shared helpers      (viz)
 web/viz/anatomy.js      anatomy viz (full-graph reference tree)                   (viz)
@@ -32,7 +33,7 @@ web/viz/flow/prepare.js flow data step (fetch, scale/extrapolation, viewModel)  
 web/viz/flow/controls.js flow toolbar, pins editor, help overlay, pin storage       (viz-graph)
 web/viz/flow/detail.js  flow side panel (click detail) HTML builders                (viz-graph)
 web/viz/flow/render.js  flow canvas/edges/nodes + interaction wiring                (viz-graph)
-web/viz/shapes/index.js shapes viz module contract (kind/prepare/render)           (viz-shapes)
+web/viz/shapes/index.js shapes renderer contract (prepare/render; no class popup)  (viz-shapes)
 web/viz/shapes/layout.js pure iterative full-graph DAG layout                      (viz-shapes)
 web/viz/shapes/prepare.js shapes fetch + pure payload/viewModel mapping            (viz-shapes)
 web/viz/shapes/scc-layout.js pure nested SCC member/connection layout             (viz-shapes)
@@ -105,14 +106,14 @@ composition(id, className)                 -> Result<payload>; 404 -> {ok:false,
 anatomy(id, className, {samples=null})   -> Result<payload|same 404>
 compare(aId, bId)                          -> Result<payload>
 analyze(id, className, {samples=8, anatomy=true}) -> Result<Job>
-shapes(id, className)                      -> Result<{shapes,edges,rootsHistogram,reachableCount,analysis}>; same 404
+shapes(id)                                 -> Result<{shapes,edges,rootsHistogram,reachableCount,analysis}>; same 404
 // SCC1 also gives SCC shapes members:[{label,internal:[[target,mult]]}] and
 // membersComplete. Complete additionally requires members.length===sccSize; legacy SHP1 omits both.
-shapesAnalyze(id, className, {scope='retained', normalizeMaps=true}) -> Result<Job>
+shapesAnalyze(id, {normalizeMaps=true})     -> Result<Job>
 // analysis=null on legacy artifacts; otherwise includes scope, mapProjection,
 // objects, roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges,
 // pipelineVersion, sccMergeLimit. Graph edges are projected when maps normalized.
-// Re-analysis atomically replaces the per-class artifact; choices are visible in UI.
+// Re-analysis atomically replaces the heap-wide artifact; map choice is visible in UI.
 invalidate(id=null)                        // drop one dump's or all cached entries
 
 // data/inlinerepo.js — same functions, same result shapes, reading the
@@ -170,7 +171,7 @@ Queued/running cards also get a cancel button (`cancelJob(id)` →
 
 ```js
 // each viz module:
-export const kind = 'anatomy' | 'hierarchy' | 'graph' | 'flow' | 'shapes'
+export const kind = 'anatomy' | 'hierarchy' | 'graph' | 'flow'
 export async function prepare(repo, dumpId, className) -> viewModel
 //   ^ pure data step: fetches via the passed dumpdatarepo, computes everything
 export function render(container, viewModel, ctx) -> void | cleanupFn

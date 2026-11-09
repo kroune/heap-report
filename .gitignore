@@ -1,5 +1,7 @@
 # Local analysis data — never commit (tens of GB)
 dumps/
+*.png
+.playwright-mcp
 .tools/
 __pycache__/
 *.hprof

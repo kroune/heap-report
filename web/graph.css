@@ -96,7 +96,3 @@
 /* shapes viz (web/viz/shapes/) — reuses the g-/f- classes above */
 .glabel.shmult{font-size:10px;fill:#7d8590}
 .gnode.shscc{stroke-dasharray:3 2}
-.shhist{position:relative;display:flex;gap:6px;align-items:baseline;padding:2px 0;font-size:12px}
-.shhist-bar{position:absolute;left:0;top:0;bottom:0;background:#1c2a3d;border-radius:3px;z-index:0}
-.shhist-n{position:relative;color:#c4ccd9;min-width:44px;text-align:right}
-.shhist-l{position:relative;color:#9aa4b2;overflow-wrap:anywhere}

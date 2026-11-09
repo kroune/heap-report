@@ -325,15 +325,14 @@ class QueryEngine(Protocol):
         in meta.json as if it succeeded."""
         ...
 
-    def shapes(self, dump_id: DumpId, cls: str) -> Optional[dict]:
-        """Exact structural-collapse payload (SHAPES.md) for one class.
+    def shapes(self, dump_id: DumpId) -> Optional[dict]:
+        """Exact structural-collapse payload (SHAPES.md) for the whole heap.
         None = not analyzed yet (HTTP: 404 {"analyzed": false})."""
         ...
 
-    def analyze_shapes(self, dump_id: DumpId, cls: str, scope: str = "retained",
-                       normalize_maps: bool = True) -> Job:
-        """Queue the exact shapes analysis (mat-extract + analyze-grph via the
-        prebuilt shapes jar) for one class. Same rules as analyze()."""
+    def analyze_shapes(self, dump_id: DumpId, normalize_maps: bool = True) -> Job:
+        """Queue the heap-wide shapes analysis (mat-extract + analyze-grph via
+        the prebuilt shapes jar). Same readiness rules as analyze()."""
         ...
 
 

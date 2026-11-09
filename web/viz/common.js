@@ -294,13 +294,12 @@ function paintNav(h, kind, dumpId, className) {
    the backend reuses completed parts, so a new size only runs the missing
    extractions), report progress via onStatus, reopen the same viz on the new
    extraction when the job finishes. The repo method comes from the viz module
-   (analyzeOp, default 'analyze' — the shapes viz queues 'shapesAnalyze'), so
-   each viz's analyze affordance runs the analysis that actually feeds it. */
+   (analyzeOp, default 'analyze'), so each viz's analyze affordance runs the
+   analysis that actually feeds it. Heap-wide shapes jobs live in the Shapes tab. */
 function makeAnalyze(kind, dumpId, className, params) {
   const op = (VIZ.get(kind) || {}).analyzeOp || 'analyze';
   return (onStatus, samples, analysisOptions = {}) => {
-    const next = op === 'shapesAnalyze' ? { ...params, ...analysisOptions }
-      : samples != null ? { ...params, samples } : params;
+    const next = samples != null ? { ...params, samples } : params;
     const repo = currentRepo();
     const p = op === 'analyze'
       ? repo.analyze(dumpId, className, samples != null ? { samples } : {})

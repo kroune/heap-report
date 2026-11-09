@@ -1,4 +1,4 @@
-/* tabs.css — styles for the three tab modules (classes / treemap / compare).
+/* tabs.css — styles for the four tab modules (classes / treemap / shapes / compare).
    Shell + shared styles live in app.css.
    Rule 5: no inline colors/structure in JS — category and bar colors are
    classes here; JS only sets dynamic left/top/width/height inline. */
@@ -71,6 +71,10 @@ svg.tmap text{pointer-events:none;fill:#fff}
 .legend{display:flex;gap:14px;padding:10px 14px;flex-wrap:wrap;font-size:13px;color:var(--dim)}
 .legend span{cursor:pointer}
 .legend .csw{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px}
+
+/* ---- shapes tab ---- */
+.shapes-card{height:max(560px,calc(100vh - 155px));padding:12px;overflow:hidden}
+.shapes-body{height:100%;min-height:0}
 
 /* ---- compare tab ---- */
 .cmp-wrap{padding:14px}

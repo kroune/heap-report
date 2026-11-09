@@ -634,7 +634,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
   }
 
   // Build the static panel once; selection only replaces it on demand.
-  defaultHtml = defaultSide(vm, ctx, scene.outAdj);
+  defaultHtml = defaultSide(vm, ctx);
   side.innerHTML = defaultHtml;
   try {
     canvas.addEventListener("wheel", onWheel, { passive: false });

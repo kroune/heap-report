@@ -47,7 +47,7 @@ web/data/inlinerepo.js (that module owns the shape):
              lams = [[name,c,s],...]|null
     comps    {className: composition payload}        — analyzed classes only
     anats    {className: anatomy payload}            — analyzed classes only
-    shapes   {className: shapes payload}             — classes with a SHP1 artifact
+    shapes   heap-wide shapes payload|null            — one SHP1 artifact per dump
 """
 from __future__ import annotations
 
@@ -109,7 +109,7 @@ def collect_payload(engine, dump_id):
         page += 1
         if page >= res["pages"]:
             break
-    comps, anats, shapes = {}, {}, {}
+    comps, anats = {}, {}
     for row in rows:
         disp = row["disp"]
         if row.get("comp"):
@@ -120,9 +120,7 @@ def collect_payload(engine, dump_id):
             a = engine.anatomy(dump_id, disp)
             if a is not None:
                 anats[disp] = a
-        s = engine.shapes(dump_id, disp)   # deterministic artifact path; None when absent
-        if s is not None:
-            shapes[disp] = s
+    shapes = engine.shapes(dump_id)   # deterministic heap artifact; None when absent
     classes = [[r["disp"], r["c"], r["s"], r["r"], 1 if r["comp"] else 0,
                 r["anat"], r["lams"]] for r in rows]
     return {"name": dump_id,

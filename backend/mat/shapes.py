@@ -1,7 +1,7 @@
 """Job orchestration for exact structural shapes.
 
 The Kotlin tool performs extraction and collapse.  This module owns the
-per-class pipeline and atomic publication; binary formats live in
+heap-wide pipeline and atomic publication; binary formats live in
 ``shapes_artifact`` and JVM lifecycle in ``shapes_java``.  The server always
 runs a prebuilt jar, never Gradle.
 """
@@ -60,8 +60,10 @@ def shapes_jar():
     return path
 
 
-def artifact_path(data_dir, cls):
-    """Return the stable per-class artifact path (options replace on re-run)."""
+def artifact_path(data_dir, cls=None):
+    """Stable artifact path; the server uses one heap-wide artifact per dump."""
+    if cls is None:
+        return os.path.join(data_dir, "shapes", "heap.shp1")
     base = re.sub(r"[^A-Za-z0-9_$.-]", "_", cls)[-80:] or "cls"
     suffix = hashlib.sha1(cls.encode()).hexdigest()[:8]
     return os.path.join(data_dir, "shapes", f"{base}-{suffix}.shp1")
@@ -90,11 +92,9 @@ def _analyze_xmx(grph, cls="?"):
         raise RuntimeError(
             f"shapes analyze of {cls}: scope is {objects:,} objects / "
             f"{references:,} refs — needs ~{needed / 1e9:.1f} GB heap, only "
-            f"{available / 1e9:.1f} GB RAM available. A class whose reachable "
-            "closure is the whole heap is a service-graph anchor (SHAPES.md "
-            "open point 1) — exact collapse pays off on bounded scopes "
-            "(DTO/value classes). Override with SHAPES_XMX_ANALYZE if you "
-            "really want to try.")
+            f"{available / 1e9:.1f} GB RAM available. Refusing to start an "
+            "analysis that would thrash swap. Override with SHAPES_XMX_ANALYZE "
+            "if you really want to try.")
     megabytes = max(2048, int(needed // (1 << 20)))
     megabytes = (megabytes + 255) // 256 * 256
     return f"{megabytes}m"
@@ -121,13 +121,21 @@ def _relax_file():
 
 def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
                   scope="retained", normalize_maps=True):
-    """Run extract → collapse → validate → atomic publish for one class.
+    """Run extract → collapse → validate → atomic publish for one graph.
 
-    All intermediates live in one unique temporary directory on the destination
-    filesystem.  Failure preserves the previous artifact; success replaces it
+    ``cls=None`` selects the complete non-class heap (``scope='heap'``). The
+    class-scoped form remains available to the standalone diagnostics. All
+    intermediates live in one unique temporary directory on the destination
+    filesystem. Failure preserves the previous artifact; success replaces it
     only after every aggregate and metadata setting has been validated.
     """
-    analysis_options(scope, normalize_maps)
+    if cls is None:
+        if scope != "heap":
+            raise core.ApiError("bad_request", "heap-wide shapes scope must be heap", 400)
+        if not isinstance(normalize_maps, bool):
+            raise core.ApiError("bad_request", "normalizeMaps must be a boolean", 400)
+    else:
+        analysis_options(scope, normalize_maps)
     out_dir = os.path.dirname(dst)
     os.makedirs(out_dir, exist_ok=True)
     relax_file = _relax_file()
@@ -142,9 +150,10 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
         tmp = os.path.join(work, "artifact.shp1")
 
         extract_args = [
-            "mat-extract", "--hprof", hprof, "--class", cls,
+            "mat-extract", "--hprof", hprof,
             "--out", grph, "--scope", scope, "--stats", stats_path,
         ]
+        extract_args += ["--whole-heap"] if cls is None else ["--class", cls]
         if normalize_maps:
             extract_args.append("--normalize-maps")
         if relax_file:
@@ -154,13 +163,14 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
             _run_java(job, jobs, abort, extract_args, "extract",
                       xmx=SHAPES_XMX_RETAINED if scope == "retained" else None)
 
-        xmx = _analyze_xmx(grph, cls)
+        xmx = _analyze_xmx(grph, cls or "whole heap")
         objects, references = _grph_stats(grph)
         jobs.log(job, f"  shapes analyze: {objects:,} objects, {references:,} refs -> -Xmx{xmx}")
         analyze_args = [
-            "analyze-grph", "--graph", grph, "--class", cls,
+            "analyze-grph", "--graph", grph,
             "--out", tmp, "--whole-graph", "--relax-stats", relax_stats_path,
         ]
+        analyze_args += ["--whole-heap"] if cls is None else ["--class", cls]
         if relax_file:
             analyze_args += ["--relax", relax_file]
             jobs.log(job, f"  relax rules: {relax_file}")

@@ -12,6 +12,7 @@ import { makeInlineRepo } from '../data/inlinerepo.js';
 import * as classesTab from '../ui/tabs/classes.js';
 import * as treemapTab from '../ui/tabs/treemap.js';
 import * as compareTab from '../ui/tabs/compare.js';
+import * as shapesTab from '../ui/tabs/shapes.js';
 import { mountJobs } from '../ui/jobs.js';
 import { mountDumpPicker } from '../ui/dumppicker.js';
 import { registerViz, initViz } from '../viz/common.js';
@@ -19,11 +20,11 @@ import * as anatomy from '../viz/anatomy.js';
 import * as hierarchy from '../viz/hierarchy.js';
 import * as graph from '../viz/graph.js';
 import * as flow from '../viz/flow/index.js';
-import * as shapes from '../viz/shapes/index.js';
 
 const TABS = [
   ['classes', classesTab],
   ['treemap', treemapTab],
+  ['shapes', shapesTab],
   ['compare', compareTab],
 ];
 
@@ -36,7 +37,6 @@ export function boot() {
   registerViz(hierarchy);
   registerViz(graph);
   registerViz(flow);
-  registerViz(shapes);
 
   restoreDump();            // #dump=<id>, written by setDump()
   wireTabs(repo, !!payload);
