@@ -2,6 +2,7 @@ package shapes
 
 import shapes.mat.MatExtract
 import shapes.models.ClassName
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.system.exitProcess
 
@@ -66,20 +67,34 @@ fun main(args: Array<String>) {
         "mat-histogram" -> MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
         "mat-extract" -> {
             val wholeHeap = opts.flag("whole-heap")
-            require(!wholeHeap || opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
-            val className = if (wholeHeap) "" else opts.require("class")
             val fieldRules = opts["relax"]?.let { path ->
-                val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
+                val rules = Relax.parse(Files.readString(Path.of(path)))
                 if (rules.classRules.isNotEmpty())
                     println("relax: ${rules.classRules.size} analyzer-side rules ignored by mat-extract " +
                         "(pass the same file to analyze-grph)")
                 rules.fieldRules
-            } ?: emptyMap()
+            }.orEmpty()
+            val extractionMode = when {
+                wholeHeap -> {
+                    require(opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
+                    MatExtract.ExtractionMode.WholeHeap
+                }
+                opts["scope"] == "retained" -> {
+                    val className = ClassName(opts.require("class"))
+                    MatExtract.ExtractionMode.PartialExtraction.Retained(className)
+                }
+                opts["scope"] == "reachable" -> {
+                    val className = ClassName(opts.require("class"))
+                    MatExtract.ExtractionMode.PartialExtraction.Reachable(className)
+                }
+                else -> {
+                    error("you either analyze entire heap or define scope")
+                }
+            }
             MatExtract.extract(
                 hprof = opts.require("hprof"),
-                className = className,
+                extractionMode = extractionMode,
                 out = Path.of(opts.require("out")),
-                scope = opts["scope"] ?: if (wholeHeap) "heap" else "reachable",
                 statsOut = opts["stats"]?.let { Path.of(it) },
                 boundaryStubs = opts.flag("boundary-stubs"),
                 filterReferences = !opts.flag("raw-references"),
@@ -163,7 +178,7 @@ fun main(args: Array<String>) {
 
 private fun relaxOf(opts: Opts): Map<ClassName, Int> =
     opts["relax"]?.let { path ->
-        val rules = Relax.parse(java.nio.file.Files.readString(Path.of(path)))
+        val rules = Relax.parse(Files.readString(Path.of(path)))
         println("relax: ${rules.classRules.size} analyzer rules from $path" +
             (if (rules.fieldRules.isEmpty()) "" else " (${rules.fieldRules.size} extraction-side field rules — ignored here)"))
         rules.classRules

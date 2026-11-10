@@ -24,6 +24,8 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         optIn.add("kotlin.ExperimentalUnsignedTypes")
+        optIn.add("kotlin.contracts.ExperimentalContracts")
+        optIn.add("kotlin.contracts.ExperimentalExtendedContracts")
     }
 }
 

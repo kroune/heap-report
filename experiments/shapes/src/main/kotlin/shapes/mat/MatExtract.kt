@@ -2,9 +2,16 @@ package shapes.mat
 
 import org.eclipse.mat.collect.BitField
 import org.eclipse.mat.collect.HashMapIntObject
+import org.eclipse.mat.hprof.HprofHeapObjectReader
+import org.eclipse.mat.hprof.HprofRandomAccessParser
+import org.eclipse.mat.hprof.ui.HprofPreferences
+import org.eclipse.mat.parser.IObjectReader
 import org.eclipse.mat.parser.index.IndexManager
+import org.eclipse.mat.parser.index.IndexReader
 import org.eclipse.mat.parser.internal.SnapshotImpl
 import org.eclipse.mat.parser.model.ClassImpl
+import org.eclipse.mat.parser.model.ObjectArrayImpl
+import org.eclipse.mat.parser.model.PrimitiveArrayImpl
 import org.eclipse.mat.parser.model.XSnapshotInfo
 import org.eclipse.mat.snapshot.ISnapshot
 import org.eclipse.mat.util.VoidProgressListener
@@ -16,6 +23,7 @@ import java.lang.Long.bitCount
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.*
+import kotlin.contracts.contract
 
 /**
  * Heap-dump extraction for structural shapes: pulls either the complete
@@ -61,24 +69,32 @@ object MatExtract {
         }
     }
 
+    sealed interface ExtractionMode {
+        sealed interface PartialExtraction : ExtractionMode {
+            val className: ClassName
+
+            class Reachable(override val className: ClassName) : PartialExtraction
+
+            class Retained(override val className: ClassName) : PartialExtraction
+        }
+
+        object WholeHeap : ExtractionMode
+    }
+
     fun extract(
         hprof: String,
-        className: String,
         out: Path,
-        scope: String = "reachable",
+        extractionMode: ExtractionMode,
         statsOut: Path? = null,
         boundaryStubs: Boolean = false,
         filterReferences: Boolean = true,
         fieldRules: Map<ClassName, Set<String>> = emptyMap(),
         wholeHeap: Boolean = false,
     ) {
-        require(if (wholeHeap) scope == "heap" else (scope == "reachable" || scope == "retained")) {
-            "scope must be heap for --whole-heap, otherwise retained or reachable"
-        }
         require(!wholeHeap || !boundaryStubs) { "--boundary-stubs is incompatible with --whole-heap" }
         // MAT's old marker initializes the Eclipse platform even for index-only
         // reads. The supported new marker works in our standalone snapshot.
-        if (scope == "retained")
+        if (extractionMode is ExtractionMode.PartialExtraction.Retained)
             System.setProperty("org.eclipse.mat.parser.internal.snapshot.ObjectMarkerFactory.useOldMarker", "false")
         // withReader: filtering java.lang.ref.Reference.discovered needs field
         // names, and those need the real hprof object reader (standalone
@@ -86,20 +102,7 @@ object MatExtract {
         val reader = open(hprof, withReader = true)
         try {
             val time0 = System.nanoTime()
-            val classes = if (wholeHeap) {
-                null
-            } else {
-                requireNotNull(reader.getClassesByName(className, false)) { "class not found: $className" }
-            }
-            check(wholeHeap || classes!!.isNotEmpty()) { "class not found: $className" }
-            // The heap-wide view has no queried-class roots. The analyzer still
-            // emits the root fields for format compatibility, with zero counts.
-            val rootIds = classes?.flatMap { it.objectIds.asIterable() }?.distinct().orEmpty()
-            if (classes == null) {
-                println("whole heap: all non-class objects")
-            } else {
-                println("class $className: ${classes.size} class object(s), ${rootIds.size} instances")
-            }
+            val rootIds = getRootIds(extractionMode, reader)
 
             // java.lang.ref.Reference mechanics are VM/library bookkeeping,
             // not program structure: `discovered` is the GC's discovered-list
@@ -112,7 +115,8 @@ object MatExtract {
             // configurations). Fields DECLARED BY SUBCLASSES (e.g. a weak map
             // entry's strong `value`) are kept — they are payload, not
             // reference mechanics. Subtyping is exact (MAT class hierarchy).
-            val refClassIds = (reader.getClassesByName("java.lang.ref.Reference", true).orEmpty())
+            val refClassIds = reader.getClassesByName("java.lang.ref.Reference", true)
+                .orEmpty()
                 .mapTo(HashSet()) { it.objectId }
             val droppedRefFields = if (filterReferences) {
                 REF_MECHANICS_FIELDS
@@ -179,30 +183,9 @@ object MatExtract {
             var retainedCount = 0
             run {
                 val rIds = IntStack()
-                when {
-                    wholeHeap -> {
-                        for (id in 0 until n) {
-                            if (isExcludedClass(id)) {
-                                continue
-                            }
-                            reachableObjects.set(id)
-                        }
-                        println("heap: ${reachableObjects.cardinality()} non-class objects")
-                    }
-
-                    scope == "retained" -> {
-                        val retained = reader.getRetainedSet(rootIds.toIntArray(), VoidProgressListener())
-                        retainedCount = retained.size
-                        for (id in retained) {
-                            if (!isExcludedClass(id)) {
-                                reachableObjects.set(id)
-                            }
-                        }
-                        println("retained: ${retained.size} MAT objects, ${reachableObjects.cardinality()} non-class objects")
-                    }
-
-                    scope == "reachable" -> {
-                        for (root in rootIds) {
+                when (extractionMode) {
+                    is ExtractionMode.PartialExtraction.Reachable -> {
+                        for (root in rootIds!!) {
                             if (!reachableObjects.get(root) && !isExcludedClass(root)) {
                                 reachableObjects.set(root)
                                 rIds.push(root)
@@ -228,15 +211,35 @@ object MatExtract {
                             }
                         }
                     }
+
+                    is ExtractionMode.PartialExtraction.Retained -> {
+                        val retained = reader.getRetainedSet(rootIds!!.toIntArray(), VoidProgressListener())
+                        retainedCount = retained.size
+                        for (id in retained) {
+                            if (!isExcludedClass(id)) {
+                                reachableObjects.set(id)
+                            }
+                        }
+                        println("retained: ${retained.size} MAT objects, ${reachableObjects.cardinality()} non-class objects")
+                    }
+
+                    ExtractionMode.WholeHeap -> {
+                        for (id in 0 until n) {
+                            if (isExcludedClass(id)) {
+                                continue
+                            }
+                            reachableObjects.set(id)
+                        }
+                        println("heap: ${reachableObjects.cardinality()} non-class objects")
+                    }
                 }
                 rIds.array = IntArray(1) // release the BFS buffer before the big allocations
             }
             // Scope is selected BEFORE map projection. Raw counts remain
             // available even though projected refs hide implementation links.
-            fun sourceRefs(id: Int): IntArray = referencePolicy.refs(id)
             val projection = MapProjection(
                 className = { id -> reader.getClassOf(id).name },
-                indexedRefs = ::sourceRefs,
+                indexedRefs = { referencePolicy.refs(it) },
                 namedRefs = referencePolicy::namedRefs,
             )
             val structuralClass = run {
@@ -254,10 +257,10 @@ object MatExtract {
             // histogram ON PURPOSE (reported in the stats).
             var droppedSoftOnly = 0L
             var droppedSoftShallow = 0L
-            if (scope == "retained") {
+            if (extractionMode is ExtractionMode.PartialExtraction.Retained) {
                 val strong = BitSet(n)
                 val strongStack = IntStack()
-                for (rootId in rootIds) {
+                for (rootId in rootIds!!) {
                     if (reachableObjects.get(rootId)) {
                         strong.set(rootId)
                         strongStack.push(rootId)
@@ -267,7 +270,7 @@ object MatExtract {
                     val rootId = strongStack.pop()
                     // Restrict MAT's retained set over the filtered SOURCE graph.
                     // Map projection changes shape semantics, never population.
-                    for (w in sourceRefs(rootId)) {
+                    for (w in referencePolicy.refs(rootId)) {
                         if (w >= 0 && reachableObjects.get(w) && !strong.get(w)) {
                             strong.set(w)
                             strongStack.push(w)
@@ -292,9 +295,9 @@ object MatExtract {
 
             val t1 = System.nanoTime()
             val reachableClassesCount = reachableObjects.cardinality()
-            println("scope $scope: $reachableClassesCount objects in ${(t1 - time0) / 1_000_000} ms")
+            println("scope $extractionMode: $reachableClassesCount objects in ${(t1 - time0) / 1_000_000} ms")
             if (reachableClassesCount == 0) {
-                error("empty $scope set")
+                error("empty $extractionMode set")
             }
 
             // correctness guard: class objects must never enter R (their
@@ -352,12 +355,12 @@ object MatExtract {
             val stubClassIdx = ArrayList<Int>()        // stub idx -> class table idx
             var stubRefs = 0L
             if (boundaryStubs) {
-                check(scope == "retained") { "--boundary-stubs only makes sense for retained scope" }
+                check(extractionMode is ExtractionMode.PartialExtraction.Retained) { "--boundary-stubs only makes sense for retained scope" }
                 var reachableClassIndex = reachableObjects.nextSetBit(0)
                 while (reachableClassIndex >= 0) {
-                    for (w in sourceRefs(reachableClassIndex)) {
-                        if (w >= 0 && !isExcludedClass(w) && !reachableObjects.get(w)) {
-                            val iClass = reader.getClassOf(w)
+                    for (classId in referencePolicy.refs(reachableClassIndex)) {
+                        if (!isExcludedClass(classId) && !reachableObjects.get(classId)) {
+                            val iClass = reader.getClassOf(classId)
                             stubOfClass.getOrPut(iClass.objectId) {
                                 val cidx = classIdxOf.getOrPut(ClassName(iClass.name)) {
                                     check(classNames.size < 65535) { "class table exceeds 65535 entries" }
@@ -373,7 +376,7 @@ object MatExtract {
                     reachableClassIndex = reachableObjects.nextSetBit(reachableClassIndex + 1)
                 }
                 println("boundary stubs: ${stubClassIdx.size} target classes, $stubRefs boundary refs")
-                check(stubOfClass.keys.none { cid -> classes!!.any { it.objectId == cid } }) {
+                check(stubOfClass.keys.none { cid -> rootIds!!.any { it == cid } }) {
                     "a boundary target is an instance of the queried class — roots must all be in scope"
                 }
             }
@@ -416,12 +419,12 @@ object MatExtract {
                             if (reachableObjects.get(w)) {
                                 sourceEdges++
                             } else {
-                                check(scope == "retained") { "ref $w of $visitedIndex escaped the reachable set" }
+                                check(extractionMode is ExtractionMode.PartialExtraction.Retained) { "ref $w of $visitedIndex escaped the reachable set" }
                                 boundaryEdges++
                             }
                         }
                     }
-                    val refs = projection?.refs(visitedIndex) ?: original
+                    val refs = projection.refs(visitedIndex) ?: original
                     var refCount = 0
                     for (w in refs) {
                         if (w >= 0 && !isExcludedClass(w)) {
@@ -459,10 +462,10 @@ object MatExtract {
                 writeJson(
                     path = path,
                     value = ExtractionStats(
-                        scope = scope,
+                        extractionMode = extractionMode,
                         mapProjection = "unordered-entries-v1",
                         objects = reachableClassesCount,
-                        roots = rootIds.size,
+                        roots = rootIds!!.size,
                         shallowTotal = shallowTotal,
                         sourceEdges = sourceEdges,
                         scopeBoundaryEdges = boundaryEdges,
@@ -483,6 +486,27 @@ object MatExtract {
             }
         } finally {
             reader.dispose()
+        }
+    }
+
+    private fun getRootIds(
+        extractionMode: ExtractionMode,
+        reader: ISnapshot
+    ): List<Int>? {
+        contract {
+            (extractionMode is ExtractionMode.PartialExtraction) implies returnsNotNull()
+        }
+        return if (extractionMode is ExtractionMode.PartialExtraction) {
+            val classesByName = reader.getClassesByName(
+                extractionMode.className.name,
+                false
+            )
+            require(classesByName != null && classesByName.isNotEmpty()) { "class not found: ${extractionMode.className}" }
+            classesByName.flatMap { it.objectIds.asIterable() }.distinct().also {
+                println("class ${extractionMode.className.name}: ${classesByName.size} class object(s), ${it.size} instances")
+            }
+        } else {
+            null
         }
     }
 
@@ -524,13 +548,13 @@ object MatExtract {
             val indexManager = IndexManager()
             indexManager.init(prefix)
             val ctor = SnapshotImpl::class.java.getDeclaredConstructor(
-                XSnapshotInfo::class.java, org.eclipse.mat.parser.IObjectReader::class.java,
+                XSnapshotInfo::class.java, IObjectReader::class.java,
                 HashMapIntObject::class.java, HashMapIntObject::class.java,
                 HashMapIntObject::class.java, HashMapIntObject::class.java,
                 BitField::class.java, IndexManager::class.java,
             )
             ctor.isAccessible = true
-            val reader: org.eclipse.mat.parser.IObjectReader =
+            val reader: IObjectReader =
                 if (withReader) StandaloneReader() else NoopObjectReader
 
             @Suppress("UNCHECKED_CAST")
@@ -589,11 +613,13 @@ object MatExtract {
             val visited = BitSet(n)
             var frontier = IntArray(roots.size)
             var fSize = 0
-            for (r in roots) if (!visited.get(r)) {
-                visited.set(r); frontier[fSize++] = r
+            for (root in roots) {
+                if (!visited.get(root)) {
+                    visited.set(root)
+                    frontier[fSize++] = root
+                }
             }
             var next = IntArray(1 shl 16)
-            var nSize = 0
             var total = fSize.toLong()
             var level = 0
             while (fSize > 0 && level <= maxLevel && total < maxObjs) {
@@ -604,13 +630,17 @@ object MatExtract {
                 val el = (System.nanoTime() - t0) / 1_000_000_000.0
                 println("level %2d: %,12d referrers (cumulative %,12d)  [%.0fs]".format(level, fSize, total, el))
                 hist.entries.sortedByDescending { it.value }.take(8)
-                    .forEach { (c, cnt) -> println("         %,12d  %s".format(cnt, c.take(100))) }
-                nSize = 0
+                    .forEach { (c, cnt) ->
+                        println("         %,12d  %s".format(cnt, c.take(100)))
+                    }
+                var nSize = 0
                 for (i in 0 until fSize) {
                     for (w in s.getInboundRefererIds(frontier[i])) {
                         if (w >= 0 && !visited.get(w)) {
                             visited.set(w)
-                            if (nSize == next.size) next = next.copyOf(next.size * 2)
+                            if (nSize == next.size) {
+                                next = next.copyOf(next.size * 2)
+                            }
                             next[nSize++] = w
                         }
                     }
@@ -636,7 +666,7 @@ object MatExtract {
         val s = open(hprof, withReader = true)
         try {
             val classes = s.getClassesByName(className, false) ?: error("class not found: $className")
-            val hist = java.util.TreeMap<String, Int>()
+            val hist = TreeMap<String, Int>()
             var scanned = 0
             for (clazz in classes) for (id in clazz.objectIds) {
                 if (scanned >= maxScan) break
@@ -665,24 +695,27 @@ object MatExtract {
      * subclass re-implements open() with the default strictness and no
      * enhancers — everything it needs is the hprof file + o2hprof index.
      */
-    private class StandaloneReader : org.eclipse.mat.hprof.HprofHeapObjectReader() {
+    private class StandaloneReader : HprofHeapObjectReader() {
         override fun open(snapshot: ISnapshot) {
             val info = snapshot.snapshotInfo
             val version = org.eclipse.mat.hprof.describer.Version.valueOf(
                 info.getProperty(VERSION_PROPERTY) as String
             )
             val olen = info.getProperty(HPROF_LENGTH_PROPERTY) as? Long
-            val dump = org.eclipse.mat.hprof.HprofRandomAccessParser(
-                java.io.File(info.path), info.prefix, version, info.identifierSize,
+            val dump = HprofRandomAccessParser(
+                File(info.path),
+                info.prefix,
+                version,
+                info.identifierSize,
                 olen ?: -1,
-                org.eclipse.mat.hprof.ui.HprofPreferences.HprofStrictness.STRICTNESS_STOP
+                HprofPreferences.HprofStrictness.STRICTNESS_STOP
             )
-            val o2h = org.eclipse.mat.parser.index.IndexReader.LongIndexReader(
-                java.io.File(info.prefix + "o2hprof.index")
+            val o2h = IndexReader.LongIndexReader(
+                File(info.prefix + "o2hprof.index")
             )
 
             fun set(name: String, v: Any?) {
-                val f = org.eclipse.mat.hprof.HprofHeapObjectReader::class.java.getDeclaredField(name)
+                val f = HprofHeapObjectReader::class.java.getDeclaredField(name)
                 f.isAccessible = true
                 f.set(this, v)
             }
@@ -734,26 +767,26 @@ object MatExtract {
      * class-of, histogram) and never touches the object reader, so a stub is
      * enough; only getObject()/array content reads would need the real one.
      */
-    private object NoopObjectReader : org.eclipse.mat.parser.IObjectReader {
+    private object NoopObjectReader : IObjectReader {
         override fun open(snapshot: ISnapshot?) {}
         override fun read(objectId: Int, snapshot: ISnapshot?) =
             throw UnsupportedOperationException("getObject() is not available in standalone mode")
 
         override fun readPrimitiveArrayContent(
-            array: org.eclipse.mat.parser.model.PrimitiveArrayImpl?,
+            array: PrimitiveArrayImpl?,
             from: Int,
             to: Int
         ): Any =
             throw UnsupportedOperationException()
 
         override fun readObjectArrayContent(
-            array: org.eclipse.mat.parser.model.ObjectArrayImpl?,
+            array: ObjectArrayImpl?,
             from: Int,
             to: Int
         ): LongArray =
             throw UnsupportedOperationException()
 
-        override fun <A : Any?> getAddon(addon: Class<A>?): A = throw UnsupportedOperationException()
+        override fun <A> getAddon(addon: Class<A>?): A = throw UnsupportedOperationException()
         override fun close() {}
     }
 
@@ -770,7 +803,7 @@ object MatExtract {
         }
 
         fun pop(): Int {
-            val result = array[freeArrayPosition]
+            val result = array[freeArrayPosition - 1]
             freeArrayPosition--
             return result
         }

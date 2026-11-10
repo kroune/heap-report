@@ -2,11 +2,12 @@ package shapes.mat
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import shapes.mat.MatExtract.ExtractionMode
 
 /** Versioned-by-pipeline metadata appended to SHP1 by the Python gateway. */
 @Serializable
 internal data class ExtractionStats(
-    val scope: String,
+    val extractionMode: ExtractionMode,
     val mapProjection: String,
     val objects: Int,
     val roots: Int,
