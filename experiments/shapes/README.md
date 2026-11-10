@@ -76,6 +76,7 @@ Spec section references below are to SHAPES.md.
 
 ```bash
 ./gradlew build                                          # compile + all tests
+./gradlew run --args="--help"                            # commands and typed options
 ./gradlew run --args="demo --modules 3000 --verify"      # in-memory demo
 ./gradlew run --args="generate --modules 3000 --out heap.txt"
 ./gradlew run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
