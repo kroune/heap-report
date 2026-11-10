@@ -5,15 +5,14 @@
 export function defaultSide(vm, ctx) {
   const total = vm.nodes.reduce((a, n) => a + n.st, 0);
   const analysis = vm.analysis;
-  const scope = analysis ? analysis.scope : "legacy heap";
-  const mode = analysis && analysis.mapProjection !== "raw" ? "unordered map entries" : "raw map topology";
-  return `<div class="gdim">${ctx.esc(scope)} · ${ctx.esc(mode)}${analysis ? "" : " — re-analyze to use the new pipeline"}</div>` +
+  const extractionMode = analysis ? analysis.extractionMode.type : "legacy heap";
+  return `<div class="gdim">${ctx.esc(extractionMode)}${analysis ? "" : " — re-analyze to use the new pipeline"}</div>` +
     `<div class="gdim">${vm.shapeCount} shapes over ${ctx.esc(ctx.fmtN(vm.reachable))} ` +
     `heap objects · ${ctx.esc(ctx.fmtB(total))} shallow · ${vm.layout.layerCount} layers.</div>` +
     `<div class="fnote">Exact: every non-class heap object collapsed by structure — no sampling. ` +
     `Plain node size = ${vm.metric === "count" ? "collapsed object count" : "shallow total"}; ` +
-    `SCC boxes fit their member graph; edge width = reference count ` +
-    `(projected references when maps are normalized). Zoom into an SCC to see every stored member ` +
+    `SCC boxes fit their member graph; edge width = projected reference count. ` +
+    `Zoom into an SCC to see every stored member ` +
     `and internal connection. Click a shape for details, double-click a plain class to open its flow. ` +
     `Sub-pixel detail is shown as dots until you zoom in — nothing is removed.</div>` +
     (analysis ? `<div class="gdim">Source refs in heap: ${ctx.esc(ctx.fmtN(analysis.sourceEdges))}; ` +

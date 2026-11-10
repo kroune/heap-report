@@ -46,8 +46,8 @@ export const shapes = id =>
   cached(id, "shapes|heap", () => api(`${dq(id)}/shapes`));
 
 /* starts a server-side heap-wide shapes analysis (JobKind SHAPES); NOT cached */
-export const shapesAnalyze = (id, {normalizeMaps = true} = {}) =>
-  apiPost(`${dq(id)}/shapes-analyze`, {normalizeMaps});
+export const shapesAnalyze = id =>
+  apiPost(`${dq(id)}/shapes-analyze`, {});
 
 /* starts a server-side MAT analysis; the returned Job is NOT cached */
 export const analyze = (id, className, {samples = 8, anatomy = true} = {}) =>

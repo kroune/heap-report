@@ -8,7 +8,6 @@ import shapes.mat.MatExtract.ExtractionMode
 @Serializable
 internal data class ExtractionStats(
     val extractionMode: ExtractionMode,
-    val mapProjection: String,
     val objects: Int,
     val roots: Int,
     val shallowTotal: Long,
@@ -18,9 +17,6 @@ internal data class ExtractionStats(
     val projectedBoundaryEdges: Long,
     val matRetainedObjects: Int,
     val referenceFiltered: Boolean,
-    // Legacy field names retained for artifact compatibility.
-    val softReachableOnlyDropped: Long,
-    val softReachableOnlyDroppedShallow: Long,
     val scopeFilteredOutObjects: Long,
     val scopeFilteredOutShallow: Long,
     val concealedFieldEdges: Long,

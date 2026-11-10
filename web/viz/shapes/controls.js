@@ -3,21 +3,11 @@
 
 import { buildSeg } from "../common.js";
 
-/* Container semantics are explicit and are not inferred from an old artifact.
-   Re-analysis atomically replaces the dump's heap-wide artifact. */
+/* Re-analysis atomically replaces the dump's heap-wide artifact. */
 export function analysisControls(vm, ctx) {
   const row = document.createElement("div");
   row.className = "viz-anrow";
   if (!ctx.analyze) return row;
-  const mode = document.createElement("select");
-  mode.setAttribute("aria-label", "map structure");
-  for (const [value, text] of [["normalized", "maps: unordered entries"], ["raw", "maps: raw topology"]]) {
-    const opt = document.createElement("option");
-    opt.value = value;
-    opt.textContent = text;
-    mode.appendChild(opt);
-  }
-  mode.value = vm.normalizeMaps === false ? "raw" : "normalized";
   const btn = document.createElement("button");
   btn.textContent = vm.notAnalyzed ? "analyze (exact)" : "re-analyze";
   const status = document.createElement("span");
@@ -28,9 +18,9 @@ export function analysisControls(vm, ctx) {
       status.textContent = text;
       status.classList.toggle("err", !!isErr);
       if (isErr) btn.disabled = false;
-    }, null, { normalizeMaps: mode.value === "normalized" });
+    });
   };
-  row.append(mode, btn, status);
+  row.append(btn, status);
   return row;
 }
 

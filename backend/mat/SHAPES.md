@@ -26,8 +26,7 @@ of the web UI or HTTP API.
 ## UI/backend pipeline
 
 The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the server.
-One analysis selects the **whole heap + unordered map entries** by default.
-Normalized / raw maps are an explicit UI control; there is no class or
+One analysis selects the **whole heap**. There is no class or
 retained/reachable scope selector. Re-analysis atomically replaces
 `data/shapes/heap.shp1`; old per-class artifacts are not served by the web API.
 
@@ -50,15 +49,15 @@ survive, including an alias also referenced through a removed technical field.
 TreeNode, custom map classes and other collections are not guessed/normalized.
 No object, count, shallow bytes or root is dropped; the projection changes
 **reference semantics**, not the population. Ordering is intentionally absent
-in this optional projection.
+in this projection.
 
 An optional `SMD1` length-prefixed JSON trailer in the same SHP1 file records
-scope, projection, pipeline version, object/root/shallow totals, original
+extraction mode, pipeline version, object/root/shallow totals, original
 in-scope reference count, boundary reference count and projected reference
 count. Source-reference counts are MAT-index targets (deduplicated by target
 ID), not field/array-slot multiplicities. Displayed edges are explicitly
-**projected** edges when projection is enabled; do not compare them as raw
-heap edges. Before atomic publication the backend checks all object, root,
+**projected** edges; do not compare them as raw heap edges. Before atomic
+publication the backend checks all object, root,
 shallow and expanded projected-edge totals against extraction statistics.
 The served `reachableCount` includes `setChildrenConcealedObjects`: it is the
 real scope population, not merely the sum of visible quotient-SCC counts.
@@ -77,8 +76,8 @@ show missing members or connections.
 
 Backend SCC refinement uses cap 1,000,000 (`SHAPES_MAX_SCC_MERGE` override)
 to avoid the old 64-member artifact in container graphs. Larger components
-still take the lean unique path. CLI without backend flags remains raw /
-reachable, cap 64 unless overridden. See the measured investigation in
+still take the lean unique path. The CLI's default SCC merge cap is 64 unless
+overridden. See the measured investigation in
 `experiments/shapes/FLOW-COMPARISON.md`.
 
 ## Definitions

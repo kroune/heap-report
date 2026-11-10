@@ -1,5 +1,7 @@
 package shapes.mat
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import org.eclipse.mat.collect.BitField
 import org.eclipse.mat.collect.HashMapIntObject
 import org.eclipse.mat.hprof.HprofHeapObjectReader
@@ -69,15 +71,23 @@ object MatExtract {
         }
     }
 
+    @Serializable
     sealed interface ExtractionMode {
+        @Serializable
         sealed interface PartialExtraction : ExtractionMode {
             val className: ClassName
 
-            class Reachable(override val className: ClassName) : PartialExtraction
+            @Serializable
+            @SerialName("reachable")
+            data class Reachable(override val className: ClassName) : PartialExtraction
 
-            class Retained(override val className: ClassName) : PartialExtraction
+            @Serializable
+            @SerialName("retained")
+            data class Retained(override val className: ClassName) : PartialExtraction
         }
 
+        @Serializable
+        @SerialName("heap")
         object WholeHeap : ExtractionMode
     }
 
@@ -463,7 +473,6 @@ object MatExtract {
                     path = path,
                     value = ExtractionStats(
                         extractionMode = extractionMode,
-                        mapProjection = "unordered-entries-v1",
                         objects = reachableClassesCount,
                         roots = rootIds!!.size,
                         shallowTotal = shallowTotal,
@@ -473,8 +482,6 @@ object MatExtract {
                         projectedBoundaryEdges = projectedBoundaryEdges,
                         matRetainedObjects = retainedCount,
                         referenceFiltered = filterReferences,
-                        softReachableOnlyDropped = droppedSoftOnly,
-                        softReachableOnlyDroppedShallow = droppedSoftShallow,
                         scopeFilteredOutObjects = droppedSoftOnly,
                         scopeFilteredOutShallow = droppedSoftShallow,
                         concealedFieldEdges = concealedFieldEdges,

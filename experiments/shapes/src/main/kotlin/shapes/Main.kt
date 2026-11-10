@@ -21,7 +21,7 @@ real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
   mat-extract --hprof <file.hprof> [--class <className> | --whole-heap] --out <r.grph>
-      [--scope retained|reachable] [--normalize-maps] [--stats <stats.json>] [--boundary-stubs]
+      [--scope retained|reachable] [--stats <stats.json>] [--boundary-stubs]
       --whole-heap selects every non-class object (with --scope heap) and has no class roots
       [--raw-references]  keep soft/weak/phantom-reference edges (default: filtered —
                           the GC clears them, so they do not retain their referents)

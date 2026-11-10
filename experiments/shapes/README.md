@@ -101,9 +101,9 @@ missing from the class table — the 9 primitive class objects),
 `mat-reachback` (reverse BFS over the inbound index — quantifies which
 classes carry back-paths into the mega-SCC).
 
-Backend/UI uses `--whole-heap --scope heap --normalize-maps` and
+Backend/UI uses `--whole-heap --scope heap` and
 `SHAPES_MAX_SCC_MERGE=1000000` (override supported). The dedicated Shapes tab
-exposes raw / normalized maps and re-analysis of the single heap artifact.
+supports re-analysis of the single heap artifact.
 Class-scoped retained / reachable extraction remains available in the CLI for
 diagnostics. `--stats <json>` preserves source/projected reference counts;
 `analyze-grph --whole-graph` retains all preselected objects without turning
@@ -236,9 +236,8 @@ Headline: the 32-root retained sample yields 416 shapes versus 243 flow
 classes on identical adjacency; the full retained scope yields 234,834 raw
 shapes versus 7,821 after diagnostic map normalization, and the residual is
 fully explained by per-module dependency content plus three identified
-dump-time artifacts. Field-aware normalization is available from the UI
-with explicit scope/projection choices. The diagnostic numbers are not a
-promise for every dump or every collection implementation.
+dump-time artifacts. The diagnostic numbers are not a promise for every dump
+or every collection implementation.
 
 ## Known limitations / notes for review
 

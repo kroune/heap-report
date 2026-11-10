@@ -20,17 +20,17 @@ test("prepare passes through request errors", async () => {
   assert.deepEqual(vm, { kind: "shapes", dumpId: "dump", error: "broken" });
 });
 
-test("404 and empty payloads preserve analysis params", async () => {
-  const params = { normalizeMaps: false };
+test("404 and empty payloads preserve view params", async () => {
+  const params = { layoutMode: "compact" };
   const missing = await prepare({ shapes: async () => ({ ok: false, status: 404 }) },
     "d", params);
   assert.equal(missing.notAnalyzed, true);
-  assert.equal(missing.normalizeMaps, false);
+  assert.equal(missing.layoutMode, "compact");
 
   const empty = await prepare({ shapes: async () => ({ ok: true, data: { shapes: [] } }) },
     "d", params);
   assert.equal(empty.notAnalyzed, true);
-  assert.equal(empty.normalizeMaps, false);
+  assert.equal(empty.layoutMode, "compact");
 });
 
 test("single-node payload tolerates omitted optional collections", async () => {
@@ -51,20 +51,14 @@ test("single-node payload tolerates omitted optional collections", async () => {
   assert.equal(vm.nodes[0].short, "Widget");
   assert.equal(vm.nodes[0].plain, true);
   assert.deepEqual(vm.layout.edges, []);
-  assert.equal(vm.normalizeMaps, true);
 });
 
-test("artifact analysis supplies defaults and explicit params win", () => {
+test("artifact analysis metadata is preserved", () => {
   const data = payload();
-  data.analysis = { scope: "heap", mapProjection: "raw" };
-  const inherited = shapesViewModel(data, "d", { metric: "count" });
-  assert.equal(inherited.metric, "count");
-  assert.equal(inherited.normalizeMaps, false);
-  const overridden = shapesViewModel(data, "d", {
-    normalizeMaps: true, metric: "shallow",
-  });
-  assert.equal(overridden.normalizeMaps, true);
-  assert.equal(overridden.metric, "shallow");
+  data.analysis = { extractionMode: { type: "heap" } };
+  const vm = shapesViewModel(data, "d", { metric: "count" });
+  assert.equal(vm.metric, "count");
+  assert.deepEqual(vm.analysis, data.analysis);
 });
 
 test("explicit layout mode reaches the pure layout", () => {

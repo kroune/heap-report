@@ -64,7 +64,7 @@ Normalizing JDK map topology on the real heap removes 97% of the shapes
 field-level audit confirmed only map wiring (`next`/`before`/`after`/
 `head`/`tail`) was removed — zero `key`/`value` references.
 
-⇒ This is why the pipeline defaults to `--normalize-maps`, and why the
+⇒ This is why the pipeline always applies map projection, and why the
 normalizer is **field-aware** rather than topology-based: the audit property
 is verified for this dataset, not guaranteed in general. Known hole: an
 empty `ConcurrentHashMap` with a null `table` but a materialized `keySet`

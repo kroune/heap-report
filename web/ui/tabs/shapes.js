@@ -43,10 +43,9 @@ export function mount(container, repo, opts = {}) {
     stopPoll = null;
   }
 
-  function analyze(onStatus, samples, analysisOptions = {}) {
+  function analyze(onStatus) {
     const dumpId = st.dump;
-    const nextParams = {...st.params, ...analysisOptions};
-    Promise.resolve(R.shapesAnalyze(dumpId, analysisOptions)).then(r => {
+    Promise.resolve(R.shapesAnalyze(dumpId)).then(r => {
       if (st.dump !== dumpId) return;
       if (!r.ok) {
         onStatus(`analyze failed: ${r.error || 'unknown error'}`, true);
@@ -56,7 +55,6 @@ export function mount(container, repo, opts = {}) {
       const reopen = () => {
         stopWatching();
         if (st.dump !== dumpId) return;
-        st.params = nextParams;
         R.invalidate(dumpId);
         load();
       };

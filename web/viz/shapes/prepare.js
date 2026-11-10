@@ -9,7 +9,6 @@ import { computeShapesLayout } from "./layout.js";
 function baseModel(dumpId, params) {
   return {
     kind: "shapes", dumpId,
-    normalizeMaps: params.normalizeMaps ?? true,
     layoutMode: params.layoutMode || "auto",
   };
 }
@@ -57,7 +56,6 @@ export function shapesViewModel(p, dumpId, params = {}) {
     reachable: p.reachableCount ?? 0,
     shapeCount: p.shapes.length,
     analysis,
-    normalizeMaps: params.normalizeMaps ?? (analysis ? analysis.mapProjection !== "raw" : true),
     nodes, layout,
   };
 }

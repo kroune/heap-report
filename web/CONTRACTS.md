@@ -109,11 +109,12 @@ analyze(id, className, {samples=8, anatomy=true}) -> Result<Job>
 shapes(id)                                 -> Result<{shapes,edges,rootsHistogram,reachableCount,analysis}>; same 404
 // SCC1 also gives SCC shapes members:[{label,internal:[[target,mult]]}] and
 // membersComplete. Complete additionally requires members.length===sccSize; legacy SHP1 omits both.
-shapesAnalyze(id, {normalizeMaps=true})     -> Result<Job>
-// analysis=null on legacy artifacts; otherwise includes scope, mapProjection,
-// objects, roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges,
-// pipelineVersion, sccMergeLimit. Graph edges are projected when maps normalized.
-// Re-analysis atomically replaces the heap-wide artifact; map choice is visible in UI.
+shapesAnalyze(id)                           -> Result<Job>
+// analysis=null on legacy artifacts; otherwise includes
+// extractionMode:{type:'heap'|'retained'|'reachable',className?}, objects,
+// roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges, pipelineVersion,
+// sccMergeLimit. Graph edges use map-entry projection.
+// Re-analysis atomically replaces the heap-wide artifact.
 invalidate(id=null)                        // drop one dump's or all cached entries
 
 // data/inlinerepo.js — same functions, same result shapes, reading the

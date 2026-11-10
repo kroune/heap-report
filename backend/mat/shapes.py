@@ -40,12 +40,11 @@ _METADATA_MAGIC = b"SMD1"
 _BYTES_PER_OBJECT = 24
 
 
-def analysis_options(scope="retained", normalize_maps=True):
-    if scope not in ("retained", "reachable"):
-        raise core.ApiError("bad_request", "scope must be retained or reachable", 400)
-    if not isinstance(normalize_maps, bool):
-        raise core.ApiError("bad_request", "normalizeMaps must be a boolean", 400)
-    return {"scope": scope, "normalizeMaps": normalize_maps}
+def analysis_options(extraction_mode="retained"):
+    if extraction_mode not in ("retained", "reachable"):
+        raise core.ApiError(
+            "bad_request", "extraction mode must be retained or reachable", 400)
+    return {"extractionMode": extraction_mode}
 
 
 def shapes_jar():
@@ -120,22 +119,20 @@ def _relax_file():
 
 
 def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
-                  scope="retained", normalize_maps=True):
+                  extraction_mode="retained"):
     """Run extract → collapse → validate → atomic publish for one graph.
 
-    ``cls=None`` selects the complete non-class heap (``scope='heap'``). The
-    class-scoped form remains available to the standalone diagnostics. All
+    ``cls=None`` selects the complete non-class heap (``extraction_mode='heap'``).
+    The class-scoped form remains available to the standalone diagnostics. All
     intermediates live in one unique temporary directory on the destination
     filesystem. Failure preserves the previous artifact; success replaces it
     only after every aggregate and metadata setting has been validated.
     """
     if cls is None:
-        if scope != "heap":
-            raise core.ApiError("bad_request", "heap-wide shapes scope must be heap", 400)
-        if not isinstance(normalize_maps, bool):
-            raise core.ApiError("bad_request", "normalizeMaps must be a boolean", 400)
+        if extraction_mode != "heap":
+            raise core.ApiError("bad_request", "heap-wide extraction mode must be heap", 400)
     else:
-        analysis_options(scope, normalize_maps)
+        analysis_options(extraction_mode)
     out_dir = os.path.dirname(dst)
     os.makedirs(out_dir, exist_ok=True)
     relax_file = _relax_file()
@@ -151,17 +148,15 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
 
         extract_args = [
             "mat-extract", "--hprof", hprof,
-            "--out", grph, "--scope", scope, "--stats", stats_path,
+            "--out", grph, "--scope", extraction_mode, "--stats", stats_path,
         ]
         extract_args += ["--whole-heap"] if cls is None else ["--class", cls]
-        if normalize_maps:
-            extract_args.append("--normalize-maps")
         if relax_file:
             extract_args += ["--relax", relax_file]
-        jobs.log(job, f"  scope={scope}; maps={'unordered entries' if normalize_maps else 'raw'}")
+        jobs.log(job, f"  extractionMode={extraction_mode}")
         with runner.index_read_hold(dump_dir, lambda message: jobs.log(job, message)):
             _run_java(job, jobs, abort, extract_args, "extract",
-                      xmx=SHAPES_XMX_RETAINED if scope == "retained" else None)
+                      xmx=SHAPES_XMX_RETAINED if extraction_mode == "retained" else None)
 
         xmx = _analyze_xmx(grph, cls or "whole heap")
         objects, references = _grph_stats(grph)
@@ -187,8 +182,8 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
                 "file": os.path.basename(relax_file), "sha1": relax_sha,
                 **relax_stats,
             }
-        expected_projection = "unordered-entries-v1" if normalize_maps else "raw"
-        if metadata.get("scope") != scope or metadata.get("mapProjection") != expected_projection:
+        extracted_mode = metadata.get("extractionMode")
+        if not isinstance(extracted_mode, dict) or extracted_mode.get("type") != extraction_mode:
             raise RuntimeError("shapes extraction settings do not match the request")
         metadata.update(pipelineVersion=PIPELINE_VERSION, sccMergeLimit=scc_merge_limit)
         _validate_projection(tmp, metadata)

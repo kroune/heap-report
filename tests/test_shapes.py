@@ -168,11 +168,10 @@ class TestShp1(unittest.TestCase):
         self.assertEqual(payload["analysis"], {"objects": 1})
 
     def test_analysis_options(self):
-        self.assertEqual(analysis_options(), {"scope": "retained", "normalizeMaps": True})
+        self.assertEqual(analysis_options(), {"extractionMode": "retained"})
         from backend.core import ApiError
-        for scope, normalized in [("bad", True), ("retained", "false")]:
-            with self.assertRaises(ApiError):
-                analysis_options(scope, normalized)
+        with self.assertRaises(ApiError):
+            analysis_options("bad")
 
     def test_publish_projected_pipeline(self):
         import json
@@ -180,7 +179,7 @@ class TestShp1(unittest.TestCase):
         row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
                "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
                "roots": 2, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
-        metadata = dict(scope="retained", mapProjection="unordered-entries-v1",
+        metadata = dict(extractionMode={"type": "retained", "className": "C"},
                         objects=2, roots=2, shallowTotal=32, sourceEdges=1,
                         scopeBoundaryEdges=4, projectedEdges=0)
         calls = []
@@ -206,10 +205,9 @@ class TestShp1(unittest.TestCase):
                  mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
                 analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
             p = parse_shp1(dst)
-            self.assertEqual(p["analysis"]["scope"], "retained")
+            self.assertEqual(p["analysis"]["extractionMode"]["type"], "retained")
             self.assertEqual(p["analysis"]["sourceEdges"], 1)
             self.assertEqual(p["analysis"]["pipelineVersion"], 5)
-            self.assertIn("--normalize-maps", calls[0][0])
             self.assertIn("--whole-graph", calls[1][0])
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
             bad = dict(metadata, objects=3)
@@ -222,7 +220,7 @@ class TestShp1(unittest.TestCase):
         row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
                "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
                "roots": 0, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
-        metadata = dict(scope="heap", mapProjection="raw", objects=2, roots=0,
+        metadata = dict(extractionMode={"type": "heap"}, objects=2, roots=0,
                         shallowTotal=32, sourceEdges=0, scopeBoundaryEdges=0,
                         projectedEdges=0)
         calls = []
@@ -247,12 +245,11 @@ class TestShp1(unittest.TestCase):
             with mock.patch("backend.mat.shapes._run_java", side_effect=run), \
                  mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
                 analyze_class(None, mock.Mock(), runner, d, "heap.hprof", None, dst,
-                              scope="heap", normalize_maps=False)
-            self.assertEqual(parse_shp1(dst)["analysis"]["scope"], "heap")
+                              extraction_mode="heap")
+            self.assertEqual(parse_shp1(dst)["analysis"]["extractionMode"]["type"], "heap")
             for args in calls:
                 self.assertIn("--whole-heap", args)
                 self.assertNotIn("--class", args)
-            self.assertNotIn("--normalize-maps", calls[0])
 
     def test_reachable_count_includes_quotient_concealed_objects(self):
         import json
@@ -306,7 +303,7 @@ class TestShp1(unittest.TestCase):
                 self.assertEqual(f.read(), b"previous artifact")
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
 
-    def test_analysis_options_are_part_of_job_identity(self):
+    def test_heap_wide_analysis_job(self):
         from backend.mat.engine import MatQueryEngine
         from backend import core
         engine = object.__new__(MatQueryEngine)
@@ -314,13 +311,9 @@ class TestShp1(unittest.TestCase):
         engine._jobs = mock.Mock()
         engine._jobs.submit.side_effect = lambda *args: args
         with mock.patch("backend.mat.shapes.shapes_jar", return_value="shapes.jar"):
-            first = engine.analyze_shapes("dump", True)
-            second = engine.analyze_shapes("dump", False)
-        self.assertEqual(core.JobKind.SHAPES, first[0])
-        self.assertIn("whole heap", first[2])
-        self.assertIn("normalized", first[2])
-        self.assertIn("raw", second[2])
-        self.assertNotEqual(first[2], second[2])
+            submitted = engine.analyze_shapes("dump")
+        self.assertEqual(core.JobKind.SHAPES, submitted[0])
+        self.assertEqual("whole heap", submitted[2])
         engine._prepare_analysis.assert_called_with("dump")
 
     def test_rejects_non_shp1(self):
