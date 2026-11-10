@@ -56,15 +56,20 @@ Spec section references below are to SHAPES.md.
 
 ## Layout
 
-- `Graph.kt` — compact `ObjectGraph` model, text/GRPH formats, synthetic graphs.
+- `Graph.kt` — compact `ObjectGraph` model and allocation-efficient builder.
+- `input/` — source interfaces plus standalone text/GRPH parsers; no analysis
+  or MAT dependencies. `HeapInput` is the adapter contract for new heap sources.
+- `extraction/` — source-independent scope selection, reference policy, map
+  projection, and one-pass `ObjectGraph` materialization.
+- `mat/` — the standalone MAT `HeapInput` adapter and MAT-only diagnostics.
 - `Digest.kt` — 128-bit canonical digests using hash4j's XXH3-128.
 - `Shapes.kt` — the collapse pipeline.
 - `Verify.kt` — invariant checker (`--verify` and tests).
 - `Emit.kt` — binary artifact writer.
 - `JsonSupport.kt` — shared `kotlinx.serialization` JSON output; emitted
   schemas are typed (`ExtractionStats`, `RelaxStats`), never concatenated.
-- `mat/ReferencePolicy.kt` — one side-effect-free reference filtering policy
-  shared by scope traversal, map projection, emission, and accounting.
+- `extraction/ReferencePolicy.kt` — one side-effect-free reference filtering
+  policy shared by scope traversal, map projection, and accounting.
 - `Main.kt` — CLI.
 
 ## Run
@@ -75,7 +80,7 @@ Spec section references below are to SHAPES.md.
 ./gradlew run --args="generate --modules 3000 --out heap.txt"
 ./gradlew run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
 ./gradlew fatJar   # build/libs/shapes-experiment-all.jar — what the heap-report
-                   # backend runs (SHAPES_JAR; mat-extract + analyze-grph)
+                   # backend runs (SHAPES_JAR; mat-analyze)
 ```
 
 Headline result on the synthetic 3000-module heap: 18001 objects collapse
@@ -85,15 +90,25 @@ single-threaded.
 
 ## Real heap dumps (MAT extractor)
 
-`shapes.mat.MatExtract` pulls an explicitly selected retained/reachable graph
-for a class out of a MAT snapshot into GRPH binary (dense ids, refs remapped — see "Known
-limitations"), `analyze-grph` runs the pipeline on it. Opening bypasses the
-OSGi-dependent `SnapshotFactory` (deserializes `daemon.index` + private
-`SnapshotImpl` ctor via reflection; everything used is index-backed except
-named field reads, which use a standalone `HprofHeapObjectReader` subclass
-that skips the OSGi preferences). `java.lang.ref.Reference.discovered`
-edges are filtered in the BFS and in GRPH emission — VM bookkeeping, not
-program structure (SHAPES.md "Definitions"). Diagnostic commands:
+`shapes.mat.MatHeapInput` adapts a MAT snapshot to the source-independent
+`HeapInput` contract. `GraphExtractor` selects a retained/reachable/whole-heap
+scope, then builds the dense in-memory `ObjectGraph` in one materialization
+pass. `mat-analyze` runs collapse immediately in the same JVM: there is no
+class-table prepass, GRPH intermediate, or reparsing step. Standalone
+`analyze-grph` remains available when GRPH is itself the input source.
+
+Scope selection is necessarily separate: retained membership requires MAT's
+retained-set computation (and filtered-scope restriction), while reachable
+membership requires BFS. Only after membership is known can dense target ids
+be assigned during the single materialization pass.
+
+Opening bypasses the OSGi-dependent `SnapshotFactory` (deserializes
+`daemon.index` + private `SnapshotImpl` ctor via reflection; everything used
+is index-backed except named field reads, which use a standalone
+`HprofHeapObjectReader` subclass that skips OSGi preferences).
+`java.lang.ref.Reference.discovered` edges are filtered during traversal and
+materialization — VM bookkeeping, not program structure (SHAPES.md
+"Definitions"). Diagnostic commands:
 `mat-fields` (per-instance outbound refs with field names) and
 `mat-ref-targets` (histogram of reference-typed field targets),
 `mat-isclass` (class-filter sanity: finds java.lang.Class instances
@@ -105,11 +120,11 @@ Backend/UI uses `--whole-heap --scope heap` and
 `SHAPES_MAX_SCC_MERGE=1000000` (override supported). The dedicated Shapes tab
 supports re-analysis of the single heap artifact.
 Class-scoped retained / reachable extraction remains available in the CLI for
-diagnostics. `--stats <json>` preserves source/projected reference counts;
-`analyze-grph --whole-graph` retains all preselected objects without turning
-them into roots. `SHAPES_XMX_RETAINED` defaults to 8g; the analyzer
-heap is sized from the graph. The server requires a built fat jar and never
-runs Gradle. See `backend/mat/SHAPES.md` for projection and artifact metadata.
+diagnostics. `--stats <json>` preserves source/projected reference counts.
+The direct pipeline always retains all selected objects without turning them
+into roots. `SHAPES_XMX_ANALYZE` sizes the combined extraction + analysis JVM
+and defaults to 8g. The server requires a built fat jar and never runs Gradle.
+See `backend/mat/SHAPES.md` for projection and artifact metadata.
 
 ## Reference-kind filtering and relaxed classes (v3)
 
@@ -169,10 +184,11 @@ in 7 root shapes, exact. `File` surfaces a real merged SCC:
 point 4, discretized by class and merged exactly).
 
 Scale findings:
-- **Extraction** (MAT indexes, 2 GB) works at full-heap scale: BFS over
-  257M objects in 10–14 min (~0.5M obj/s), pass1 12–32 s, pass2 77–140 s
-  with popcount-rank O(1) id remap (binary search over a 1 GB ids array
-  OOM'd/would crawl at this scale). Output GRPH 6.5 GB.
+- **Extraction** works at full-heap scale: the historical GRPH pipeline's BFS
+  over 257M objects took 10–14 min (~0.5M obj/s), followed by a 12–32 s class
+  pass, a 77–140 s write pass, and a 6.5 GB GRPH read. The current pipeline
+  replaces all three post-BFS walks with one in-memory materialization pass,
+  using the same popcount-rank O(1) id remap. No new timing is claimed here.
 - **The reachable closure is one giant blob**: PatternSet (114k instances)
   and DefaultLegacyConfiguration (201k) close over the *identical* set of
   256,893,323 objects — 98.9% of the daemon heap. "Reachable scope" for
@@ -250,8 +266,8 @@ or every collection implementation.
 - MAT extraction remaps ids to dense (SHAPES.md's "no id remapping" is an
   in-MAT-JVM trade-off; in a separate process, memory ∝ |R| wins).
 - MAT extraction BFS is single-threaded and I/O-bound on random outbound
-  index reads (~80–300k objects/s depending on page cache); pass 1/2 run
-  in sorted id order and are fast. Parallelism + bulk index reads are the
+  index reads (~80–300k objects/s depending on page cache); materialization
+  runs once in sorted source-id order. Parallelism + bulk index reads are the
   spec's frontier-split BFS upgrade.
 - Analyzer footprint after the footprint pass: ~26 B per R object live
   (breakdown above); the 15.8M-object String scope analyzes with -Xmx544m

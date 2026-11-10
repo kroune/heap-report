@@ -1,12 +1,18 @@
-package shapes.mat
+package shapes.extraction
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import shapes.mat.MatExtract.ExtractionMode
+import shapes.ObjectGraph
+
+/** The in-memory graph and its extraction metadata; no serialization round-trip. */
+data class ExtractionResult(
+    val graph: ObjectGraph,
+    val stats: ExtractionStats,
+)
 
 /** Versioned-by-pipeline metadata appended to SHP1 by the Python gateway. */
 @Serializable
-internal data class ExtractionStats(
+data class ExtractionStats(
     val extractionMode: ExtractionMode,
     val objects: Int,
     val roots: Int,
@@ -24,7 +30,7 @@ internal data class ExtractionStats(
 )
 
 @Serializable
-internal data class ExtractionFieldRule(
+data class ExtractionFieldRule(
     @SerialName("class") val className: String,
     val fields: List<String>,
 )

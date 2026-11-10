@@ -1,6 +1,12 @@
 package shapes
 
-import shapes.mat.MatExtract
+import shapes.extraction.ExtractionMode
+import shapes.extraction.GraphExtractor
+import shapes.input.GraphInput
+import shapes.input.TextGraphInput
+import shapes.input.TextGraphOutput
+import shapes.mat.MatDiagnostics
+import shapes.mat.MatHeapInput
 import shapes.models.ClassName
 import java.nio.file.Files
 import java.nio.file.Path
@@ -9,26 +15,26 @@ import kotlin.system.exitProcess
 private const val USAGE = """
 shapes — exact structural collapse (see backend/mat/SHAPES.md)
 
-  analyze --graph <file> --class <className> [--out <shapes.bin>] [--verify]
+  analyze --graph <file.txt> --class <className> [--out <shapes.bin>] [--verify]
+  analyze-grph --graph <file.grph> [--class <className> | --whole-heap]
+      [--whole-graph] [--out <shapes.bin>] [--verify]
   generate --modules <N> --out <graph.txt>
   demo --modules <N> [--verify]          generate + analyze in memory
 
 common options:
-  --relax <rules.tsv>   class relaxation rules (Relax.kt): weaken the structural
-                        key for listed classes (class-only|set-children)
+  --relax <rules.tsv>   class relaxation rules (class-only|set-children)
 
 real heap dumps (MAT library, needs pre-built indexes next to the hprof):
   mat-info --hprof <file.hprof>
   mat-histogram --hprof <file.hprof> [--top 30]
-  mat-extract --hprof <file.hprof> [--class <className> | --whole-heap] --out <r.grph>
-      [--scope retained|reachable] [--stats <stats.json>] [--boundary-stubs]
-      --whole-heap selects every non-class object (with --scope heap) and has no class roots
-      [--raw-references]  keep soft/weak/phantom-reference edges (default: filtered —
-                          the GC clears them, so they do not retain their referents)
+  mat-analyze --hprof <file.hprof> [--class <className> | --whole-heap]
+      --scope retained|reachable|heap --out <shapes.bin>
+      [--stats <stats.json>] [--relax-stats <relax.json>] [--boundary-stubs]
+      [--raw-references]  keep soft/weak/phantom-reference edges
+      [--relax <rules.tsv>]  applies both extraction and analyzer rules
+      [--verify] [--verify-edges]
+      Extraction and analysis run in one JVM without a GRPH round-trip.
   mat-trace --hprof <file.hprof> --class <className> [--targets a,b,c] [--maxlevel 15] [--maxobjs 80M]
-  analyze-grph --graph <r.grph> [--class <className> | --whole-heap] [--out <shapes.bin>] [--verify]
-      [--whole-graph]  include all preselected objects, preserving original roots
-      --whole-heap requires --whole-graph and emits zero class-root counts
 
 graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line, '#' comments
 """
@@ -37,138 +43,89 @@ fun main(args: Array<String>) {
     val opts = parseOpts(args.toList())
     when (opts.cmd) {
         "analyze" -> {
-            val graph = ObjectGraph.load(Path.of(opts.require("graph")))
-            val className = ClassName(opts.require("class"))
-            val roots = graph.instancesOf(className)
-            println("class $className: ${roots.size} instances (roots)")
-            val analyzer = ShapesAnalyzer(graph, relaxOf(opts))
-            val t = analyzer.analyze(roots)
-            printRelax(analyzer)
-            printReport(t)
-            opts["out"]?.let {
-                ShapesEmit.write(t, Path.of(it))
-                println("artifact written: $it")
-            }
-            if (opts.flag("verify")) runVerify(graph, roots, t)
+            val graph = TextGraphInput(Path.of(opts.require("graph"))).read()
+            val rules = rulesOf(opts)
+            warnIgnoredFieldRules(rules)
+            analyzeGraph(graph, opts, ClassName(opts.require("class")), wholeHeap = false,
+                wholeGraph = false, classRules = rules?.classRules.orEmpty())
         }
+
         "generate" -> {
-            val (g, _) = SynthGraphs.modules(opts.require("modules").toInt())
-            g.save(Path.of(opts.require("out")))
-            println("graph written: ${opts.require("out")} (${g.size} objects)")
+            val (graph, _) = SynthGraphs.modules(opts.require("modules").toInt())
+            TextGraphOutput.write(graph, Path.of(opts.require("out")))
+            println("graph written: ${opts.require("out")} (${graph.size} objects)")
         }
+
         "demo" -> {
-            val (g, roots) = SynthGraphs.modules(opts.require("modules").toInt())
-            println("synthetic heap: ${g.size} objects, ${roots.size} module roots")
-            val t = ShapesAnalyzer(g).analyze(roots)
-            printReport(t)
-            if (opts.flag("verify")) runVerify(g, roots, t)
+            val (graph, roots) = SynthGraphs.modules(opts.require("modules").toInt())
+            println("synthetic heap: ${graph.size} objects, ${roots.size} module roots")
+            val table = ShapesAnalyzer(graph).analyze(roots)
+            printReport(table)
+            if (opts.flag("verify")) runVerify(graph, roots, table)
         }
-        "mat-info" -> MatExtract.info(opts.require("hprof"))
-        "mat-histogram" -> MatExtract.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
-        "mat-extract" -> {
-            val wholeHeap = opts.flag("whole-heap")
-            val fieldRules = opts["relax"]?.let { path ->
-                val rules = Relax.parse(Files.readString(Path.of(path)))
-                if (rules.classRules.isNotEmpty())
-                    println("relax: ${rules.classRules.size} analyzer-side rules ignored by mat-extract " +
-                        "(pass the same file to analyze-grph)")
-                rules.fieldRules
-            }.orEmpty()
-            val extractionMode = when {
-                wholeHeap -> {
-                    require(opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
-                    MatExtract.ExtractionMode.WholeHeap
-                }
-                opts["scope"] == "retained" -> {
-                    val className = ClassName(opts.require("class"))
-                    MatExtract.ExtractionMode.PartialExtraction.Retained(className)
-                }
-                opts["scope"] == "reachable" -> {
-                    val className = ClassName(opts.require("class"))
-                    MatExtract.ExtractionMode.PartialExtraction.Reachable(className)
-                }
-                else -> {
-                    error("you either analyze entire heap or define scope")
-                }
+
+        "mat-info" -> MatDiagnostics.info(opts.require("hprof"))
+        "mat-histogram" -> MatDiagnostics.histogram(opts.require("hprof"), (opts["top"] ?: "30").toInt())
+
+        "mat-analyze" -> {
+            val mode = extractionModeOf(opts)
+            val rules = rulesOf(opts)
+            val result = MatHeapInput.open(opts.require("hprof")).use { input ->
+                GraphExtractor(
+                    input = input,
+                    filterReferences = !opts.flag("raw-references"),
+                    fieldRules = rules?.fieldRules.orEmpty(),
+                    boundaryStubs = opts.flag("boundary-stubs"),
+                    progress = ::println,
+                ).extract(mode)
             }
-            MatExtract.extract(
-                hprof = opts.require("hprof"),
-                extractionMode = extractionMode,
-                out = Path.of(opts.require("out")),
-                statsOut = opts["stats"]?.let { Path.of(it) },
-                boundaryStubs = opts.flag("boundary-stubs"),
-                filterReferences = !opts.flag("raw-references"),
-                fieldRules = fieldRules,
-                wholeHeap = wholeHeap,
+            opts["stats"]?.let {
+                writeJson(Path.of(it), result.stats)
+                println("extraction stats written: $it")
+            }
+            val className = (mode as? ExtractionMode.PartialExtraction)?.className
+            analyzeGraph(
+                graph = result.graph,
+                opts = opts,
+                className = className,
+                wholeHeap = mode is ExtractionMode.WholeHeap,
+                wholeGraph = true,
+                classRules = rules?.classRules.orEmpty(),
             )
         }
-        "mat-trace" -> MatExtract.trace(
-            opts.require("hprof"), opts.require("class"),
-            (opts["targets"] ?: "DefaultGradleBuild,DefaultGradle,BuildState,DefaultProject").split(","),
-            (opts["maxlevel"] ?: "15").toInt(),
-            (opts["maxobjs"] ?: "80000000").toInt(),
-        )
-        "mat-fields" -> MatExtract.fields(
-            opts.require("hprof"), opts.require("class"),
-            (opts["limit"] ?: "5").toInt(), !opts.flag("all"),
-        )
-        "mat-ref-targets" -> MatExtract.refTargets(
-            opts.require("hprof"), opts.require("class"),
-            (opts["maxscan"] ?: "1000000000").toInt(),
-        )
-        "mat-isclass" -> MatExtract.isClassCheck(
-            opts.require("hprof"),
-            (opts["limit"] ?: "5").toInt(),
-        )
-        "mat-reachback" -> MatExtract.reachBack(
-            opts.require("hprof"), opts.require("class"),
-            (opts["limit"] ?: "3").toInt(),
-            (opts["maxlevel"] ?: "30").toInt(),
-            (opts["maxobjs"] ?: "150000000").toInt(),
-        )
+
         "analyze-grph" -> {
-            val g = ObjectGraph.loadGraph(Path.of(opts.require("graph")))
+            val graph = GraphInput(Path.of(opts.require("graph"))).read()
             val wholeHeap = opts.flag("whole-heap")
             require(!wholeHeap || opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
             require(!wholeHeap || opts.flag("whole-graph")) { "--whole-heap requires --whole-graph" }
             val className = if (wholeHeap) null else ClassName(opts.require("class"))
-            val roots = className?.let { g.instancesOf(it) } ?: IntArray(0)
-            println("loaded ${g.size} objects (source heap ${g.sourceObjectCount}), " +
-                (className?.let { "class $it: ${roots.size} roots" } ?: "whole heap: no class roots"))
-            val t0 = System.nanoTime()
-            if (opts.flag("verify-edges")) {
-                // inv3 audit: analyze once, then check every ref against the artifact
-                val z = ShapesAnalyzer(g, relaxOf(opts)).apply { progress = ::println }
-                val dbg = z.analyzeDebug(roots, opts.flag("whole-graph"))
-                println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
-                opts["out"]?.let {
-                    ShapesEmit.write(dbg.table, Path.of(it))
-                    println("artifact written: $it")
-                }
-                printRelax(z)
-                val problems = verifyEdgeAccounting(g, dbg, z.relaxLevels())
-                if (problems.isEmpty()) println("verify-edges: edge accounting exact")
-                else {
-                    println("verify-edges: MISMATCHES:")
-                    problems.forEach { println("  - $it") }
-                    exitProcess(1)
-                }
-                return
-            }
-            val z = ShapesAnalyzer(g, relaxOf(opts)).apply { progress = ::println }
-            val t = z.analyze(roots, opts.flag("whole-graph"))
-            println("analyze: ${(System.nanoTime() - t0) / 1_000_000} ms")
-            printRelax(z)
-            writeRelaxStats(z, opts)
-            // artifact FIRST: printReport of a mega-SCC_UNIQUE shape can emit
-            // a million edge lines — the report must never cost the artifact
-            opts["out"]?.let {
-                ShapesEmit.write(t, Path.of(it))
-                println("artifact written: $it")
-            }
-            printReport(t)
-            if (opts.flag("verify")) runVerify(g, roots, t, opts.flag("whole-graph"))
+            val rules = rulesOf(opts)
+            warnIgnoredFieldRules(rules)
+            analyzeGraph(graph, opts, className, wholeHeap, opts.flag("whole-graph"),
+                rules?.classRules.orEmpty())
         }
+
+        "mat-trace" -> MatDiagnostics.trace(
+            opts.require("hprof"), opts.require("class"),
+            (opts["targets"] ?: "DefaultGradleBuild,DefaultGradle,BuildState,DefaultProject").split(","),
+            (opts["maxlevel"] ?: "15").toInt(), (opts["maxobjs"] ?: "80000000").toInt(),
+        )
+        "mat-fields" -> MatDiagnostics.fields(
+            opts.require("hprof"), opts.require("class"),
+            (opts["limit"] ?: "5").toInt(), !opts.flag("all"),
+        )
+        "mat-ref-targets" -> MatDiagnostics.refTargets(
+            opts.require("hprof"), opts.require("class"), (opts["maxscan"] ?: "1000000000").toInt(),
+        )
+        "mat-isclass" -> MatDiagnostics.isClassCheck(
+            opts.require("hprof"), (opts["limit"] ?: "5").toInt(),
+        )
+        "mat-reachback" -> MatDiagnostics.reachBack(
+            opts.require("hprof"), opts.require("class"), (opts["limit"] ?: "3").toInt(),
+            (opts["maxlevel"] ?: "30").toInt(), (opts["maxobjs"] ?: "150000000").toInt(),
+        )
+
         else -> {
             System.err.println(USAGE)
             exitProcess(if (opts.cmd == null) 0 else 2)
@@ -176,31 +133,99 @@ fun main(args: Array<String>) {
     }
 }
 
-private fun relaxOf(opts: Opts): Map<ClassName, Int> =
-    opts["relax"]?.let { path ->
-        val rules = Relax.parse(Files.readString(Path.of(path)))
-        println("relax: ${rules.classRules.size} analyzer rules from $path" +
-            (if (rules.fieldRules.isEmpty()) "" else " (${rules.fieldRules.size} extraction-side field rules — ignored here)"))
-        rules.classRules
-    } ?: emptyMap()
-
-private fun printRelax(z: ShapesAnalyzer) {
-    val s = z.relaxStats
-    if (s.relaxedObjects > 0) {
-        println("relax: ${s.relaxedObjects} relaxed objects; concealed edges: " +
-            "${s.classOnlyHiddenEdges} (class-only) + ${s.setChildrenHiddenEdges} (set-children)")
+private fun extractionModeOf(opts: Opts): ExtractionMode {
+    if (opts.flag("whole-heap")) {
+        require(opts["class"] == null) { "--whole-heap and --class are mutually exclusive" }
+        require(opts["scope"] == null || opts["scope"] == "heap") { "--whole-heap requires --scope heap" }
+        return ExtractionMode.WholeHeap
+    }
+    val className = ClassName(opts.require("class"))
+    return when (opts["scope"]) {
+        "retained" -> ExtractionMode.PartialExtraction.Retained(className)
+        "reachable" -> ExtractionMode.PartialExtraction.Reachable(className)
+        else -> error("select --whole-heap --scope heap or --class with --scope retained|reachable")
     }
 }
 
-private fun writeRelaxStats(z: ShapesAnalyzer, opts: Opts) {
+private fun analyzeGraph(
+    graph: ObjectGraph,
+    opts: Opts,
+    className: ClassName?,
+    wholeHeap: Boolean,
+    wholeGraph: Boolean,
+    classRules: Map<ClassName, Int>,
+) {
+    require(wholeHeap == (className == null)) { "exactly one of class scope or whole heap is required" }
+    val roots = className?.let { graph.instancesOf(it) } ?: IntArray(0)
+    println(
+        "input: ${graph.size} objects / ${graph.referenceCount} refs (source heap ${graph.sourceObjectCount}), " +
+            (className?.let { "class $it: ${roots.size} roots" } ?: "whole heap: no class roots")
+    )
+    val start = System.nanoTime()
+    val analyzer = ShapesAnalyzer(graph, classRules).apply { progress = ::println }
+    if (opts.flag("verify-edges")) {
+        val debug = analyzer.analyzeDebug(roots, wholeGraph)
+        println("analyze: ${(System.nanoTime() - start) / 1_000_000} ms")
+        opts["out"]?.let {
+            ShapesEmit.write(debug.table, Path.of(it))
+            println("artifact written: $it")
+        }
+        printRelax(analyzer)
+        writeRelaxStats(analyzer, opts)
+        val problems = verifyEdgeAccounting(graph, debug, analyzer.relaxLevels())
+        if (problems.isEmpty()) println("verify-edges: edge accounting exact")
+        else {
+            println("verify-edges: MISMATCHES:")
+            problems.forEach { println("  - $it") }
+            exitProcess(1)
+        }
+        return
+    }
+
+    val table = analyzer.analyze(roots, wholeGraph)
+    println("analyze: ${(System.nanoTime() - start) / 1_000_000} ms")
+    printRelax(analyzer)
+    writeRelaxStats(analyzer, opts)
+    // Emit before the potentially huge human-readable report.
+    opts["out"]?.let {
+        ShapesEmit.write(table, Path.of(it))
+        println("artifact written: $it")
+    }
+    printReport(table)
+    if (opts.flag("verify")) runVerify(graph, roots, table, wholeGraph)
+}
+
+private fun rulesOf(opts: Opts): Relax.Rules? = opts["relax"]?.let { path ->
+    Relax.parse(Files.readString(Path.of(path))).also {
+        println("relax: ${it.classRules.size} analyzer rules, ${it.fieldRules.size} field rules from $path")
+    }
+}
+
+private fun warnIgnoredFieldRules(rules: Relax.Rules?) {
+    if (!rules?.fieldRules.isNullOrEmpty()) {
+        println("relax: field rules require a named-field input and are ignored for serialized/text graphs")
+    }
+}
+
+private fun printRelax(analyzer: ShapesAnalyzer) {
+    val stats = analyzer.relaxStats
+    if (stats.relaxedObjects > 0) {
+        println(
+            "relax: ${stats.relaxedObjects} relaxed objects; concealed edges: " +
+                "${stats.classOnlyHiddenEdges} (class-only) + ${stats.setChildrenHiddenEdges} (set-children)"
+        )
+    }
+}
+
+private fun writeRelaxStats(analyzer: ShapesAnalyzer, opts: Opts) {
     opts["relax-stats"]?.let { path ->
-        writeJson(Path.of(path), z.relaxStats)
+        writeJson(Path.of(path), analyzer.relaxStats)
         println("relax stats written: $path")
     }
 }
 
-private fun runVerify(g: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph: Boolean = false) {
-    val problems = verifyInvariants(g, roots, t, wholeGraph)
+private fun runVerify(graph: ObjectGraph, roots: IntArray, table: ShapeTable, wholeGraph: Boolean = false) {
+    val problems = verifyInvariants(graph, roots, table, wholeGraph)
     if (problems.isEmpty()) println("verify: all invariants hold")
     else {
         println("verify: VIOLATIONS:")
@@ -209,40 +234,34 @@ private fun runVerify(g: ObjectGraph, roots: IntArray, t: ShapeTable, wholeGraph
     }
 }
 
-private fun printReport(t: ShapeTable) {
-    println("reachable objects : ${t.reachableCount}")
-    println("unique shapes     : ${t.entries.size}")
-    if (t.entries.isNotEmpty()) {
-        println("collapse ratio    : %.1fx".format(t.reachableCount.toDouble() / t.entries.size))
+private fun printReport(table: ShapeTable) {
+    println("reachable objects : ${table.reachableCount}")
+    println("unique shapes     : ${table.entries.size}")
+    if (table.entries.isNotEmpty()) {
+        println("collapse ratio    : %.1fx".format(table.reachableCount.toDouble() / table.entries.size))
     }
     println("roots histogram   :")
-    for ((sid, cnt) in t.rootsHistogram.entries.sortedByDescending { it.value }) {
-        println("  %-56s x %d".format(t.entries[sid].label, cnt))
+    for ((shapeId, count) in table.rootsHistogram.entries.sortedByDescending { it.value }) {
+        println("  %-56s x %d".format(table.entries[shapeId].label, count))
     }
     println("shapes (by shallowTotal):")
-    for (e in t.entries.sortedByDescending { it.shallowTotal }.take(20)) {
+    for (entry in table.entries.sortedByDescending { it.shallowTotal }.take(20)) {
         println(
             "  #%-4d %-52s %-9s count=%-7d shallowTotal=%-11s min=%-7s max=%-7s roots=%d".format(
-                e.id,
-                e.label.take(52),
-                e.kind,
-                e.instanceCount,
-                e.shallowTotal,
-                e.shallowMin,
-                e.shallowMax,
-                e.rootCount
+                entry.id, entry.label.take(52), entry.kind, entry.instanceCount, entry.shallowTotal,
+                entry.shallowMin, entry.shallowMax, entry.rootCount,
             )
         )
-        for (edge in t.edgesOf(e.id).take(10)) {
-            val child = t.entries[edge.childShapeId]
+        for (edge in table.edgesOf(entry.id).take(10)) {
+            val child = table.entries[edge.childShapeId]
             println(
                 "        -> #%-4d %-46s mult=%d%s".format(
                     edge.childShapeId, child.label.take(46), edge.mult,
-                    if (e.edgesPerMember) " (per member)" else " (total)"
+                    if (entry.edgesPerMember) " (per member)" else " (total)",
                 )
             )
         }
-        val more = t.edgesOf(e.id).size - 10
+        val more = table.edgesOf(entry.id).size - 10
         if (more > 0) println("        -> ... and $more more edges")
     }
 }
@@ -255,16 +274,19 @@ private class Opts(val cmd: String?, private val kv: Map<String, String>, privat
 
 private fun parseOpts(args: List<String>): Opts {
     if (args.isEmpty()) return Opts(null, emptyMap(), emptySet())
-    val kv = LinkedHashMap<String, String>()
+    val values = LinkedHashMap<String, String>()
     val flags = LinkedHashSet<String>()
     var i = 1
     while (i < args.size) {
-        val a = args[i]
-        require(a.startsWith("--")) { "unexpected arg: $a" }
-        val k = a.removePrefix("--")
-        if (i + 1 < args.size && !args[i + 1].startsWith("--")) kv[k] = args[++i]
-        else flags.add(k)
+        val arg = args[i]
+        require(arg.startsWith("--")) { "unexpected arg: $arg" }
+        val key = arg.removePrefix("--")
+        if (i + 1 < args.size && !args[i + 1].startsWith("--")) {
+            values[key] = args[++i]
+        } else {
+            flags.add(key)
+        }
         i++
     }
-    return Opts(args[0], kv, flags)
+    return Opts(args[0], values, flags)
 }

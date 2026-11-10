@@ -1,4 +1,4 @@
-package shapes.mat
+package shapes.extraction
 
 /**
  * Projects the implementation details of JDK map tables into their semantic
@@ -20,32 +20,33 @@ class MapProjection(
         else -> name
     }
 
-    fun refs(id: Int): IntArray {
+    /** Project an already-filtered reference list, avoiding a second source read. */
+    fun refs(id: Int, raw: IntArray = indexedRefs(id)): IntArray {
         val name = className(id)
         return when (name) {
-            LINKED_HASH_MAP -> withoutNamedEdges(indexedRefs(id), namedRefs(id), setOf("head", "tail"))
+            LINKED_HASH_MAP -> withoutNamedEdges(raw, namedRefs(id), setOf("head", "tail"))
             HASH_MAP_NODE, CONCURRENT_HASH_MAP_NODE -> withoutNamedEdges(
-                indexedRefs(id), namedRefs(id), setOf("next")
+                raw, namedRefs(id), setOf("next")
             )
             LINKED_HASH_MAP_ENTRY -> withoutNamedEdges(
-                indexedRefs(id), namedRefs(id), setOf("next", "before", "after")
+                raw, namedRefs(id), setOf("next", "before", "after")
             )
-            HASH_MAP_NODE_ARRAY, CONCURRENT_HASH_MAP_NODE_ARRAY -> projectTable(indexedRefs(id))
-            IMMUTABLE_MAP_ENTRY_ARRAY, JAVA_MAP_ENTRY_ARRAY -> indexedRefs(id).distinct().sorted().toIntArray()
-            CONCURRENT_HASH_MAP -> keepNamedTargets(indexedRefs(id), namedRefs(id), "table")
+            HASH_MAP_NODE_ARRAY, CONCURRENT_HASH_MAP_NODE_ARRAY -> projectTable(raw)
+            IMMUTABLE_MAP_ENTRY_ARRAY, JAVA_MAP_ENTRY_ARRAY -> raw.distinct().sorted().toIntArray()
+            CONCURRENT_HASH_MAP -> keepNamedTargets(raw, namedRefs(id), "table")
             REGULAR_IMMUTABLE_MAP_KEY_SET, REGULAR_IMMUTABLE_MAP_VALUES,
             IMMUTABLE_MAP_ENTRY_SET_REGULAR -> IntArray(0)
-            REGULAR_IMMUTABLE_MAP -> keepNamedTargets(indexedRefs(id), namedRefs(id), "entries")
+            REGULAR_IMMUTABLE_MAP -> keepNamedTargets(raw, namedRefs(id), "entries")
             IMMUTABLE_MAP_ENTRY_NONTERMINAL -> withoutNamedEdges(
-                indexedRefs(id), namedRefs(id), setOf("nextInKeyBucket", "nextInValueBucket")
+                raw, namedRefs(id), setOf("nextInKeyBucket", "nextInValueBucket")
             )
             DEFAULT_IMMUTABLE_ATTRIBUTES_CONTAINER -> keepNamedTargets(
-                indexedRefs(id), namedRefs(id), setOf("hierarchy")
+                raw, namedRefs(id), setOf("hierarchy")
             )
             DEFAULT_IMMUTABLE_ATTRIBUTES_ENTRY -> withoutNamedEdges(
-                indexedRefs(id), namedRefs(id), setOf("coercionCache")
+                raw, namedRefs(id), setOf("coercionCache")
             )
-            else -> indexedRefs(id)
+            else -> raw
         }
     }
 

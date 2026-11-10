@@ -1,4 +1,4 @@
-import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import shapes.*;import shapes.mat.MatExtract;
+import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import shapes.*;import shapes.mat.MatHeapInput;
 /** For a root dense id: compute its raw-GRPH SCC (iterative Tarjan), list member classes,
  *  list every outbound edge member->java.lang.String (or any target class filter),
  *  map objects to MAT ids via /tmp/retained-ids.bin and read String contents from the dump. */
@@ -67,7 +67,7 @@ public class SccInspect {
   }
   // optional: dump string contents for given MAT ids
   if(System.getProperty("dumpStrings")!=null){
-   Method open=MatExtract.class.getDeclaredMethod("open",String.class,boolean.class);open.setAccessible(true);ISnapshot s=(ISnapshot)open.invoke(MatExtract.INSTANCE,System.getProperty("dumpStrings"),true);
+   ISnapshot s=MatHeapInput.open(System.getProperty("dumpStrings"),true).getSnapshot();
    try{
     for(String mid:System.getProperty("stringIds").split(",")){
      IObject o=s.getObject(Integer.parseInt(mid.trim()));

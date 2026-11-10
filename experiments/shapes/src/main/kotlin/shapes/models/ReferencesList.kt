@@ -1,10 +1,16 @@
 package shapes.models
 
-class ReferencesList {
+class ReferencesList(expectedObjects: Int = 0, expectedReferences: Int = 0) {
+    init {
+        require(expectedObjects >= 0 && expectedReferences >= 0) { "negative expected size" }
+    }
+
+    val referenceCount: Int get() = freeReferencesFlatArrayPosition
+
     private var freeOffsetsPosition = 0
-    private var offsets = IntArray(0)
+    private var offsets = IntArray(expectedObjects)
     private var freeReferencesFlatArrayPosition = 0
-    private var referencesFlatArray = IntArray(0)
+    private var referencesFlatArray = IntArray(expectedReferences)
     private var isImmutable: Boolean = false
 
     fun add(references: IntArray) {
@@ -44,8 +50,10 @@ class ReferencesList {
 
     fun markImmutable() {
         isImmutable = true
-        offsets = offsets.copyOf(freeOffsetsPosition)
-        referencesFlatArray = referencesFlatArray.copyOf(freeReferencesFlatArrayPosition)
+        if (offsets.size != freeOffsetsPosition) offsets = offsets.copyOf(freeOffsetsPosition)
+        if (referencesFlatArray.size != freeReferencesFlatArrayPosition) {
+            referencesFlatArray = referencesFlatArray.copyOf(freeReferencesFlatArrayPosition)
+        }
     }
 }
 

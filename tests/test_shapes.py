@@ -8,8 +8,7 @@ import unittest
 from unittest import mock
 
 from backend.mat.shapes import (artifact_path, parse_shp1, analysis_options,
-                                analyze_class, _validate_projection,
-                                _grph_stats, _analyze_xmx)
+                                analyze_class, _validate_projection)
 
 
 def build_shp1(labels, shapes, edges, roots, scc_details=None):
@@ -186,29 +185,27 @@ class TestShp1(unittest.TestCase):
         def run(job, jobs, abort, args, what, xmx=None):
             calls.append((args, what, xmx))
             target = args[args.index("--out") + 1]
-            if what == "extract":
-                self._write_grph(target, 2)
-                with open(args[args.index("--stats") + 1], "w") as f:
-                    json.dump(metadata, f)
-            else:
-                with open(target, "wb") as f:
-                    f.write(build_shp1(["C"], [row], [], [(0, 2)], []))
-                with open(args[args.index("--relax-stats") + 1], "w") as f:
-                    json.dump({"classOnlyHiddenEdges": 0,
-                               "setChildrenHiddenEdges": 0,
-                               "setChildrenConcealedObjects": 0}, f)
+            with open(args[args.index("--stats") + 1], "w") as f:
+                json.dump(metadata, f)
+            with open(target, "wb") as f:
+                f.write(build_shp1(["C"], [row], [], [(0, 2)], []))
+            with open(args[args.index("--relax-stats") + 1], "w") as f:
+                json.dump({"classOnlyHiddenEdges": 0,
+                           "setChildrenHiddenEdges": 0,
+                           "setChildrenConcealedObjects": 0}, f)
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d, "C")
             runner = mock.Mock()
             runner.index_read_hold.side_effect = lambda *a: nullcontext()
-            with mock.patch("backend.mat.shapes._run_java", side_effect=run), \
-                 mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
+            with mock.patch("backend.mat.shapes._run_java", side_effect=run):
                 analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
             p = parse_shp1(dst)
             self.assertEqual(p["analysis"]["extractionMode"]["type"], "retained")
             self.assertEqual(p["analysis"]["sourceEdges"], 1)
-            self.assertEqual(p["analysis"]["pipelineVersion"], 5)
-            self.assertIn("--whole-graph", calls[1][0])
+            self.assertEqual(p["analysis"]["pipelineVersion"], 6)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][0][0], "mat-analyze")
+            self.assertEqual(calls[0][1], "analyze")
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
             bad = dict(metadata, objects=3)
             with self.assertRaisesRegex(RuntimeError, "objects"):
@@ -228,22 +225,18 @@ class TestShp1(unittest.TestCase):
         def run(job, jobs, abort, args, what, xmx=None):
             calls.append(args)
             target = args[args.index("--out") + 1]
-            if what == "extract":
-                self._write_grph(target, 2)
-                with open(args[args.index("--stats") + 1], "w") as f:
-                    json.dump(metadata, f)
-            else:
-                with open(target, "wb") as f:
-                    f.write(build_shp1(["C"], [row], [], [], []))
-                with open(args[args.index("--relax-stats") + 1], "w") as f:
-                    json.dump({}, f)
+            with open(args[args.index("--stats") + 1], "w") as f:
+                json.dump(metadata, f)
+            with open(target, "wb") as f:
+                f.write(build_shp1(["C"], [row], [], [], []))
+            with open(args[args.index("--relax-stats") + 1], "w") as f:
+                json.dump({}, f)
 
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d)
             runner = mock.Mock()
             runner.index_read_hold.side_effect = lambda *a: nullcontext()
-            with mock.patch("backend.mat.shapes._run_java", side_effect=run), \
-                 mock.patch("backend.mat.shapes._analyze_xmx", return_value="2048m"):
+            with mock.patch("backend.mat.shapes._run_java", side_effect=run):
                 analyze_class(None, mock.Mock(), runner, d, "heap.hprof", None, dst,
                               extraction_mode="heap")
             self.assertEqual(parse_shp1(dst)["analysis"]["extractionMode"]["type"], "heap")
@@ -336,78 +329,6 @@ class TestShp1(unittest.TestCase):
         self.assertTrue(a.endswith(".shp1"))
         self.assertEqual(artifact_path("/data"),
                          os.path.join("/data", "shapes", "heap.shp1"))
-
-    def _write_grph(self, path, n, refs_per_node=0):
-        """Minimal GRPH: magic, sourceN, 2-class table, n, then n rows.
-        For big n the body is faked with truncate (sizing only needs the
-        header + the file size)."""
-        buf = [struct.pack(">i", 0x47525048), struct.pack(">q", 260_000_000)]
-        buf.append(struct.pack(">i", 2))
-        for name in (b"java.lang.String", b"byte[]"):
-            buf.append(struct.pack(">i", len(name)) + name)
-        buf.append(struct.pack(">i", n))
-        hdr = sum(len(b) for b in buf)
-        row = struct.pack(">iqi", 1, 32, refs_per_node)
-        with open(path, "wb") as f:
-            f.write(b"".join(buf))
-            if n > 1_000_000:
-                f.truncate(hdr + n * (16 + 4 * refs_per_node))
-                return
-            for _ in range(n):
-                f.write(row)
-                if refs_per_node:
-                    f.write(struct.pack(">i", 0) * refs_per_node)
-
-    def test_grph_stats(self):
-        with tempfile.NamedTemporaryFile(suffix=".grph", delete=False) as f:
-            path = f.name
-        try:
-            self._write_grph(path, 100, refs_per_node=3)
-            n, e = _grph_stats(path)
-            self.assertEqual(n, 100)
-            self.assertEqual(e, 300)
-            self._write_grph(path, 15_800_000, refs_per_node=1)  # truncated body
-            n, e = _grph_stats(path)
-            self.assertEqual(n, 15_800_000)
-            self.assertEqual(e, 15_800_000)
-        finally:
-            os.remove(path)
-
-    def test_grph_stats_rejects_malformed_body(self):
-        with tempfile.NamedTemporaryFile(suffix=".grph", delete=False) as f:
-            path = f.name
-        try:
-            self._write_grph(path, 2)
-            with open(path, "ab") as f:
-                f.write(b"x")
-            with self.assertRaisesRegex(RuntimeError, "body size"):
-                _grph_stats(path)
-        finally:
-            os.remove(path)
-
-    def test_analyze_xmx_sizing(self):
-        with tempfile.NamedTemporaryFile(suffix=".grph", delete=False) as f:
-            path = f.name
-        try:
-            self._write_grph(path, 3_000_000)
-            # 3M objects -> the 2g floor (24n + 4E + 1g < 2g)
-            with mock.patch("backend.mat.shapes._mem_available",
-                            return_value=64 << 30):
-                self.assertEqual(_analyze_xmx(path), "2048m")
-                self._write_grph(path, 200_000_000)
-                mb = int(_analyze_xmx(path)[:-1])
-                self.assertGreaterEqual(mb * (1 << 20),
-                                        200_000_000 * 20 + (1 << 30))
-                self.assertEqual(mb % 256, 0)
-                # needs ~5.8 GB but only 2 GB available -> fail fast, no thrash
-            with mock.patch("backend.mat.shapes._mem_available",
-                            return_value=2 << 30):
-                with self.assertRaises(RuntimeError) as ctx:
-                    _analyze_xmx(path, "com.acme.Hub")
-                self.assertIn("com.acme.Hub", str(ctx.exception))
-                self.assertIn("SHAPES_XMX_ANALYZE", str(ctx.exception))
-        finally:
-            os.remove(path)
 
 
 if __name__ == "__main__":

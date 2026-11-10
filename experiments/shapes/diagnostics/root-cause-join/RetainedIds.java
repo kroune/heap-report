@@ -1,10 +1,10 @@
-import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import org.eclipse.mat.util.VoidProgressListener;import shapes.mat.MatExtract;
+import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import org.eclipse.mat.util.VoidProgressListener;import shapes.mat.MatHeapInput;
 /** Recompute the retained id array of the configuration roots and cache it:
  *  /tmp/retained-ids.bin = int32 count + int32[] sorted MAT ids (class objects excluded),
  *  i.e. dense GRPH id i <-> MAT id ids[i]. */
 public class RetainedIds {
  public static void main(String[] a)throws Exception{
-  Method open=MatExtract.class.getDeclaredMethod("open",String.class,boolean.class);open.setAccessible(true);ISnapshot s=(ISnapshot)open.invoke(MatExtract.INSTANCE,a[0],true);
+  ISnapshot s=MatHeapInput.open(a[0],true).getSnapshot();
   try{
    ArrayList<Integer> rootsList=new ArrayList<>();
    for(IClass cl:s.getClassesByName(a[1],false))for(int id:cl.getObjectIds())rootsList.add(id);

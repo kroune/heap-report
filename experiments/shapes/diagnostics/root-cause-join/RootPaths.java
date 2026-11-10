@@ -1,4 +1,4 @@
-import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import shapes.mat.MatExtract;
+import java.io.*;import java.lang.reflect.*;import java.nio.file.*;import java.util.*;import org.eclipse.mat.snapshot.*;import org.eclipse.mat.snapshot.model.*;import shapes.mat.MatHeapInput;
 /** For every root configuration: extract identityPath (segments joined) + project dir identity.
  *  identityPath = ":api:f0-api:releaseCompileClasspath" -> module path is all but last segment. */
 public class RootPaths {
@@ -15,7 +15,7 @@ public class RootPaths {
   return string((IObject)p.resolveValue("fullPath"));
  }
  public static void main(String[] a)throws Exception{
-  Method open=MatExtract.class.getDeclaredMethod("open",String.class,boolean.class);open.setAccessible(true);ISnapshot s=(ISnapshot)open.invoke(MatExtract.INSTANCE,a[0],true);
+  ISnapshot s=MatHeapInput.open(a[0],true).getSnapshot();
   try{
    TreeSet<Integer> roots=new TreeSet<>();for(IClass cl:s.getClassesByName(a[1],false))for(int id:cl.getObjectIds())roots.add(id);
    try(PrintWriter w=new PrintWriter(a[2])){

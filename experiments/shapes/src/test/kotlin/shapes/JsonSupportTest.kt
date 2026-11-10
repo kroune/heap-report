@@ -4,9 +4,9 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import shapes.mat.ExtractionFieldRule
-import shapes.mat.ExtractionStats
-import shapes.mat.MatExtract.ExtractionMode
+import shapes.extraction.ExtractionFieldRule
+import shapes.extraction.ExtractionMode
+import shapes.extraction.ExtractionStats
 import shapes.models.ClassName
 import kotlin.test.Test
 import kotlin.test.assertEquals

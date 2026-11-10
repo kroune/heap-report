@@ -1,6 +1,10 @@
 package shapes.models
 
-class CompactULongArray {
+class CompactULongArray(expectedSize: Int = 0) {
+    init {
+        require(expectedSize >= 0) { "negative expected size" }
+    }
+
     val size: Int
         get() = freeIntArrayPosition
 
@@ -8,7 +12,7 @@ class CompactULongArray {
     private var freeLongArrayPosition = 0
     private var longArray: ULongArray = ULongArray(0)
     private var freeIntArrayPosition = 0
-    private var intArray: IntArray = IntArray(0)
+    private var intArray: IntArray = IntArray(expectedSize)
 
     fun add(value: ULong) {
         if (isImmutable) {
@@ -42,7 +46,7 @@ class CompactULongArray {
 
     fun markImmutable() {
         isImmutable = true
-        longArray = longArray.copyOf(freeLongArrayPosition)
-        intArray = intArray.copyOf(freeIntArrayPosition)
+        if (longArray.size != freeLongArrayPosition) longArray = longArray.copyOf(freeLongArrayPosition)
+        if (intArray.size != freeIntArrayPosition) intArray = intArray.copyOf(freeIntArrayPosition)
     }
 }

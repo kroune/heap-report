@@ -331,8 +331,8 @@ class QueryEngine(Protocol):
         ...
 
     def analyze_shapes(self, dump_id: DumpId) -> Job:
-        """Queue the heap-wide shapes analysis (mat-extract + analyze-grph via
-        the prebuilt shapes jar). Same readiness rules as analyze()."""
+        """Queue heap-wide direct MAT extraction + shapes analysis via the
+        prebuilt shapes jar. Same readiness rules as analyze()."""
         ...
 
 

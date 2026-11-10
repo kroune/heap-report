@@ -168,9 +168,9 @@ them. The rule set is validated against the run-jfr-38 retained set in
 ### Level 3: field concealment (extraction)
 
 `conceal-field:<name>` rules drop **one named field** of a class and all its
-subclasses at extraction time (the analyzer's GRPH has no field names, so
-this level lives in `mat-extract`; the same `relax.tsv` is passed to both
-steps). The edge never enters the graph — its target may leave the scope
+subclasses at extraction time (the analyzer's `ObjectGraph` has no field names,
+so this level lives in `GraphExtractor`; `mat-analyze` applies both rule kinds
+in one JVM). The edge never enters the graph — its target may leave the scope
 entirely. This is the surgical choice for a lazy/cache field whose
 *presence* is state, not structure, e.g.:
 

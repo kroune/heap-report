@@ -149,10 +149,11 @@ reachability pass → derived inclusive-retained / split-copy tables),
 `payloads.py` (structures → JSON, pure and unit-tested; fold overflow is
 budget-bounded so payload size can't grow with the object count),
 `shapes.py` (exact structural collapse orchestration, SHAPES.md — runs the
-prebuilt shapes jar from `experiments/shapes` (SHAPES_JAR): mat-extract over
-the MAT index set under the shared index lock, then analyze-grph → one heap-wide
-SHP1 at `data/shapes/heap.shp1`), `shapes_artifact.py` (validated streaming SHP1 /
-GRPH readers and aggregate checks), `shapes_java.py` (subprocess lifecycle).
+prebuilt shapes jar from `experiments/shapes` (SHAPES_JAR): `mat-analyze` over
+the MAT index set under the shared index lock, building the graph and collapsing
+it in one JVM → one heap-wide SHP1 at `data/shapes/heap.shp1`),
+`shapes_artifact.py` (validated streaming SHP1 reader and aggregate checks),
+`shapes_java.py` (subprocess lifecycle).
 Temp workspaces always cleaned up; MAT output streamed to job log, not
 buffered whole.
 

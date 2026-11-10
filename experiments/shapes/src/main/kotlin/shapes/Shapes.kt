@@ -172,7 +172,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
     }
 
     private fun scopeForAnalyze(roots: IntArray, wholeGraph: Boolean): Triple<BitSet, IntArray?, Int> {
-        // mat-extract already selected the scope. Projection may remove paths
+        // Extraction already selected the scope. Projection may remove paths
         // to an object; keep its counts/bytes without inventing extra roots.
         if (wholeGraph) {
             return Triple(

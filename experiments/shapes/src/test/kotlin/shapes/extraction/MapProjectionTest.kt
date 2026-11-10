@@ -1,4 +1,4 @@
-package shapes.mat
+package shapes.extraction
 
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -155,6 +155,18 @@ class MapProjectionTest {
         assertSame(raw, p.refs(0))
         assertSame(g.indexed[2], p.refs(2))
         assertEquals(0, g.namedReads)
+    }
+
+    @Test
+    fun `already filtered references do not trigger a second indexed read`() {
+        val g = FakeGraph(
+            arrayOf("ordinary"),
+            arrayOf(intArrayOf(9)),
+            arrayOf(emptyList()),
+        )
+        val filtered = intArrayOf(1, 2)
+        assertSame(filtered, g.projection().refs(0, filtered))
+        assertEquals(0, g.indexedReads)
     }
 
     @Test

@@ -139,5 +139,5 @@ extraction filter: cut refs of the three JDK reference classes, BFS-restrict
 to the queried roots) and the `NormalizeAllMapsRelax` harness (map
 normalization + `ShapesAnalyzer` with `--relax`), then `join_roles.py`
 against the produced population TSVs. The extraction-side filter is
-implemented in `MatExtract` (default on, `--raw-references` to disable) and
+implemented in `GraphExtractor` (default on, `--raw-references` to disable) and
 re-extraction reproduces the same dropped set.

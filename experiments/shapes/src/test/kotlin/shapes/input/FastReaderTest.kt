@@ -1,4 +1,4 @@
-package shapes
+package shapes.input
 
 import java.io.EOFException
 import java.nio.ByteBuffer

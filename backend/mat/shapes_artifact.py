@@ -1,6 +1,6 @@
 """Readers and consistency checks for the shapes wire artifacts.
 
-SHP1 and GRPH are big-endian formats produced by the Kotlin shapes tool.  This
+SHP1 is a big-endian format produced by the Kotlin shapes tool.  This
 module is deliberately independent of the job engine: corrupt input is reported
 as :class:`ShapesArtifactError`, and no subprocess or dump-store state is needed
 to inspect an artifact.
@@ -262,30 +262,3 @@ def validate_projection(path, metadata):
         if actual != metadata.get(key):
             raise ShapesArtifactError(
                 f"shapes {key}: emitted {actual} != extracted {metadata.get(key)}")
-
-
-def grph_stats(path):
-    """Return ``(objects, references)`` without loading the GRPH body.
-
-    GRPH header: magic i32, sourceN i64, class table, object count i32.  Each
-    object row is 16 bytes plus four bytes per reference, so the reference
-    count follows from the exact remaining file size.
-    """
-    with _Reader(path) as reader:
-        if reader.unpack(">i", "GRPH magic") != 0x47525048:
-            raise ShapesArtifactError(f"bad GRPH magic in {path}")
-        source_objects = reader.unpack(">q", "GRPH source object count")
-        if source_objects < 0:
-            raise ShapesArtifactError(f"invalid GRPH source object count in {path}")
-        for _ in range(reader.count("GRPH class", 4)):
-            length = reader.unpack(">i", "GRPH class name length")
-            reader.skip(length, "GRPH class name")
-        objects = reader.unpack(">i", "GRPH object count")
-        if objects < 0:
-            raise ShapesArtifactError(f"invalid GRPH object count {objects} in {path}")
-        body = reader.size - reader.offset
-        rows_size = 16 * objects
-        if body < rows_size or (body - rows_size) % 4:
-            raise ShapesArtifactError(f"invalid GRPH body size in {path}")
-        references = (body - rows_size) // 4
-    return objects, references

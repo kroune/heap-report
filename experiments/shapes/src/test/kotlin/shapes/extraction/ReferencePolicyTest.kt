@@ -1,4 +1,4 @@
-package shapes.mat
+package shapes.extraction
 
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

@@ -30,8 +30,8 @@ object Relax {
     const val SET_CHILDREN = 2
 
     /** Level 3 keyword prefix: conceal one named field of a class (and its
-     *  subclasses), applied at EXTRACTION time (MatExtract has field names,
-     *  the analyzer's GRPH does not). The edge never enters the graph, so the
+     *  subclasses), applied at EXTRACTION time (HeapInput has field names,
+     *  the analyzer's ObjectGraph does not). The edge never enters the graph, so the
      *  target may drop out of the scope entirely — the surgical choice for a
      *  lazy/cache field whose presence is state, not structure. */
     const val CONCEAL_FIELD_PREFIX = "conceal-field:"
@@ -43,7 +43,7 @@ object Relax {
     }
 
     /** Parsed rule file: [classRules] for the analyzer, [fieldRules]
-     *  (class -> field names, applied at extraction) for MatExtract. */
+     *  (class -> field names, applied at extraction) for GraphExtractor. */
     class Rules(
         val classRules: Map<ClassName, Int>,
         val fieldRules: Map<ClassName, Set<String>>,

@@ -1,4 +1,4 @@
-package shapes.mat
+package shapes.extraction
 
 /**
  * The single source of truth for references entering the shapes scope.

@@ -16,7 +16,6 @@ import tempfile
 
 from .. import core
 from .shapes_artifact import (
-    grph_stats as _grph_stats,
     parse_shp1,
     validate_projection as _validate_projection,
 )
@@ -29,15 +28,12 @@ _DEFAULT_JAR = os.path.join(
     _REPO, "experiments", "shapes", "build", "libs", "shapes-experiment-all.jar")
 _DEFAULT_RELAX_FILE = os.path.join(_REPO, "experiments", "shapes", "relax.tsv")
 
-SHAPES_XMX = os.environ.get("SHAPES_XMX", "2g")
-SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE")
-SHAPES_XMX_RETAINED = os.environ.get("SHAPES_XMX_RETAINED", "8g")
+# One JVM now owns extraction, the in-memory graph, and analysis. Size that
+# combined heap explicitly; there is no GRPH file from which to pre-compute it.
+SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE", "8g")
 SHAPES_RELAX_FILE = os.environ.get("SHAPES_RELAX_FILE", _DEFAULT_RELAX_FILE)
-PIPELINE_VERSION = 5
+PIPELINE_VERSION = 6
 _METADATA_MAGIC = b"SMD1"
-# Measured analyzer live set + GC headroom on the 257M-object scope; see
-# experiments/shapes/README.md. Reference storage is added separately.
-_BYTES_PER_OBJECT = 24
 
 
 def analysis_options(extraction_mode="retained"):
@@ -68,44 +64,13 @@ def artifact_path(data_dir, cls=None):
     return os.path.join(data_dir, "shapes", f"{base}-{suffix}.shp1")
 
 
-def _mem_available():
-    """MemAvailable from /proc/meminfo in bytes (0 when unknown)."""
-    try:
-        with open("/proc/meminfo") as meminfo:
-            for line in meminfo:
-                if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) * 1024
-    except (OSError, ValueError, IndexError):
-        pass
-    return 0
-
-
-def _analyze_xmx(grph, cls="?"):
-    """Size analyzer heap from the actual graph and fail before swap thrash."""
-    if SHAPES_XMX_ANALYZE:
-        return SHAPES_XMX_ANALYZE
-    objects, references = _grph_stats(grph)
-    needed = objects * _BYTES_PER_OBJECT + 4 * references + (1 << 30)
-    available = _mem_available()
-    if available and needed > available * 0.95:
-        raise RuntimeError(
-            f"shapes analyze of {cls}: scope is {objects:,} objects / "
-            f"{references:,} refs — needs ~{needed / 1e9:.1f} GB heap, only "
-            f"{available / 1e9:.1f} GB RAM available. Refusing to start an "
-            "analysis that would thrash swap. Override with SHAPES_XMX_ANALYZE "
-            "if you really want to try.")
-    megabytes = max(2048, int(needed // (1 << 20)))
-    megabytes = (megabytes + 255) // 256 * 256
-    return f"{megabytes}m"
-
-
 def _run_java(job, jobs, abort, args, what, xmx=None):
     """Compatibility seam for job tests; implementation is in shapes_java."""
     scc_limit = (os.environ.get("SHAPES_MAX_SCC_MERGE", "1000000")
                  if what == "analyze" else None)
     return run_java(
         job, jobs, abort, args, what, jar=shapes_jar(), repo_root=_REPO,
-        default_xmx=SHAPES_XMX, xmx=xmx, scc_merge_limit=scc_limit)
+        default_xmx=SHAPES_XMX_ANALYZE, xmx=xmx, scc_merge_limit=scc_limit)
 
 
 def _relax_file():
@@ -120,7 +85,7 @@ def _relax_file():
 
 def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
                   extraction_mode="retained"):
-    """Run extract → collapse → validate → atomic publish for one graph.
+    """Run direct MAT extract + collapse → validate → atomic publish.
 
     ``cls=None`` selects the complete non-class heap (``extraction_mode='heap'``).
     The class-scoped form remains available to the standalone diagnostics. All
@@ -141,35 +106,23 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
         raise RuntimeError("SHAPES_MAX_SCC_MERGE must be positive")
 
     with tempfile.TemporaryDirectory(prefix=".shapes-", dir=out_dir) as work:
-        grph = os.path.join(work, "scope.grph")
         stats_path = os.path.join(work, "extract.json")
         relax_stats_path = os.path.join(work, "relax.json")
         tmp = os.path.join(work, "artifact.shp1")
 
-        extract_args = [
-            "mat-extract", "--hprof", hprof,
-            "--out", grph, "--scope", extraction_mode, "--stats", stats_path,
-        ]
-        extract_args += ["--whole-heap"] if cls is None else ["--class", cls]
-        if relax_file:
-            extract_args += ["--relax", relax_file]
-        jobs.log(job, f"  extractionMode={extraction_mode}")
-        with runner.index_read_hold(dump_dir, lambda message: jobs.log(job, message)):
-            _run_java(job, jobs, abort, extract_args, "extract",
-                      xmx=SHAPES_XMX_RETAINED if extraction_mode == "retained" else None)
-
-        xmx = _analyze_xmx(grph, cls or "whole heap")
-        objects, references = _grph_stats(grph)
-        jobs.log(job, f"  shapes analyze: {objects:,} objects, {references:,} refs -> -Xmx{xmx}")
         analyze_args = [
-            "analyze-grph", "--graph", grph,
-            "--out", tmp, "--whole-graph", "--relax-stats", relax_stats_path,
+            "mat-analyze", "--hprof", hprof, "--out", tmp,
+            "--scope", extraction_mode, "--stats", stats_path,
+            "--relax-stats", relax_stats_path,
         ]
         analyze_args += ["--whole-heap"] if cls is None else ["--class", cls]
         if relax_file:
             analyze_args += ["--relax", relax_file]
             jobs.log(job, f"  relax rules: {relax_file}")
-        _run_java(job, jobs, abort, analyze_args, "analyze", xmx=xmx)
+        jobs.log(job, f"  extractionMode={extraction_mode}")
+        jobs.log(job, f"  direct MAT extract + analyze -> -Xmx{SHAPES_XMX_ANALYZE}")
+        with runner.index_read_hold(dump_dir, lambda message: jobs.log(job, message)):
+            _run_java(job, jobs, abort, analyze_args, "analyze", xmx=SHAPES_XMX_ANALYZE)
 
         with open(stats_path, encoding="utf-8") as stats_file:
             metadata = json.load(stats_file)
