@@ -169,8 +169,3 @@ internal fun loadRelaxationRules(path: Path?): RelaxationRules? = path?.let {
         )
     }
 }
-
-internal fun warnIgnoredFieldRules(rules: RelaxationRules?) {
-    if (rules == null || rules.fieldConcealmentRules.isEmpty()) return
-    println("relax: field rules require a named-field input and are ignored for serialized/text graphs")
-}

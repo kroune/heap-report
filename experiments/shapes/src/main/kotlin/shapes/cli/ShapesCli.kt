@@ -55,16 +55,9 @@ internal class ShapesCli : ShapesCommand(
 ) {
     override val printHelpOnEmptyArgs: Boolean = true
 
-    override fun helpEpilog(context: Context): String =
-        "Text graph format: '<id> <class> <shallowBytes> [refId,refId,...]' per line; " +
-            "'#' starts a comment."
-
     init {
         subcommands(
-            AnalyzeTextGraphCommand(),
-            AnalyzeGrphCommand(),
             AnalyzeMatHeapCommand(),
-            GenerateSyntheticGraphCommand(),
             AnalyzeSyntheticGraphCommand(),
             MatInfoCommand(),
             MatHistogramCommand(),

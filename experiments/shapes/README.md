@@ -58,7 +58,6 @@ Spec section references below are to SHAPES.md.
 
 - `graph/` — `ObjectGraph`, its domain API and builder. `graph/storage/`
   hides CSR references, compact unsigned-long values and primitive stacks.
-- `input/graph/` — text/GRPH readers and writers for materialized graphs.
 - `input/heap/` — `HeapObjectSource`, the random-access heap contract used
   by extraction; it has no MAT or analysis dependency.
 - `extraction/` — typed scope selection, reference filtering, structural
@@ -79,8 +78,6 @@ Spec section references below are to SHAPES.md.
 ./gradlew build                                          # compile + all tests
 ./gradlew run --args="--help"                            # commands and typed options
 ./gradlew run --args="demo --modules 3000 --verify"      # in-memory demo
-./gradlew run --args="generate --modules 3000 --out heap.txt"
-./gradlew run --args="analyze --graph heap.txt --class synth.Module --out shapes.bin --verify"
 ./gradlew fatJar   # build/libs/shapes-experiment-all.jar — what the heap-report
                    # backend runs (SHAPES_JAR; mat-analyze)
 ```
@@ -95,9 +92,8 @@ single-threaded.
 `MatHeapObjectSource` adapts a MAT snapshot to the source-independent
 `HeapObjectSource` contract. `HeapObjectGraphExtractor` selects a
 retained/reachable/whole-heap scope, then builds the dense in-memory
-`ObjectGraph` in one materialization pass. `mat-analyze` runs collapse immediately in the same JVM: there is no
-class-table prepass, GRPH intermediate, or reparsing step. Standalone
-`analyze-grph` remains available when GRPH is itself the input source.
+`ObjectGraph` in one materialization pass. `mat-analyze` runs collapse
+immediately in the same JVM, without a serialized intermediate or reparsing step.
 
 Scope selection is necessarily separate: retained membership requires MAT's
 retained-set computation (and filtered-scope restriction), while reachable
@@ -185,9 +181,9 @@ in 7 root shapes, exact. `File` surfaces a real merged SCC:
 point 4, discretized by class and merged exactly).
 
 Scale findings:
-- **Extraction** works at full-heap scale: the historical GRPH pipeline's BFS
+- **Extraction** works at full-heap scale: the historical file-based pipeline's BFS
   over 257M objects took 10–14 min (~0.5M obj/s), followed by a 12–32 s class
-  pass, a 77–140 s write pass, and a 6.5 GB GRPH read. The current pipeline
+  pass, a 77–140 s write pass, and a 6.5 GB serialized graph read. The current pipeline
   replaces all three post-BFS walks with one in-memory materialization pass,
   using the same popcount-rank O(1) id remap. No new timing is claimed here.
 - **The reachable closure is one giant blob**: PatternSet (114k instances)
@@ -213,12 +209,11 @@ Perf/memory, JFR-driven (in order of what profiles showed):
 4. Per-lookup cons-key allocations + `LinkedHashMap` kid grouping — top of
    cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
    scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
-5. `DataInputStream` per-field reads dominated GRPH load → memory-mapped reader.
-6. Per-member refinement structures cost roughly 200 B/member on very large
+5. Per-member refinement structures cost roughly 200 B/member on very large
    SCCs. The former alternate mega-SCC path was removed intentionally; the
    current implementation always performs WL refinement, so this remains an
    explicit memory limitation rather than a hidden behavioral fallback.
-7. Footprint pass over the whole pipeline (driven by the 256.9M-object
+6. Footprint pass over the whole pipeline (driven by the 256.9M-object
    FlatSourceDirectoriesImpl scope — 98.9% of the heap, 105M components):
    CharArray class idx (2 B), packed shallow (4 B + overflow side-table),
    Tarjan `low[n]` → per-frame stack, index/compOf merged into one sign-coded
@@ -228,11 +223,11 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    Result: the full pipeline (extract 16 min + load + analyze) completes on
    that scope at ~9 GB heap: reach 8 s, scc 23 s, cons 84 s, aggregate 15 s
    — 256.9M objects → 1.37M shapes (187.5×) in 130 s of analysis.
-8. ConsMap: multiply-only hash mixed weakly in the LOW bits the probe uses →
+7. ConsMap: multiply-only hash mixed weakly in the LOW bits the probe uses →
    2M-slot probe walks (25+ min in `intern`, caught by jstack + a maxProbe
    counter). Fixed with an fmix32 finalizer + double hashing + a per-shape
    keyHash precheck (maxProbe 350k → 42).
-9. **Correctness (verify-edges audit):** merged SCCs emitted `first member`'s
+8. **Correctness (verify-edges audit):** merged SCCs emitted `first member`'s
    external edges for ALL members; a non-uniform SCC (LinkedHashMap ⇄ its
    entrySet: map→table, entrySet→entries) got mults inflated by the
    × instanceCount expansion (inv3 over-count 0.15%). Fix: non-uniform SCCs
@@ -256,7 +251,6 @@ or every collection implementation.
 
 - `Edge`/`Shape` graphs are interned and acyclic (DAG + SCC payloads), so
   structural equality via interned identity is exact and O(1).
-- Text graph loader requires dense 0-based ids.
 - MAT extraction remaps ids to dense (SHAPES.md's "no id remapping" is an
   in-MAT-JVM trade-off; in a separate process, memory ∝ |R| wins).
 - MAT extraction BFS is single-threaded and I/O-bound on random outbound

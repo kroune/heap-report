@@ -1,7 +1,7 @@
 package shapes.extraction
 
 import shapes.graph.ClassName
-import shapes.input.graph.referenceIds
+import shapes.graph.ObjectGraph
 import shapes.input.heap.NamedReference
 import shapes.relaxation.FieldConcealmentRules
 import kotlin.test.Test
@@ -106,3 +106,6 @@ class HeapObjectGraphExtractorTest {
         assertEquals(3, result.stats.sourceRetainedObjectCount)
     }
 }
+
+private fun ObjectGraph.referenceIds(objectId: Int): IntArray =
+    IntArray(referenceCount(objectId)) { referenceAt(objectId, it) }

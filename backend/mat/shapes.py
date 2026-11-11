@@ -28,8 +28,8 @@ _DEFAULT_JAR = os.path.join(
     _REPO, "experiments", "shapes", "build", "libs", "shapes-experiment-all.jar")
 _DEFAULT_RELAX_FILE = os.path.join(_REPO, "experiments", "shapes", "relax.tsv")
 
-# One JVM now owns extraction, the in-memory graph, and analysis. Size that
-# combined heap explicitly; there is no GRPH file from which to pre-compute it.
+# One JVM owns extraction, the in-memory graph, and analysis. Size that
+# combined heap explicitly.
 SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE", "8g")
 SHAPES_RELAX_FILE = os.environ.get("SHAPES_RELAX_FILE", _DEFAULT_RELAX_FILE)
 PIPELINE_VERSION = 6
