@@ -69,15 +69,13 @@ before `SMD1`) containing each stored SCC member's class and exact internal
 `(targetMember, multiplicity)` connections. The shapes canvas uses it to
 render the member graph inside an SCC box instead of treating the cycle as an
 opaque circle. Old SHP1 artifacts without SCC1 remain readable and retain the
-legacy circle until re-analyzed. Mega `SCC_UNIQUE` payloads still store only
-the first 8 members; an explicit `membersComplete` flag marks the graph as
-incomplete (even with a custom merge cap below 8), so the UI never pretends to
-show missing members or connections.
+legacy circle until re-analyzed. The `membersComplete` flag explicitly says
+whether all members and connections are present; the current writer emits
+complete SCC member graphs.
 
-Backend SCC refinement uses cap 1,000,000 (`SHAPES_MAX_SCC_MERGE` override)
-to avoid the old 64-member artifact in container graphs. Larger components
-still take the lean unique path. The CLI's default SCC merge cap is 64 unless
-overridden. See the measured investigation in
+All SCC sizes use the same WL refinement path. Very large components still
+have substantial per-member working memory; there is no alternate unique-SCC
+mode or merge-cap setting. See the measured investigation in
 `experiments/shapes/FLOW-COMPARISON.md`.
 
 ## Definitions
@@ -169,7 +167,7 @@ them. The rule set is validated against the run-jfr-38 retained set in
 
 `conceal-field:<name>` rules drop **one named field** of a class and all its
 subclasses at extraction time (the analyzer's `ObjectGraph` has no field names,
-so this level lives in `GraphExtractor`; `mat-analyze` applies both rule kinds
+so this level lives in `HeapObjectGraphExtractor`; `mat-analyze` applies both rule kinds
 in one JVM). The edge never enters the graph — its target may leave the scope
 entirely. This is the surgical choice for a lazy/cache field whose
 *presence* is state, not structure, e.g.:
@@ -208,9 +206,8 @@ class hierarchy — a rule on `DefaultConfiguration` covers the runtime
     same-color members carry identical edges. (The earlier
     discretize-or-unique rule produced 201k duplicate shapes on
     run-jfr-38 — every symmetric small SCC became its own shape.)
-  - |SCC| > 64 → the SCC is its own unique node, never merged (memory:
-    refinement structures cost ~200 B/member — a 142M-member mega-SCC
-    cannot afford them; mega-SCCs are 1–2 per heap anyway).
+  - all SCC sizes use this refinement path; large components require
+    corresponding per-member working memory.
   - a self-loop object is a size-1 SCC with an internal edge → SCC path.
 - **shallow is NOT part of the key** (author decision, open point 3):
   `byte[16]` = `byte[1MB]` = one shape. Correctness is unaffected —

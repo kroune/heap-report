@@ -4,8 +4,8 @@
 Inputs (see README.md for how each is produced):
   --module-sigs   module-signatures.tsv  (from module_signatures.py)
   --root-shapes   normalized-root-population.tsv  (dense<TAB>shape per root, dense ascending)
-  --root-names    root-names.tsv  (mat_id<TAB>name<flags>, mat_id ascending; RootNames.java)
-  --root-paths    root-paths.tsv  (mat_id<TAB>identityPath, mat_id ascending; RootPaths.java)
+  --root-names    root-names.tsv  (mat_id<TAB>name<flags>, mat_id ascending)
+  --root-paths    root-paths.tsv  (mat_id<TAB>identityPath, mat_id ascending)
 
 Verifies the row-order join (dense order == sorted mat_id order over the
 327,035 queried roots), then reports, per configuration role:

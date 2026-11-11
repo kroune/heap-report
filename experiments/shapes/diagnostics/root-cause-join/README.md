@@ -62,31 +62,13 @@ cache/HTTP-state variants in the Kotlin/compiler detached configurations.
   shapes; prints the origin divergences (label/multiplicity differences)
   vs pure propagation. Used for the String×5/×6, InternalHttpClient and
   SoftReference diffs.
-- `RootPaths.java` — MAT field read of `identityPath` for all 327,035
-  roots (→ `root-paths.tsv`). Run like `RootNames` (see
-  `/tmp/run_root_names.py` pattern; needs the shapes fat jar on the
-  classpath).
-- `SharedDesc.java` — scans every root's `description`; reports those with
-  an inbound referrer other than the configuration (→ the 562
-  `DefaultGradleConfiguration`-shared descriptions over 8 module models,
-  the 3,002 uniform `androidApis`↔`Object[]` sharings, and the 39,003
-  uniform intra-module config↔config sharings).
-- `RetainedIds.java` — recomputes the retained MAT id array
-  (`/tmp/retained-ids.bin`, dense GRPH id ↔ MAT id). Needs
-  `-Dorg.eclipse.mat.parser.internal.snapshot.ObjectMarkerFactory.useOldMarker=false`.
-- `SccInspect.java <grph> <retained-ids.bin> <denseId...>` — raw-GRPH
-  Tarjan SCC dump for a root: member classes and member→`java.lang.String`
-  outbound edges (confirmed majority SCC String×5 vs deviant ×0 in the
-  raw graph, and the referrers = the 5 api-family configurations).
 
-## Inputs produced outside this directory
+## Inputs
 
-- `normalized-root-population.tsv` — 4th argument of `NormalizeAllMaps`
-  (dense → final shape id per root).
-- `root-names.tsv` — `RootNames.java` (already used by earlier audits).
-- `dlc-retained.grph` — `ExtractRetained` (full retained extraction).
-
-These diagnostics do not modify any artifact.
+The Python scripts consume precomputed module signatures, root populations,
+root names and root paths. They analyze these inputs without modifying any
+artifact; producers of the historical MAT extracts are not part of the
+current diagnostic tooling.
 
 ## Relaxation validation (reference filtering + relaxed classes)
 
@@ -134,10 +116,7 @@ shapes (population + build-logic + app), and the emitted-vs-projected edge
 and object accounting matches to delta 0 when the concealed counters
 (edges + quotient-concealed objects) are subtracted.
 
-Reproduction: `FilterRefs.java` (GRPH post-transform equivalent of the
-extraction filter: cut refs of the three JDK reference classes, BFS-restrict
-to the queried roots) and the `NormalizeAllMapsRelax` harness (map
-normalization + `ShapesAnalyzer` with `--relax`), then `join_roles.py`
-against the produced population TSVs. The extraction-side filter is
-implemented in `GraphExtractor` (default on, `--raw-references` to disable) and
-re-extraction reproduces the same dropped set.
+The production extraction-side filter is implemented by
+`HeapObjectGraphExtractor` and `HeapReferenceFilter` (default on,
+`--raw-references` to disable). The Python join operates on the population
+TSV produced by the original measurement.

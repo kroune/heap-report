@@ -1,5 +1,5 @@
 """SHP1 artifact parsing (backend/mat/shapes.py). No dumps, no MAT — the
-fixture is built by hand with struct, mirroring experiments/shapes Emit.kt."""
+fixture is built by hand with struct, mirroring the SHP1 artifact writer."""
 import os
 import struct
 import tempfile
@@ -12,7 +12,7 @@ from backend.mat.shapes import (artifact_path, parse_shp1, analysis_options,
 
 
 def build_shp1(labels, shapes, edges, roots, scc_details=None):
-    """Mirror ShapesEmit.write, including optional SCC1 member graphs."""
+    """Mirror Shp1ArtifactWriter, including optional SCC1 member graphs."""
     out = [b"SHP1"]
     out.append(struct.pack(">i", len(labels)))
     for l in labels:
@@ -130,13 +130,13 @@ class TestShp1(unittest.TestCase):
                 os.remove(path)
 
     def test_incomplete_scc_graph_is_explicit_not_count_inferred(self):
-        row = {"hi": 0, "lo": 1, "kind": 3, "labelIdx": 0, "count": 2,
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 2,
                "shallowTotal": 10, "shallowMin": 5, "shallowMax": 5,
                "roots": 0, "sccSize": 2, "internalEdges": 2,
                "edgesPerMember": False}
         details = [(0, [{"labelIdx": 1, "internal": []},
                           {"labelIdx": 2, "internal": []}], False)]
-        fixture = build_shp1(["scc![A,B]", "A", "B"], [row], [], [], details)
+        fixture = build_shp1(["scc[A,B]", "A", "B"], [row], [], [], details)
         with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
             f.write(fixture)
             path = f.name

@@ -46,7 +46,7 @@ def audit(payload):
         for source in order:
             row = rows[source]
             label, kind = row["label"], row["kind"]
-            if kind in ("scc", "scc-unique"):
+            if kind == "scc":
                 key = ("opaque-scc", source)
             elif boundary_atoms and label in BOUNDARY_CLASSES:
                 # Deliberate loss of these outgoing edges, ONLY a sensitivity

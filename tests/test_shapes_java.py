@@ -30,17 +30,15 @@ class TestShapesJava(unittest.TestCase):
         with mock.patch("backend.mat.shapes_java.subprocess.Popen",
                         return_value=process) as popen:
             result = run_java(None, jobs, abort, ["analyze-grph", "--graph", "x"],
-                              "analyze", jar="tool.jar", repo_root="/repo",
-                              scc_merge_limit=1000000)
+                              "analyze", jar="tool.jar", repo_root="/repo")
         return result, jobs, popen
 
-    def test_success_streams_log_and_sets_scc_limit(self):
+    def test_success_streams_log(self):
         process = FakeProcess("first\nsecond\n")
         _, jobs, popen = self.run_with(process)
         command = popen.call_args.args[0]
         self.assertEqual(["java", "-Xmx2g", "-XX:ActiveProcessorCount=4",
                           "-jar", "tool.jar", "analyze-grph", "--graph", "x"], command)
-        self.assertEqual("1000000", popen.call_args.kwargs["env"]["SHAPES_MAX_SCC_MERGE"])
         self.assertTrue(popen.call_args.kwargs["stdout"] is not None)
         logged = [call.args[1] for call in jobs.log.call_args_list]
         self.assertIn("first", logged)

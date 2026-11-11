@@ -16,10 +16,9 @@ Spec section references below are to SHAPES.md.
 - **Equality rules** — leaf / acyclic / SCC keys exactly as specified.
   Multi-edges preserved (`Object[]{x,x}` ≠ `Object[]{x,y}` when x,y differ
   structurally). SCC: color refinement over `(class, internal-neighbor
-  colors, child-shape colors)` and merge on the WL-fixpoint signature;
-  oversized SCCs take the unique fallback (`ShapesAnalyzer.MAX_SCC_MERGE`,
-  64 by default in CLI and 1M in the backend). Self-loops take the SCC path.
-  **shallow is NOT part of the key** (open point 3: resolved OUT).
+  colors, child-shape colors)` and merge on the WL-fixpoint signature.
+  Self-loops take the same SCC path. All components use this path; there is
+  no separate unique-SCC mode. **shallow is NOT part of the key**.
 - **Hashing discipline** — cons-map key is the full structural tuple
   (`LeafLk`/`NodeLk`/`SccLk`), equality is exact via interned child shape
   identity, never via the digest. Separate 128-bit cross-dump digest over a
@@ -33,15 +32,14 @@ Spec section references below are to SHAPES.md.
 - **Aggregates** — `instanceCount`, `shallowTotal/Min/Max`, `rootCount`,
   complete edge table `(shapeId, childShapeId, multiplicity)`. Edge
   multiplicity is **per member** of the source shape (expanded totals =
-  mult × instanceCount). `SCC_UNIQUE` and non-uniform merged SCCs emit
-  per-collapsed-instance totals instead (`edgesPerMember = false`).
+  mult × instanceCount). Non-uniform merged SCCs emit per-collapsed-instance
+  totals instead (`edgesPerMember = false`).
 - **Phase 5 emit** — binary artifact (`SHP1` magic plus `SCC1` member-graph
-  section; layout documented in `Emit.kt`). SCC1 preserves canonical member
-  classes and every internal target/multiplicity for the nested shapes UI.
-  Legacy SHP1 files without it remain readable; oversized unique SCCs keep
-  the explicit 8-member truncation rather than allocating an unbounded DTO.
-- **Correctness invariants** — `verifyInvariants` implements smoke tests
-  1–4; 6 (determinism) is a test. 5 (match vs sampling payload) needs MAT.
+  section; layout documented in `artifact/Shp1ArtifactWriter.kt`). SCC1
+  preserves canonical member classes and every internal target/multiplicity
+  for the nested shapes UI.
+- **Correctness invariants** — `ShapeInvariantVerifier` implements smoke
+  tests 1–4; determinism is covered separately by tests.
 
 ## Deferred / current limitations
 
@@ -53,24 +51,27 @@ Spec section references below are to SHAPES.md.
 - `IDS_LIMIT` paging (open point 5), per-instance drill-down, strings/values.
 - Per-class drill-down from the heap-wide artifact requires a persisted
   object→shape mapping; the current UI serves the aggregate graph only.
+- WL refinement is always performed, including for very large SCCs. Their
+  per-member working memory remains a known scale limitation.
 
 ## Layout
 
-- `Graph.kt` — compact `ObjectGraph` model and allocation-efficient builder.
-- `input/` — source interfaces plus standalone text/GRPH parsers; no analysis
-  or MAT dependencies. `HeapInput` is the adapter contract for new heap sources.
-- `extraction/` — source-independent scope selection, reference policy, map
-  projection, and one-pass `ObjectGraph` materialization.
-- `mat/` — the standalone MAT `HeapInput` adapter and MAT-only diagnostics.
-- `Digest.kt` — 128-bit canonical digests using hash4j's XXH3-128.
-- `Shapes.kt` — the collapse pipeline.
-- `Verify.kt` — invariant checker (`--verify` and tests).
-- `Emit.kt` — binary artifact writer.
-- `JsonSupport.kt` — shared `kotlinx.serialization` JSON output; emitted
-  schemas are typed (`ExtractionStats`, `RelaxStats`), never concatenated.
-- `extraction/ReferencePolicy.kt` — one side-effect-free reference filtering
-  policy shared by scope traversal, map projection, and accounting.
-- `Main.kt` — CLI.
+- `graph/` — `ObjectGraph`, its domain API and builder. `graph/storage/`
+  hides CSR references, compact unsigned-long values and primitive stacks.
+- `input/graph/` — text/GRPH readers and writers for materialized graphs.
+- `input/heap/` — `HeapObjectSource`, the random-access heap contract used
+  by extraction; it has no MAT or analysis dependency.
+- `extraction/` — typed scope selection, reference filtering, structural
+  projection, dense-id remapping, boundary stubs and graph materialization.
+- `analysis/` — `ShapesAnalyzer`, typed `AnalysisScope` and the public result.
+  `analysis/internal/` contains SCC finding, canonical shapes, WL refinement,
+  structural interning and aggregation.
+- `relaxation/` — typed structural/field rules, TSV parser and exact counters.
+- `artifact/` — SHP1/SCC1 writer.
+- `verification/` — invariant and full edge-accounting verifiers.
+- `mat/` — MAT snapshot loading, `HeapObjectSource` adapter and MAT queries.
+- `cli/` — Clikt commands, reports and the shared analysis workflow.
+- `synthetic/` — synthetic graphs used by demos and tests.
 
 ## Run
 
@@ -91,10 +92,10 @@ single-threaded.
 
 ## Real heap dumps (MAT extractor)
 
-`shapes.mat.MatHeapInput` adapts a MAT snapshot to the source-independent
-`HeapInput` contract. `GraphExtractor` selects a retained/reachable/whole-heap
-scope, then builds the dense in-memory `ObjectGraph` in one materialization
-pass. `mat-analyze` runs collapse immediately in the same JVM: there is no
+`MatHeapObjectSource` adapts a MAT snapshot to the source-independent
+`HeapObjectSource` contract. `HeapObjectGraphExtractor` selects a
+retained/reachable/whole-heap scope, then builds the dense in-memory
+`ObjectGraph` in one materialization pass. `mat-analyze` runs collapse immediately in the same JVM: there is no
 class-table prepass, GRPH intermediate, or reparsing step. Standalone
 `analyze-grph` remains available when GRPH is itself the input source.
 
@@ -117,8 +118,7 @@ missing from the class table — the 9 primitive class objects),
 `mat-reachback` (reverse BFS over the inbound index — quantifies which
 classes carry back-paths into the mega-SCC).
 
-Backend/UI uses `--whole-heap --scope heap` and
-`SHAPES_MAX_SCC_MERGE=1000000` (override supported). The dedicated Shapes tab
+Backend/UI uses `--whole-heap --scope heap`. The dedicated Shapes tab
 supports re-analysis of the single heap artifact.
 Class-scoped retained / reachable extraction remains available in the CLI for
 diagnostics. `--stats <json>` preserves source/projected reference counts.
@@ -214,19 +214,17 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
    scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
 5. `DataInputStream` per-field reads dominated GRPH load → memory-mapped reader.
-6. `consScc` built boxed per-member refinement structures (~200 B/member)
-   BEFORE the `|SCC| > 64 → SCC_UNIQUE` early exit — a 2.6M-member
-   service-graph SCC (54k-instance AGP class closing over 98.9% of the heap)
-   OOM'd the analyzer after an hour of GC thrash. Now mega-SCCs go straight
-   to a lean totals path (sorted members + binary-search membership, no
-   boxed lists), and SCC_UNIQUE labels are bounded to 8 member classes.
+6. Per-member refinement structures cost roughly 200 B/member on very large
+   SCCs. The former alternate mega-SCC path was removed intentionally; the
+   current implementation always performs WL refinement, so this remains an
+   explicit memory limitation rather than a hidden behavioral fallback.
 7. Footprint pass over the whole pipeline (driven by the 256.9M-object
    FlatSourceDirectoriesImpl scope — 98.9% of the heap, 105M components):
    CharArray class idx (2 B), packed shallow (4 B + overflow side-table),
    Tarjan `low[n]` → per-frame stack, index/compOf merged into one sign-coded
    array, dynamic 1.5× dfs stacks, identity iteration for whole-graph reach,
-   singleton components inlined out of the members CSR, lean Comps
-   (8 B/component), mega-SCC member payload truncated to the label's needs.
+   singleton components inlined out of the members CSR, lean component
+   storage (8 B/component).
    Result: the full pipeline (extract 16 min + load + analyze) completes on
    that scope at ~9 GB heap: reach 8 s, scc 23 s, cons 84 s, aggregate 15 s
    — 256.9M objects → 1.37M shapes (187.5×) in 130 s of analysis.
@@ -239,10 +237,8 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    entrySet: map→table, entrySet→entries) got mults inflated by the
    × instanceCount expansion (inv3 over-count 0.15%). Fix: non-uniform SCCs
    still merge (the isomorphism is real) but emit per-INSTANCE totals —
-   `edgesPerMember=false` now means "× collapsedInstances" (SCC_UNIQUE has
-   one). Routing them to SCC_UNIQUE instead was tried first and REJECTED:
-   it tripled the shape count (1.3M → 4.2M) and OOM'd the aggregate.
-   `verifyEdgeAccounting` (Main `--verify-edges`) re-derives every ref
+   `edgesPerMember=false` means "× collapsedInstances".
+   `ShapeEdgeAccountingVerifier` (CLI `--verify-edges`) re-derives every ref
    against the artifact: 600,058,408 refs, exact.
 
 ## Flow comparison diagnostics
@@ -260,9 +256,6 @@ or every collection implementation.
 
 - `Edge`/`Shape` graphs are interned and acyclic (DAG + SCC payloads), so
   structural equality via interned identity is exact and O(1).
-- `SCC_UNIQUE` digests are per-input deterministic (salt = min member id)
-  but not cross-dump stable — acceptable: they never merge, so cross-dump
-  diff has nothing to compare anyway.
 - Text graph loader requires dense 0-based ids.
 - MAT extraction remaps ids to dense (SHAPES.md's "no id remapping" is an
   in-MAT-JVM trade-off; in a separate process, memory ∝ |R| wins).

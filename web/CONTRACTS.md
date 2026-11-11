@@ -112,8 +112,8 @@ shapes(id)                                 -> Result<{shapes,edges,rootsHistogra
 shapesAnalyze(id)                           -> Result<Job>
 // analysis=null on legacy artifacts; otherwise includes
 // extractionMode:{type:'heap'|'retained'|'reachable',className?}, objects,
-// roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges, pipelineVersion,
-// sccMergeLimit. Graph edges use map-entry projection.
+// roots, shallowTotal, sourceEdges, scopeBoundaryEdges, projectedEdges, pipelineVersion.
+// Graph edges use map-entry projection.
 // Re-analysis atomically replaces the heap-wide artifact.
 invalidate(id=null)                        // drop one dump's or all cached entries
 

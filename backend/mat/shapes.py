@@ -66,11 +66,9 @@ def artifact_path(data_dir, cls=None):
 
 def _run_java(job, jobs, abort, args, what, xmx=None):
     """Compatibility seam for job tests; implementation is in shapes_java."""
-    scc_limit = (os.environ.get("SHAPES_MAX_SCC_MERGE", "1000000")
-                 if what == "analyze" else None)
     return run_java(
         job, jobs, abort, args, what, jar=shapes_jar(), repo_root=_REPO,
-        default_xmx=SHAPES_XMX_ANALYZE, xmx=xmx, scc_merge_limit=scc_limit)
+        default_xmx=SHAPES_XMX_ANALYZE, xmx=xmx)
 
 
 def _relax_file():
@@ -101,10 +99,6 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
     out_dir = os.path.dirname(dst)
     os.makedirs(out_dir, exist_ok=True)
     relax_file = _relax_file()
-    scc_merge_limit = int(os.environ.get("SHAPES_MAX_SCC_MERGE", "1000000"))
-    if scc_merge_limit <= 0:
-        raise RuntimeError("SHAPES_MAX_SCC_MERGE must be positive")
-
     with tempfile.TemporaryDirectory(prefix=".shapes-", dir=out_dir) as work:
         stats_path = os.path.join(work, "extract.json")
         relax_stats_path = os.path.join(work, "relax.json")
@@ -138,7 +132,7 @@ def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
         extracted_mode = metadata.get("extractionMode")
         if not isinstance(extracted_mode, dict) or extracted_mode.get("type") != extraction_mode:
             raise RuntimeError("shapes extraction settings do not match the request")
-        metadata.update(pipelineVersion=PIPELINE_VERSION, sccMergeLimit=scc_merge_limit)
+        metadata.update(pipelineVersion=PIPELINE_VERSION)
         _validate_projection(tmp, metadata)
 
         encoded = json.dumps(metadata, separators=(",", ":")).encode("utf-8")

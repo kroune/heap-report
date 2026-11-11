@@ -191,7 +191,7 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
     const y1 = a.y + a.hh + 2, y2 = b.y - b.hh - 4;
     const my = (y1 + y2) / 2;
     // total refs: per-member mult × instance count; per-instance totals
-    // (SCC_UNIQUE and non-uniform merged SCCs) × collapsed instances
+    // (non-uniform merged SCCs) × collapsed instances
     const total = a.edgesPerMember ? mult * a.count : mult * Math.max(1, Math.floor(a.count / a.sccSize));
     if (total > emax) emax = total;
     return { s, t, mult, total, mx: (a.x + b.x) / 2, my };

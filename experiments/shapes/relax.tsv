@@ -1,4 +1,4 @@
-# Class relaxation rules for the shapes pipeline (see Relax.kt and
+# Class relaxation rules for the shapes pipeline (see relaxation/RelaxationRules.kt and
 # backend/mat/SHAPES.md "Relaxed classes").
 #
 # Format: class.name<TAB>level<TAB>reason (reason is required — say WHICH

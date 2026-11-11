@@ -14,7 +14,7 @@ import struct
 
 _METADATA_MAGIC = b"SMD1"
 _SCC_MAGIC = b"SCC1"
-_KINDS = ("leaf", "node", "scc", "scc-unique")
+_KINDS = ("leaf", "node", "scc")
 _SHAPE_ROW_SIZE = 70
 _EDGE_ROW_SIZE = 16
 _ROOT_ROW_SIZE = 12
@@ -146,7 +146,7 @@ def parse_shp1(path):
             for _ in range(reader.count("SCC shape", 9)):
                 shape_id, member_count, flags = reader.unpack(">iiB", "SCC shape header")
                 if (not 0 <= shape_id < len(shapes) or shape_id in described
-                        or shapes[shape_id]["kind"] not in ("scc", "scc-unique")):
+                        or shapes[shape_id]["kind"] != "scc"):
                     raise ShapesArtifactError(f"invalid SCC shape id {shape_id} in {path}")
                 if flags not in (0, 1):
                     raise ShapesArtifactError(f"invalid SCC flags {flags} in {path}")

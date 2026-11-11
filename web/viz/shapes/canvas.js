@@ -402,7 +402,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
       g.fill();
       g.globalAlpha = 1;
       if (rpx < 6) return;
-      const isScc = nd.kind === "scc" || nd.kind === "scc-unique";
+      const isScc = nd.kind === "scc";
       g.strokeStyle = nd.roots ? C_ROOT_STROKE : C_NODE_STROKE;
       g.lineWidth = (nd.roots ? 1.6 : 0.8) / zm.k;
       if (isScc) g.setLineDash([3 / zm.k, 2 / zm.k]);

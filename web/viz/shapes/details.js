@@ -29,10 +29,9 @@ export function nodeDetailHead(u, vm, ctx) {
   const nd = vm.nodes[u];
   const kb = { leaf: "leaf — no children in the selected scope",
                node: "node — keyed by (class, child shapes)",
-               scc: "merged SCC — collapsed cycle",
-               "scc-unique": "unique SCC — too exotic to merge" }[nd.kind] || nd.kind;
+               scc: "merged SCC — collapsed cycle" }[nd.kind] || nd.kind;
   const mrow = (k, v) => `<div class="gmrow"><span>${k}</span><span class="v">${v}</span></div>`;
-  const sccNote = nd.kind !== "scc" && nd.kind !== "scc-unique" ? "" :
+  const sccNote = nd.kind !== "scc" ? "" :
     nd.sccComplete ? `<div class="gdim gmeta">${nd.members.length} canonical members and ` +
       `${nd.internalEdges} internal references are rendered inside the SCC box.</div>` :
     nd.members ? `<div class="gdim gmeta">This oversized SCC has an incomplete member graph ` +

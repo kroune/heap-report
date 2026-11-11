@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Diff two shapes in a SHP1: walk both DAGs in parallel, find first divergence points."""
 import struct, sys, collections
-KINDS = ["LEAF", "NODE", "SCC", "SCC_UNIQUE"]
+KINDS = ["LEAF", "NODE", "SCC"]
 def load(path):
     f = open(path, "rb").read(); p = 0
     def i32():

@@ -9,7 +9,7 @@ from .. import core
 
 
 def run_java(job, jobs, abort, args, what, *, jar, repo_root,
-             default_xmx="2g", xmx=None, scc_merge_limit=None):
+             default_xmx="2g", xmx=None):
     """Run one shapes-tool JVM, stream its log, and honor cooperative abort.
 
     The job log receives the complete (job-capped) output; a short local tail
@@ -19,8 +19,6 @@ def run_java(job, jobs, abort, args, what, *, jar, repo_root,
                "-jar", jar] + list(args)
     jobs.log(job, f"  shapes {what}: {' '.join(args[:2])} ...")
     environment = os.environ.copy()
-    if scc_merge_limit is not None:
-        environment["SHAPES_MAX_SCC_MERGE"] = str(scc_merge_limit)
     process = subprocess.Popen(
         command, cwd=repo_root, stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT, text=True, encoding="utf-8",
