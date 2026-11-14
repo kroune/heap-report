@@ -19,14 +19,24 @@ benchmark, with the expensive part moved to CI:
 
 ```bash
 git clone https://github.com/kroune/heap-report && cd heap-report
-python3 -m backend.kernel          # http://127.0.0.1:8321/  → pick a remote run → Download
+npm ci && npm run build           # React UI → web/dist/index.html
+python3 -m backend.kernel         # http://127.0.0.1:8321/  → pick a remote run → Download
+```
+
+Requirements: Python 3.9+, Node.js 22+, `zstd`, ~40 GB free disk per dump.
+
+For frontend development, keep the Python server running and use Vite's dev
+server instead (`http://127.0.0.1:5173`, with `/api` proxied to Python):
+
+```bash
+npm run dev
 ```
 
 First use downloads Eclipse MAT (~100 MB) into `.tools/` automatically
 (`tools/get_mat.py`; override the location with `MAT_HOME`, the binary with
-`MAT_PARSE`). Requirements: Python 3.9+, `zstd`, ~40 GB free disk per dump
-(18 GB hprof + ~11 GB compacted indexes; raw indexes restore to ~20 GB while a
-query runs and are re-compressed when the UI goes idle).
+`MAT_PARSE`). Each dump needs ~40 GB free disk (18 GB hprof + ~11 GB compacted
+indexes; raw indexes restore to ~20 GB while a query runs and are re-compressed
+when the UI goes idle).
 
 The **Shapes** tab runs an exact structural collapse over the complete non-class
 heap (one reusable analysis per dump) using a standalone Kotlin/MAT tool. Build
@@ -50,16 +60,22 @@ sources, store, query engine, jobs); the impls plug into it. See
   engine / extract / parsing / payloads), `jobs.py` (job registry + executors),
   `http.py` (thin HTTP adapter), `kernel.py` (wiring + CLI), `ci.py` (library
   entries for the workflow), `snapshot.py` (static HTML export).
-- `web/` — the UI: native ES modules, no build step. Data layer
-  (`web/data/*`) owns all server interaction and caching; tabs are thin;
-  experimental visualizations live isolated in `web/viz/`.
+- `web/src/` — the React + TypeScript UI. TanStack Query owns server state,
+  caching and polling; MUI provides application controls and dialogs; ECharts
+  renders the treemap; React Flow renders class reference graphs. The Shapes
+  explorer keeps its tested, high-volume Canvas/spatial-index engine behind a
+  React lifecycle. Vite produces one self-contained production HTML file.
 
 ## CLI
 
 ```bash
 python3 -m backend.kernel --port 8321             # the UI server (also: all analysis)
-python3 -m backend.snapshot --dump run-123 --out /tmp/report.html   # static snapshot
+npm run build                                     # required before serving or exporting
+python3 -m backend.snapshot --dump run-123 --out /tmp/report.html   # offline static snapshot
 ```
+
+The snapshot contains the same built React app plus an inline payload; it does
+not need the Python server or network when opened from `file://`.
 
 ## CI: `build-indexes.yml`
 

@@ -25,6 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -51,15 +52,17 @@ jobs:
         working-directory: experiments/shapes
         run: ./gradlew test fatJar
 
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build React frontend
+        run: npm run build
+
+      - name: Frontend tests
+        run: npm test
+
       - name: Python tests
         run: python3 -m unittest discover -s tests -t .
 
-      - name: JavaScript tests
-        run: node --test tests/js/*.test.mjs
-
-      - name: Syntax checks
-        run: |
-          python3 -m py_compile backend/*.py backend/mat/*.py backend/machine/*.py backend/localstore/*.py tools/*.py
-          for file in $(find web -name '*.js'); do
-            node --input-type=module --check < "$file"
-          done
+      - name: Python syntax checks
+        run: python3 -m py_compile backend/*.py backend/mat/*.py backend/machine/*.py backend/localstore/*.py tools/*.py

@@ -2,7 +2,8 @@
 
 No logic: parse -> call core -> map result/error. Every endpoint returns either
 the payload or {"error", "code"}; no exception ever kills a handler silently.
-Binds 127.0.0.1 only. Static GETs serve the web/ frontend (index.html at /).
+Binds 127.0.0.1 only. Static GETs serve the built React frontend from
+web/dist (index.html at /). Run ``npm ci && npm run build`` first.
 """
 from __future__ import annotations
 
@@ -32,6 +33,7 @@ MAX_BODY = 1 << 20  # 1 MiB cap on POST bodies
 LIST_TIMEOUT = int(os.environ.get("HEAP_REPORT_LIST_TIMEOUT", "20"))
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+WEB_ROOT = os.path.join(REPO, "web", "dist")
 CONTENT_TYPES = {".js": "text/javascript; charset=utf-8",
                  ".css": "text/css; charset=utf-8",
                  ".html": "text/html; charset=utf-8"}
@@ -159,17 +161,19 @@ class _Handler(BaseHTTPRequestHandler):
     # ---------------------------------------------------------- static
 
     def _static(self, parts: list) -> None:
-        """Everything static comes from web/ (the ES-module frontend)."""
+        """Serve only the production build; Vite handles source files in dev."""
         rel = [p for p in parts if p] or ["index.html"]
         if any(not DUMP_RE.match(p) or ".." in p for p in rel):
             raise core.ApiError("not_found", "no such file", 404)
-        path = os.path.join(REPO, "web", *rel)
+        path = os.path.join(WEB_ROOT, *rel)
         ctype = _ctype(path)
         try:
             with open(path, "rb") as f:
                 body = f.read()
         except OSError:
-            raise core.ApiError("not_found", "no such file", 404)
+            message = "frontend not built; run 'npm ci && npm run build'" \
+                if rel == ["index.html"] else "no such file"
+            raise core.ApiError("not_found", message, 404)
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))

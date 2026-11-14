@@ -1,5 +1,5 @@
 # Local analysis data — never commit (tens of GB)
-dumps/
+/dumps/
 *.png
 .playwright-mcp
 .tools/
@@ -12,3 +12,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .pi
+node_modules/
+web/dist/
+coverage/
+*.tsbuildinfo

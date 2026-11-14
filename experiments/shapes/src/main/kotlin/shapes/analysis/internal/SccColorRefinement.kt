@@ -65,15 +65,20 @@ internal class SccColorRefinement(
                 first.externalEdges[index],
                 second.externalEdges[index],
             )
-            if (comparison != 0) return comparison
+            if (comparison != 0) {
+                return comparison
+            }
         }
 
         comparison = first.internalNeighborColors.size.compareTo(second.internalNeighborColors.size)
-        if (comparison != 0) return comparison
+        if (comparison != 0) {
+            return comparison
+        }
         for (index in first.internalNeighborColors.indices) {
-            comparison = first.internalNeighborColors[index]
-                .compareTo(second.internalNeighborColors[index])
-            if (comparison != 0) return comparison
+            comparison = first.internalNeighborColors[index].compareTo(second.internalNeighborColors[index])
+            if (comparison != 0) {
+                return comparison
+            }
         }
         return 0
     }

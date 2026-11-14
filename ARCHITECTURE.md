@@ -33,12 +33,12 @@ ownership, not local mistakes:
    `NEW → DOWNLOADING|PARSING → DONE`, plus terminal `ERROR` (needs the user)
    and `CANCELLED` (user abort). The flat `DumpState` the HTTP/frontend
    contract speaks is a pure PROJECTION of the machine, never stored.
-4. **Frontend: repositories own all server interaction and all caches.** UI
-   components are dumb. The experimental visualizations are isolated from the
-   stable tabs.
-5. **No new dependencies.** Python stays stdlib; JS uses native ES modules
-   (no build step). This is a preference for minimalism, not a hard
-   constraint — a genuinely essential, popular lib is acceptable.
+4. **Frontend: repositories own all server interaction; TanStack Query owns
+   request caching, invalidation and polling.** React components render typed
+   view models. Experimental visualizations are isolated from the stable tabs.
+5. **Python stays stdlib. The frontend uses React + TypeScript with established
+   libraries and a Vite build.** `web/dist/index.html` is the sole production
+   artifact for both HTTP serving and snapshot export.
 
 ## Backend modules
 
@@ -243,26 +243,22 @@ GET    /api/jobs                       all jobs w/ state, progress, log tail
 Errors: `{"error": str, "code": str}` with a sensible status, from every
 endpoint, always JSON.
 
-## Frontend modules (native ES modules, no build)
+## Frontend modules (React + TypeScript + Vite)
 
-- `data/http.js` — fetch wrapper; every call returns `{ok, data|error}`.
-  Nothing in the UI handles a raw fetch.
-- `data/dumprepo.js` — dump list, download/retry/delete, job polling.
-- `data/dumpdatarepo.js` — per-dump queries; **cache keyed by dump id, lives
-  here and only here** (fixes the stale-`CC` bug structurally).
-- `data/inlinerepo.js` — same interface over the inlined snapshot payload
-  (keeps snapshot exports working).
-- `app/` — shell: tab routing + current-dump selection (the only app-level
-  mutable state).
-- `ui/tabs/` — classes, treemap, compare. Stable, thin, nearly done.
-- `ui/jobs/` — independent job-status component reading the jobs endpoint.
-- `viz/` — the experimental area, isolated from tabs:
-  - `viz/common/` — shared calculation/query helpers over `DumpDataRepo`
-  - each visualization = a separate module: **pure data-prep fn → viewModel,
-    plus a dumb renderer** (no fetch, no globals in the renderer)
-  - opened from any tab via an explicit `openViz(kind, className)` API
-  - hard rule: logic shared by ≥2 viz modules lives in `viz/common/`, never
-    copied
+- `web/src/data/` — typed fetch/result boundary, HTTP and inline repositories,
+  TanStack Query keys/hooks. Query keys include the dump id, so switching dumps
+  cannot serve another dump's data.
+- `web/src/app/` — shell, dump selection, visualization context and tab state.
+- `web/src/features/` — dump picker, jobs, classes, treemap, shapes and compare.
+- `web/src/viz/` — React popup and visualization components; React Flow hosts
+  reference graphs, while pure layout/data-preparation functions remain shared.
+- `web/viz/` — tested pure graph/layout/scene algorithms and the high-volume
+  Canvas engine. These are not a second UI: controls, dialogs, details and
+  lifecycle ownership live in React.
+- `web/dist/index.html` — the only production frontend artifact. Python serves
+  this file directly; Vite serves `web/src` only during development.
+- Snapshot export inserts `window.__INLINE__` into that same artifact. Inline
+  repository operations never call fetch, and server-only UI/polling is off.
 
 ## Compatibility: one-time migration, not a permanent burden
 
@@ -274,13 +270,15 @@ Hard requirements that remain:
 
 1. CI (`build-indexes.yml`) keeps building indexes; indexing stays callable
    as a library.
-2. Snapshot export keeps working via `InlineDumpRepo`.
-3. Acceptance: the smoke flow from AGENTS.md — `py_compile`, `node --check`,
-   workflow YAML valid, and a real download of a small `run-*` end to end.
+2. Snapshot export keeps working via the inline repository.
+3. Acceptance: the smoke flow from AGENTS.md — `py_compile`, Python tests,
+   `npm test`, TypeScript + Vite build, workflow YAML valid, and a real download
+   of a small `run-*` end to end.
 
 ## Explicit non-goals / rules
 
-- No framework, no bundler, no new runtime deps.
+- Frontend dependencies must be established libraries with a clear ownership
+  role; do not add bespoke replacements for their built-in functionality.
 - No speculative parameters on core interfaces "for future sources" — the
   interface serves the real impls (local, GitHub, S3); the router's
   `offer()`/`owns()` are optional duck-typed capabilities, not contract.

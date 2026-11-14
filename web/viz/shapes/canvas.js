@@ -27,7 +27,7 @@ const C_SCC_FILL = "#101721";
 const C_MEMBER_FILL = "#131a24";
 const C_MEMBER_TEXT = "#e8edf5";
 
-export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
+export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
   let layout = vm.layout;
   let N = layout.nodes, E = layout.edges;
   let scene = buildScene(layout, N.map(nd => ctx.catColor(nd.cat)));
@@ -65,8 +65,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     canvas.removeEventListener("dblclick", onDblClick);
     if (refsCleanup) refsCleanup();
     refsCleanup = null;
-    tools.textContent = "";
-    side.textContent = "";
+    if (tools) tools.textContent = "";
+    if (side) side.textContent = "";
     canvas.classList.remove("panning");
     canvas.__dbg = null;
     canvas.width = 1;
@@ -525,11 +525,18 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     if (!active()) return;
     shown = u;
     selPaths = buildSelection(u);
-    if (refsCleanup) refsCleanup();
-    side.innerHTML = nodeDetailHead(u, vm, ctx);
-    refsCleanup = mountRefLists(side, u, vm, ctx, scene.outAdj, scene.inAdj, adjSlice);
-    const open = side.querySelector(".gopen");
-    if (open) open.onclick = () => ctx.onOpenViz("flow", vm.dumpId, N[u].label);
+    if (hooks.onSelect) {
+      hooks.onSelect(u, {
+        outbound: [...adjSlice(scene.outAdj, u)],
+        inbound: [...adjSlice(scene.inAdj, u)],
+      });
+    } else {
+      if (refsCleanup) refsCleanup();
+      side.innerHTML = nodeDetailHead(u, vm, ctx);
+      refsCleanup = mountRefLists(side, u, vm, ctx, scene.outAdj, scene.inAdj, adjSlice);
+      const open = side.querySelector(".gopen");
+      if (open) open.onclick = () => ctx.onOpenViz("flow", vm.dumpId, N[u].label);
+    }
     schedule();
   }
 
@@ -539,7 +546,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     selPaths = null;
     if (refsCleanup) refsCleanup();
     refsCleanup = null;
-    side.innerHTML = defaultHtml;
+    if (hooks.onReset) hooks.onReset();
+    else if (side) side.innerHTML = defaultHtml;
     schedule();
   }
 
@@ -618,24 +626,29 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     if (u >= 0 && N[u].plain) ctx.onOpenViz("flow", vm.dumpId, N[u].label);
   }
 
+  function runControl(fn) {
+    if (!active()) return;
+    fn();
+    schedule();
+    scheduleBitmap();
+    scheduleLabels();
+  }
+
   function toolButton(txt, title, cls, fn) {
+    if (!tools) return;
     const b = document.createElement("button");
     b.textContent = txt;
     b.title = title;
     if (cls) b.className = cls;
-    b.onclick = () => {
-      if (!active()) return;
-      fn();
-      schedule();
-      scheduleBitmap();
-      scheduleLabels();
-    };
+    b.onclick = () => runControl(fn);
     tools.appendChild(b);
   }
 
   // Build the static panel once; selection only replaces it on demand.
-  defaultHtml = defaultSide(vm, ctx);
-  side.innerHTML = defaultHtml;
+  if (side) {
+    defaultHtml = defaultSide(vm, ctx);
+    side.innerHTML = defaultHtml;
+  }
   try {
     canvas.addEventListener("wheel", onWheel, { passive: false });
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -656,5 +669,10 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx) {
     cleanup();
     throw e;
   }
+  cleanup.controls = {
+    zoomIn: () => runControl(() => zoomAt(W() / 2, H() / 2, 1.25)),
+    zoomOut: () => runControl(() => zoomAt(W() / 2, H() / 2, 0.8)),
+    fit: () => runControl(fit),
+  };
   return cleanup;
 }

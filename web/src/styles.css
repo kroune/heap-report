@@ -1,0 +1,92 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #e6e9ef;
+  background: #0d1117;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --c-gradle: #e8743b;
+  --c-agp: #3ba272;
+  --c-kotlin: #9b7ede;
+  --c-jdk: #4a90d9;
+  --c-other: #7d8590;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+button, input, select { font: inherit; }
+code, .numeric { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.numeric { text-align: right; white-space: nowrap; }
+.positive { color: var(--c-gradle); }
+.negative { color: var(--c-agp); }
+.muted { color: #8b94a3; }
+.class-name { overflow-wrap: anywhere; }
+.log-output { max-height: 150px; overflow: auto; white-space: pre-wrap; font-size: 11px; color: #8b94a3; }
+.react-flow { background: #0d1117; }
+.react-flow__node { font-family: inherit; }
+
+.anatomy-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.7fr) 116px 90px 96px 130px;
+  gap: 10px;
+  align-items: baseline;
+  min-width: 760px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+.anatomy-name { overflow-wrap: anywhere; line-height: 1.35; }
+.anatomy-toggle-spacer { display: inline-block; width: 22px; }
+.anatomy-head { color: #8b94a3; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #2c3542; }
+.anatomy-row.prim .anatomy-name, .anatomy-row.shared .anatomy-name, .anatomy-row.sk .anatomy-name { color: #8b94a3; }
+.anatomy-row.shared .anatomy-name { font-style: italic; }
+.presence { color: #d9a13b; font-size: 11px; margin-left: 6px; white-space: nowrap; }
+.references { color: #9b7ede; font-size: 11px; margin-left: 6px; white-space: nowrap; }
+
+.reference-graph-shell { display: flex; flex-direction: column; flex: 1; min-height: 580px; }
+.reference-graph-content { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.reference-graph-canvas { position: relative; flex: 1; min-width: 0; border: 1px solid #2c3542; border-radius: 8px; overflow: hidden; }
+.reference-graph-side { width: 310px; flex: none; padding: 12px; overflow-y: auto; }
+.heap-graph-node {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 1px solid #0d1117;
+  border-radius: 50%;
+  opacity: 0.9;
+  cursor: pointer;
+}
+.heap-graph-node.shared { outline: 2px solid #9b7ede; outline-offset: 2px; }
+.heap-graph-node.root { border: 2px solid #e8edf5; }
+.heap-graph-node.selected { outline: 2px dashed #e8edf5; outline-offset: 4px; }
+.heap-node-wedge { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.heap-node-wedge path { fill: #e8b339; stroke: #0d1117; stroke-width: 0.4; }
+.heap-node-label {
+  position: absolute;
+  left: calc(100% + 5px);
+  top: 50%;
+  transform: translateY(-50%);
+  color: #c4ccd9;
+  background: rgba(10, 13, 18, 0.85);
+  padding: 1px 3px;
+  border-radius: 2px;
+  white-space: nowrap;
+  font-size: 10px;
+  pointer-events: none;
+}
+.heap-self-loop { position: absolute; right: -8px; top: -12px; color: #9aa4b2; font-size: 14px; }
+.flow-help { position: absolute; z-index: 6; top: 8px; left: 8px; max-width: 470px; }
+
+.shapes-graph-content { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.shapes-canvas-wrap { position: relative; flex: 1; min-width: 0; background: #0a0d12; border: 1px solid #2c3542; border-radius: 8px; overflow: hidden; }
+.shapes-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.shapes-canvas.panning { cursor: grabbing; }
+.shapes-side-panel { width: 330px; flex: none; padding: 12px; overflow: hidden; }
+
+@media (max-width: 900px) {
+  .reference-graph-content, .shapes-graph-content { flex-direction: column; }
+  .reference-graph-side, .shapes-side-panel { width: 100%; max-height: 240px; }
+  .reference-graph-canvas, .shapes-canvas-wrap { min-height: 420px; }
+}
+
+@media (max-width: 700px) {
+  .desktop-only { display: none !important; }
+}
