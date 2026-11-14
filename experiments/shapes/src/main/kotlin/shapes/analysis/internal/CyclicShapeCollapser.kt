@@ -1,5 +1,6 @@
 package shapes.analysis.internal
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import shapes.analysis.ShapeDigest
 import shapes.analysis.SccMemberConnection
 import shapes.analysis.computeShapeDigest
@@ -22,7 +23,9 @@ internal class CyclicShapeCollapser(
 ) {
     fun collapse(memberIds: IntArray): CyclicShape {
         val memberCount = memberIds.size
-        val localIndexByObjectId = HashMap<Int, Int>(memberCount * 2)
+        val localIndexByObjectId = Int2IntOpenHashMap(memberCount * 2).apply {
+            defaultReturnValue(-1)
+        }
         for (memberIndex in memberIds.indices) {
             localIndexByObjectId[memberIds[memberIndex]] = memberIndex
         }
@@ -30,20 +33,19 @@ internal class CyclicShapeCollapser(
         val relaxations = Array(memberCount) { memberIndex ->
             relaxationPolicy.relaxationOf(graph.classIndex(memberIds[memberIndex]))
         }
-        val useSetSemantics = setSemantics ||
-            relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
+        val useSetSemantics = setSemantics || relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
         val externalEdges = Array(memberCount) { mutableListOf<ChildShapeReference>() }
         val internalNeighbors = Array(memberCount) { mutableListOf<Int>() }
 
         for (memberIndex in 0 until memberCount) {
             collectMemberEdges(
-                memberIds[memberIndex],
-                memberIndex,
-                relaxations[memberIndex],
-                useSetSemantics,
-                localIndexByObjectId,
-                externalEdges,
-                internalNeighbors,
+                objectId = memberIds[memberIndex],
+                memberIndex = memberIndex,
+                relaxation = relaxations[memberIndex],
+                useSetSemantics = useSetSemantics,
+                localIndexByObjectId = localIndexByObjectId,
+                externalEdges = externalEdges,
+                internalNeighbors = internalNeighbors,
             )
         }
 
@@ -113,7 +115,7 @@ internal class CyclicShapeCollapser(
         memberIndex: Int,
         relaxation: StructuralRelaxation,
         useSetSemantics: Boolean,
-        localIndexByObjectId: Map<Int, Int>,
+        localIndexByObjectId: Int2IntOpenHashMap,
         externalEdges: Array<MutableList<ChildShapeReference>>,
         internalNeighbors: Array<MutableList<Int>>,
     ) {
@@ -122,8 +124,8 @@ internal class CyclicShapeCollapser(
         if (relaxation == StructuralRelaxation.CLASS_ONLY) {
             var hiddenExternalReferences = 0
             graph.forEachReference(objectId) { targetId ->
-                val localTargetIndex = localIndexByObjectId[targetId]
-                if (localTargetIndex != null) {
+                val localTargetIndex = localIndexByObjectId.get(targetId)
+                if (localTargetIndex >= 0) {
                     internalNeighbors[memberIndex].add(localTargetIndex)
                 } else {
                     hiddenExternalReferences++
@@ -136,8 +138,8 @@ internal class CyclicShapeCollapser(
 
         val multiplicityByChildShape = LinkedHashMap<Int, Int>()
         graph.forEachReference(objectId) { targetId ->
-            val localTargetIndex = localIndexByObjectId[targetId]
-            if (localTargetIndex != null) {
+            val localTargetIndex = localIndexByObjectId.get(targetId)
+            if (localTargetIndex >= 0) {
                 internalNeighbors[memberIndex].add(localTargetIndex)
             } else {
                 val componentId = components.assignment.componentOf(targetId)

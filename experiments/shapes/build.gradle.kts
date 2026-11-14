@@ -13,6 +13,7 @@ val matPlugins = rootDir.toPath().parent.parent.resolve(".tools/mat/plugins").to
 dependencies {
     implementation("com.github.ajalt.clikt:clikt-jvm:5.1.0")
     implementation("com.dynatrace.hash4j:hash4j:0.31.0")
+    implementation("it.unimi.dsi:fastutil:8.5.16")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
     // MAT library, for the heap-dump extractor only: compile against the MAT

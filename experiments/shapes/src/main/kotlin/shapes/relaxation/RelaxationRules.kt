@@ -35,11 +35,11 @@ class ShapeRelaxationPolicy(
     classNames: List<ClassName>,
     onUnknownClass: (ClassName) -> Unit = {},
 ) {
-    private val relaxationByClass: Array<StructuralRelaxation>?
+    private val relaxationByClass: Array<StructuralRelaxation>
 
     init {
         if (rules.isEmpty()) {
-            relaxationByClass = null
+            relaxationByClass = emptyArray()
         } else {
             val unknownClasses = rules.byClass.keys.toMutableSet()
             relaxationByClass = Array(classNames.size) { classIndex ->
@@ -53,10 +53,10 @@ class ShapeRelaxationPolicy(
     }
 
     val isEmpty: Boolean
-        get() = relaxationByClass == null
+        get() = relaxationByClass.isEmpty()
 
     fun relaxationOf(classIndex: Int): StructuralRelaxation =
-        relaxationByClass?.get(classIndex) ?: StructuralRelaxation.EXACT
+        relaxationByClass.getOrElse(classIndex) { StructuralRelaxation.EXACT }
 }
 
 /** Parser for `class.name<TAB>rule<TAB>reason` relaxation files. */
