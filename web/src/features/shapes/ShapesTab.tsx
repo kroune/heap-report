@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Box, Button, Card, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { EmptyState, ErrorState, LoadingState } from '../../components/QueryState';
 import { ApiError, errorMessage, unwrap } from '../../data/http';
@@ -60,11 +61,11 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
   if (blocked) return <EmptyState>Dump “{dump.id}” is {dump.state}.{dump.error ? ` ${dump.error}` : ''}</EmptyState>;
 
   const controls = <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" mb={1}>
-    <Typography variant="caption" color="text.secondary">plain node size</Typography>
+    <Typography variant="caption" color="text.secondary">Node size</Typography>
     <ToggleButtonGroup exclusive size="small" value={metric} onChange={(_event, value) => value && setMetric(value)}>
       <ToggleButton value="shallow">Shallow</ToggleButton><ToggleButton value="count">Objects</ToggleButton>
     </ToggleButtonGroup>
-    <Typography variant="caption" color="text.secondary">layout</Typography>
+    <Typography variant="caption" color="text.secondary">Layout</Typography>
     <ToggleButtonGroup exclusive size="small" value={layoutMode} onChange={(_event, value) => value && setLayoutMode(value)}>
       <ToggleButton value="auto">Auto</ToggleButton><ToggleButton value="dag">DAG</ToggleButton><ToggleButton value="compact">Compact</ToggleButton>
     </ToggleButtonGroup>
@@ -73,14 +74,21 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
     {query.data && <Typography variant="caption" color="text.secondary">{query.data.shapes.length.toLocaleString()} shapes · exact, no sampling</Typography>}
   </Stack>;
 
-  return <Card variant="outlined" sx={{ p: 1.5, height: 'max(560px, calc(100vh - 155px))', display: 'flex', flexDirection: 'column' }}>
+  return <Card variant="outlined" className="tool-panel shapes-view"
+    sx={{ height: '100%', minHeight: 500, display: 'flex', flexDirection: 'column' }}>
     {controls}
     {status && <Alert severity={status.includes('failed') ? 'error' : 'info'} sx={{ mb: 1 }}>{status}</Alert>}
     {query.isLoading ? <LoadingState>Loading heap-wide shapes…</LoadingState>
       : query.isError ? <ErrorState error={query.error} title="Unable to load shapes" />
-        : !query.data ? <Box p={3}>
-          <Typography gutterBottom>No heap-wide shapes analysis yet. The exact structural collapse covers every non-class object, not a sample.</Typography>
-          {inline && <Typography color="text.secondary">This snapshot does not contain a shapes artifact.</Typography>}
+        : !query.data ? <Box className="empty-workspace">
+          <AccountTreeIcon />
+          <Typography variant="h6">No heap-wide analysis</Typography>
+          <Typography color="text.secondary">
+            {inline ? 'This snapshot does not contain a shapes artifact.'
+              : 'Build an exact structural collapse of every non-class object. No sampling.'}
+          </Typography>
+          {!inline && <Button variant="outlined" onClick={analyze}
+            disabled={starting || pendingJob != null || dump.state !== 'ready'}>Analyze exact heap</Button>}
         </Box> : <ShapesCanvas vm={vm} />}
   </Card>;
 }

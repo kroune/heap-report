@@ -1,9 +1,10 @@
 import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
-  IconButton, MenuItem, Paper, Select, Stack, TextField, Typography,
+  IconButton, InputAdornment, MenuItem, Paper, Select, Stack, TextField, Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import SearchIcon from '@mui/icons-material/Search';
 import { DumpStateChip } from '../../components/DumpStateChip';
 import { EmptyState } from '../../components/QueryState';
 import { formatBytes, formatSource } from '../../data/format';
@@ -115,15 +116,16 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
 
   return <>
     <Dialog open={open} onClose={closePicker} fullWidth maxWidth="lg" aria-labelledby="dump-picker-title"
-      PaperProps={{ sx: { height: { xs: '100%', sm: 'min(820px, 90vh)' }, maxHeight: { xs: '100%', sm: '90vh' } } }}>
+      PaperProps={{ className: 'dump-picker-dialog', sx: { height: { xs: '100%', sm: 'min(820px, 90vh)' }, maxHeight: { xs: '100%', sm: '90vh' } } }}>
       <DialogTitle id="dump-picker-title" sx={{ pb: 1 }}>
         <Stack direction="row" alignItems="center" spacing={1}>
-          <Box flex={1}>Select heap dump</Box>
+          <Box flex={1}>Open Heap Dump</Box>
           <IconButton onClick={closePicker} aria-label="Close dump picker" title="Close (Esc)"><CloseIcon /></IconButton>
         </Stack>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} mt={1}>
           <TextField autoFocus fullWidth size="small" value={search} onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search dumps, tags…" label="Search" />
+            placeholder="Search by name or tag…" inputProps={{ 'aria-label': 'Search dumps' }}
+            InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16 }} /></InputAdornment> }} />
           <Select size="small" value={sort} onChange={(event) => setSort(event.target.value as Sort)}
             inputProps={{ 'aria-label': 'Sort dumps' }} sx={{ minWidth: 160 }}>
             <MenuItem value="date">Sort: newest</MenuItem>

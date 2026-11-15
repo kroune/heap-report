@@ -4,6 +4,7 @@ import {
   LinearProgress, Paper, Stack, Typography,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import SyncIcon from '@mui/icons-material/Sync';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { EmptyState, ErrorState, LoadingState } from '../../components/QueryState';
 import { formatBytes, formatDuration, formatSource } from '../../data/format';
@@ -16,6 +17,7 @@ export interface JobsPanelProps {
   jobs: Job[] | undefined;
   isLoading?: boolean;
   error?: unknown;
+  onClose?: () => void;
 }
 
 const LOG_TAIL = 10;
@@ -52,7 +54,7 @@ function JobLog({ jobId, lane, text, maxHeight, scrolls }: JobLogProps) {
 
 const partDone = (part: ProgressPart) => part.done || (part.size != null && part.have >= part.size);
 
-export function JobsPanel({ jobs, isLoading = false, error }: JobsPanelProps) {
+export function JobsPanel({ jobs, isLoading = false, error, onClose }: JobsPanelProps) {
   const queryClient = useQueryClient();
   const initialTerminal = useRef<Set<number> | null>(null);
   const [dismissed, setDismissed] = useState<Set<number>>(() => new Set());
@@ -86,17 +88,24 @@ export function JobsPanel({ jobs, isLoading = false, error }: JobsPanelProps) {
     return next;
   });
 
-  return <Box component="aside" aria-label="Background jobs" sx={{
-    position: 'fixed', right: { xs: 2, sm: 2 }, left: { xs: 2, sm: 'auto' }, bottom: 2,
-    zIndex: 40, width: { xs: 'auto', sm: 'min(440px, 92vw)' }, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
-  }}>
+  return <Box component="aside" aria-label="Background jobs" className="jobs-tool-window">
+    <Box className="jobs-window-header">
+      <SyncIcon />
+      <Typography>Background tasks</Typography>
+      <Chip size="small" variant="outlined" label={visibleJobs.length} />
+      <Box flex={1} />
+      {onClose && <IconButton aria-label="Hide background tasks" title="Hide background tasks" onClick={onClose}>
+        <CloseIcon fontSize="small" />
+      </IconButton>}
+    </Box>
+    <Box className="jobs-window-content">
     {error != null && jobs !== undefined && <Alert severity="warning" sx={{ mb: 1 }}>
       Could not refresh jobs: {errorMessage(error)}
     </Alert>}
 
     {isLoading && jobs === undefined ? <Paper><LoadingState>Loading jobs…</LoadingState></Paper> :
       error && jobs === undefined ? <Paper><ErrorState error={error} title="Unable to load jobs" /></Paper> :
-        !visibleJobs.length ? <EmptyState>no jobs</EmptyState> : <Stack spacing={1}>
+        !visibleJobs.length ? <EmptyState>No background tasks in this session.</EmptyState> : <Stack spacing={1}>
           {visibleJobs.map((job) => {
             const progress = job.progress;
             const log = Array.isArray(job.log) ? job.log : [];
@@ -121,7 +130,8 @@ export function JobsPanel({ jobs, isLoading = false, error }: JobsPanelProps) {
             const activeParts = parts.filter((part) => !partDone(part) && part.have > 0).map((part) =>
               `${part.n} ${part.size ? `${Math.floor(100 * part.have / part.size)}%` : formatBytes(part.have)}`);
 
-            return <Card key={job.id} variant="outlined" sx={{ borderLeft: 3, borderLeftColor: borderColors[job.state] }}>
+            return <Card key={job.id} variant="outlined" className="job-entry"
+              sx={{ borderLeft: 2, borderLeftColor: borderColors[job.state] }}>
               <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
                 <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap">
                   <Chip size="small" variant="outlined" label={job.kind} />
@@ -169,5 +179,6 @@ export function JobsPanel({ jobs, isLoading = false, error }: JobsPanelProps) {
             </Card>;
           })}
         </Stack>}
+    </Box>
   </Box>;
 }

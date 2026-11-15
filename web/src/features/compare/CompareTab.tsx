@@ -20,6 +20,7 @@ import {
   TableRow,
   Typography,
 } from '@mui/material';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
 import { formatBytes, formatNumber, formatSignedBytes, shortClassName } from '../../data/format';
 import { errorMessage, unwrap } from '../../data/http';
 import { queryKeys } from '../../data/queries';
@@ -93,14 +94,14 @@ function ComparisonStats({ comparison }: { comparison: ComparePayload }) {
   const oldObjects = comparison.old?.totalObjects || 0;
   const newObjects = comparison.new?.totalObjects || 0;
   return <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
-    <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
+    <Paper variant="outlined" className="metric-strip" sx={{ flex: 1 }}>
       <Typography variant="h6">{formatBytes(oldShallow)} → {formatBytes(newShallow)}</Typography>
       <Typography color="text.secondary">reachable heap (both OOM ⇒ both at ceiling)</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
         Δ {formatSignedBytes(newShallow - oldShallow)} — meaningless at the ceiling, see freed → absorbed below
       </Typography>
     </Paper>
-    <Paper variant="outlined" sx={{ p: 2, flex: 1 }}>
+    <Paper variant="outlined" className="metric-strip" sx={{ flex: 1 }}>
       <Typography variant="h6">{formatNumber(oldObjects)} → {formatNumber(newObjects)}</Typography>
       <Typography color="text.secondary">live objects</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -508,7 +509,13 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
 
   if (inline) return <Alert severity="info">compare is not available in a static snapshot.</Alert>;
   if (available.length < 2) {
-    return <Alert severity="info">compare needs two local dumps with data — only {available.length} available right now.</Alert>;
+    return <Box className="empty-workspace">
+      <CompareArrowsIcon />
+      <Typography variant="h6">Two local dumps required</Typography>
+      <Typography color="text.secondary">
+        Local dumps with data: {available.length}. Download {available.length === 1 ? 'another run' : 'two runs'} to compare heap changes.
+      </Typography>
+    </Box>;
   }
 
   const comparison = compareQuery.data;
@@ -529,8 +536,9 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
     </TableRow>;
   };
 
-  return <Paper variant="outlined" sx={{ p: 2 }}>
-    <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1.5} alignItems={{ xl: 'center' }}>
+  return <Paper variant="outlined" className="compare-view">
+    <Stack direction={{ xs: 'column', xl: 'row' }} spacing={1} alignItems={{ xl: 'center' }} className="view-toolbar compare-toolbar">
+      <Typography className="toolbar-label">Baseline</Typography>
       <Select size="small" value={oldId} onChange={(event) => setOldId(event.target.value)}
         inputProps={{ 'aria-label': 'old dump' }} sx={{ minWidth: 220 }}>
         {available.map((dump) => <MenuItem key={dump.id} value={dump.id}>
@@ -538,6 +546,7 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
         </MenuItem>)}
       </Select>
       <Typography sx={{ alignSelf: 'center' }}>→</Typography>
+      <Typography className="toolbar-label">Current</Typography>
       <Select size="small" value={newId} onChange={(event) => setNewId(event.target.value)}
         inputProps={{ 'aria-label': 'new dump' }} sx={{ minWidth: 220 }}>
         {available.map((dump) => <MenuItem key={dump.id} value={dump.id}>
@@ -546,11 +555,11 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
       </Select>
       <Button variant="contained" onClick={beginCompare} disabled={!oldId || !newId}>Compare</Button>
       <Typography variant="body2" color="text.secondary">
-        freed → absorbed = zero-sum at the OOM ceiling · dominator = owned memory · &quot;rs diff&quot; on a row drills into its retained-set diff
+        OOM-ceiling aware · use “rs diff” to inspect retained-set changes
       </Typography>
     </Stack>
 
-    <Box sx={{ mt: 2 }}>
+    <Box className="compare-results">
       {validationError && <Alert severity="error">{validationError}</Alert>}
       {submitted && compareQuery.isFetching && <Box p={3} role="status">
         <LinearProgress sx={{ mb: 2 }} />

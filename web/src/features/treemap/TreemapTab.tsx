@@ -38,6 +38,7 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
 
   const option = useMemo<EChartsOption>(() => ({
     backgroundColor: 'transparent',
+    textStyle: { fontFamily: 'Inter, Segoe UI, sans-serif', color: '#dfe1e5' },
     tooltip: {
       confine: true,
       formatter: (params: unknown) => {
@@ -67,7 +68,7 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
       roam: false, nodeClick: false, breadcrumb: { show: false },
       label: { show: true, formatter: '{b}', fontSize: 13 },
       upperLabel: { show: false },
-      itemStyle: { borderColor: '#0d1117', borderWidth: 1, gapWidth: 1 },
+      itemStyle: { borderColor: '#1e1f22', borderWidth: 1, gapWidth: 2 },
       emphasis: { label: { fontWeight: 'bold' } },
       visibleMin: 1,
     }],
@@ -88,15 +89,15 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
     else setZoomPath((path) => [...path, node.name]);
   };
 
-  return <Card variant="outlined">
-    <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" p={1.5}>
+  return <Card variant="outlined" className="tool-panel treemap-view">
+    <Stack direction="row" spacing={1.5} alignItems="center" flexWrap="wrap" className="view-toolbar">
       <ToggleButtonGroup exclusive size="small" value={metric} onChange={(_event, value: TreeMetric | null) => {
         if (value) { setMetric(value); setZoomPath([]); }
       }}>
         {metrics.map((item) => <ToggleButton key={item.value} value={item.value}>{item.label}</ToggleButton>)}
       </ToggleButtonGroup>
       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 900 }}>
-        Retained view shows top-level dominators only; dominated objects roll up into their owner.
+        Top-level dominators · owned memory rolls up into each owner
       </Typography>
     </Stack>
     <Breadcrumbs sx={{ px: 2, pb: 1 }} separator="›">
@@ -104,8 +105,8 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
       {zoomPath.map((name, index) => <Link component="button" color="secondary" key={name}
         onClick={() => setZoomPath((path) => path.slice(0, index + 1))}>{name}</Link>)}
     </Breadcrumbs>
-    <EChart option={option} onClick={onChartClick} height="max(480px, calc(100vh - 320px))" />
-    <Stack direction="row" gap={1} flexWrap="wrap" p={1.5}>
+    <EChart option={option} onClick={onChartClick} height="100%" fill />
+    <Stack direction="row" gap={0.75} flexWrap="wrap" className="treemap-legend">
       {(baseTree?.children || []).map((node) => {
         const value = nodeValue(node, metric);
         return <Chip key={node.name} clickable onClick={() => setZoomPath([node.name])}

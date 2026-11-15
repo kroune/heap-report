@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Alert, AppBar, Box, Button, Chip, Container, Tab, Tabs, Toolbar, Typography,
-} from '@mui/material';
+import { Alert, Box, Button, Chip, IconButton, Stack, Tooltip, Typography } from '@mui/material';
+import AccountTreeIcon from '@mui/icons-material/AccountTree';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import GridViewIcon from '@mui/icons-material/GridView';
+import MemoryIcon from '@mui/icons-material/Memory';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import SyncIcon from '@mui/icons-material/Sync';
+import TableRowsIcon from '@mui/icons-material/TableRows';
 import { useQueryClient } from '@tanstack/react-query';
 import { AppContext, type VisualizationKind } from './AppContext';
 import { useCurrentDump } from './useCurrentDump';
@@ -23,6 +30,13 @@ import { VisualizationDialog } from '../viz/VisualizationDialog';
 interface VizRequest { kind: VisualizationKind; dumpId: string; className: string }
 type TabName = 'classes' | 'treemap' | 'shapes' | 'compare';
 
+const tools = [
+  { id: 'classes' as const, label: 'Classes', title: 'Class histogram', icon: TableRowsIcon },
+  { id: 'treemap' as const, label: 'Treemap', title: 'Heap treemap', icon: GridViewIcon },
+  { id: 'shapes' as const, label: 'Shapes', title: 'Object shapes', icon: AccountTreeIcon },
+  { id: 'compare' as const, label: 'Compare', title: 'Dump comparison', icon: CompareArrowsIcon },
+];
+
 export function App() {
   const snapshot = window.__INLINE__;
   const inline = Boolean(snapshot);
@@ -32,12 +46,16 @@ export function App() {
   const jobsQuery = useJobs(!inline);
   const queryClient = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [jobsOpen, setJobsOpen] = useState(false);
   const [tab, setTab] = useState<TabName>('classes');
   const [viz, setViz] = useState<VizRequest | null>(null);
   const terminalDownloads = useRef(new Set<number>());
 
   const dumps = useMemo(() => dumpsQuery.data || [], [dumpsQuery.data]);
   const jobs = useMemo(() => jobsQuery.data || [], [jobsQuery.data]);
+  const activeJobs = useMemo(() => jobs.filter((job) => job.state === 'queued' || job.state === 'running'), [jobs]);
+  const availableTools = inline ? tools.filter((tool) => tool.id !== 'compare') : tools;
+  const activeTool = tools.find((tool) => tool.id === tab)!;
 
   useEffect(() => {
     if (inline || !dumps.length) return;
@@ -47,6 +65,32 @@ export function App() {
       selectDump(first.id);
     }
   }, [dumps, currentDump, inline, selectDump]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'o' && !inline) {
+        event.preventDefault();
+        setPickerOpen(true);
+        return;
+      }
+      if (event.altKey && /^Digit[1-4]$/.test(event.code)) {
+        const tool = availableTools[Number(event.code.slice(-1)) - 1];
+        if (tool) {
+          event.preventDefault();
+          setTab(tool.id);
+        }
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const editing = target?.matches('input, textarea, select') || target?.isContentEditable;
+      if (event.key === '/' && !editing && tab === 'classes') {
+        event.preventDefault();
+        document.getElementById('class-filter')?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [availableTools, inline, tab]);
 
   useEffect(() => {
     let downloadsFinished = false;
@@ -75,47 +119,108 @@ export function App() {
 
   return <RepositoryProvider repository={repository}>
     <AppContext.Provider value={context}>
-      <AppBar position="static" color="transparent" elevation={0} sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Toolbar sx={{ gap: 2, flexWrap: 'wrap', py: 1 }}>
-          <Box sx={{ mr: 'auto' }}>
-            <Typography variant="h5" component="h1">Heap report</Typography>
-            <Typography variant="body2" color="text.secondary">Gradle sync-OOM benchmark · Eclipse MAT extracts</Typography>
+      <Box className="workbench">
+        <Box component="header" className="command-bar">
+          <Stack direction="row" alignItems="center" className="product-identity">
+            <Box className="product-mark"><MemoryIcon /></Box>
+            <Typography component="h1">Heap Report</Typography>
+          </Stack>
+
+          <Box className="command-breadcrumb">
+            <Typography className="project-name">Gradle sync-OOM</Typography>
+            <ChevronRightIcon className="breadcrumb-separator" />
+            <Button className="dump-switcher" onClick={() => setPickerOpen(true)} disabled={inline}
+              startIcon={<FolderOpenIcon />} endIcon={!inline ? <ExpandMoreIcon /> : undefined}
+              title="Open heap dump (Ctrl+Shift+O)">
+              <span>{currentDump || 'Select heap dump'}</span>
+            </Button>
+            {selectedDump && <DumpStateChip state={selectedDump.state} />}
           </Box>
-          <Button variant="outlined" startIcon={<FolderOpenIcon />} onClick={() => setPickerOpen(true)}
-            disabled={inline} sx={{ fontFamily: 'monospace' }}>
-            {currentDump || 'Select dump'}
-          </Button>
-          {selectedDump && <DumpStateChip state={selectedDump.state} />}
-          {inline && <Chip label="snapshot" color="success" variant="outlined" />}
-        </Toolbar>
-      </AppBar>
 
-      {!inline && dumpsQuery.isError && <Alert severity="warning" sx={{ m: 2 }}>
-        Cannot load the dump list: {dumpsQuery.error.message}. The last successful list remains available.
-      </Alert>}
+          <Stack direction="row" alignItems="center" className="command-actions">
+            {inline && <Chip label="Offline snapshot" color="success" variant="outlined" size="small" />}
+            {!inline && <Tooltip title="Refresh dump list">
+              <span>
+                <IconButton aria-label="Refresh dump list" disabled={dumpsQuery.isFetching}
+                  onClick={() => queryClient.invalidateQueries({ queryKey: queryKeys.dumps })}>
+                  <RefreshIcon className={dumpsQuery.isFetching ? 'is-spinning' : undefined} />
+                </IconButton>
+              </span>
+            </Tooltip>}
+          </Stack>
+        </Box>
 
-      <Tabs value={tab} onChange={(_event, value: TabName) => setTab(value)} sx={{ px: 3, borderBottom: 1, borderColor: 'divider' }}>
-        <Tab value="classes" label="Classes" />
-        <Tab value="treemap" label="Treemap" />
-        <Tab value="shapes" label="Shapes" />
-        {!inline && <Tab value="compare" label="Compare" />}
-      </Tabs>
+        <Box className="workbench-body">
+          <Box component="nav" className="tool-strip" aria-label="Analysis tools">
+            {availableTools.map((tool, index) => {
+              const Icon = tool.icon;
+              const selected = tab === tool.id;
+              return <Tooltip key={tool.id} title={`${tool.label}  Alt+${index + 1}`} placement="right">
+                <button type="button" className={`tool-strip-button${selected ? ' selected' : ''}`}
+                  aria-label={`${tool.label} tool`} aria-pressed={selected} onClick={() => setTab(tool.id)}>
+                  <Icon />
+                  <span>{tool.label}</span>
+                </button>
+              </Tooltip>;
+            })}
+            <Box className="tool-strip-spacer" />
+            {!inline && <Tooltip title="Background tasks" placement="right">
+              <button type="button" className={`tool-strip-button${jobsOpen ? ' selected' : ''}`}
+                aria-label="Toggle background tasks" aria-pressed={jobsOpen} onClick={() => setJobsOpen((open) => !open)}>
+                <SyncIcon className={activeJobs.length ? 'is-spinning' : undefined} />
+                {activeJobs.length > 0 && <span className="tool-badge">{activeJobs.length}</span>}
+              </button>
+            </Tooltip>}
+          </Box>
 
-      <Container maxWidth={false} sx={{ px: { xs: 1, md: 3 }, py: 2 }}>
-        {!inline && dumpsQuery.isLoading ? <LoadingState>Discovering heap dumps…</LoadingState> : <>
-          {tab === 'classes' && <ClassesTab dump={selectedDump} inline={inline} />}
-          {tab === 'treemap' && <TreemapTab dump={selectedDump} inline={inline} />}
-          {tab === 'shapes' && <ShapesTab dump={selectedDump} inline={inline} />}
-          {tab === 'compare' && !inline && <CompareTab dumps={dumps} inline={inline} />}
-        </>}
-      </Container>
+          <Box component="section" className="workspace" aria-label={`${activeTool.title} workspace`}>
+            <Box className="editor-tabbar">
+              <Box className="editor-tab selected">
+                <activeTool.icon />
+                <Typography>{activeTool.title}</Typography>
+              </Box>
+              <Box className="editor-tabbar-spacer" />
+              <Typography className="editor-context">Eclipse MAT extracts</Typography>
+            </Box>
 
-      {!inline && <>
-        <DumpPicker open={pickerOpen} onClose={() => setPickerOpen(false)} dumps={dumps}
-          currentDump={currentDump} liveDownloads={liveDownloads}
-          onSelect={(id) => { selectDump(id); setPickerOpen(false); }} />
-        <JobsPanel jobs={jobsQuery.data} isLoading={jobsQuery.isLoading} error={jobsQuery.error} />
-      </>}
+            <Box component="main" className={`editor-content editor-${tab}`}>
+              {!inline && dumpsQuery.isError && <Alert severity="warning" className="workspace-alert">
+                Cannot load the dump list: {dumpsQuery.error.message}. The last successful list remains available.
+              </Alert>}
+              {!inline && dumpsQuery.isLoading ? <LoadingState>Discovering heap dumps…</LoadingState> : <>
+                {tab === 'classes' && <ClassesTab dump={selectedDump} inline={inline} />}
+                {tab === 'treemap' && <TreemapTab dump={selectedDump} inline={inline} />}
+                {tab === 'shapes' && <ShapesTab dump={selectedDump} inline={inline} />}
+                {tab === 'compare' && !inline && <CompareTab dumps={dumps} inline={inline} />}
+              </>}
+            </Box>
+
+            {!inline && jobsOpen && <JobsPanel jobs={jobsQuery.data} isLoading={jobsQuery.isLoading}
+              error={jobsQuery.error} onClose={() => setJobsOpen(false)} />}
+          </Box>
+        </Box>
+
+        <Box component="footer" className="status-bar">
+          <Stack direction="row" alignItems="center" className="status-section">
+            <span className={`status-dot${selectedDump?.state === 'ready' ? ' ready' : ''}`} />
+            <Typography>{selectedDump ? selectedDump.state : 'No dump selected'}</Typography>
+            <span className="status-separator" />
+            <Typography>{inline ? 'Offline snapshot' : 'Local repository'}</Typography>
+          </Stack>
+          <Stack direction="row" alignItems="center" className="status-section status-right">
+            <Typography className="keyboard-hint"><kbd>/</kbd> filter <span>·</span> <kbd>Alt</kbd>+<kbd>1–4</kbd> tools</Typography>
+            {!inline && <button type="button" className="status-action" onClick={() => setJobsOpen((open) => !open)}
+              aria-expanded={jobsOpen}>
+              <SyncIcon className={activeJobs.length ? 'is-spinning' : undefined} />
+              {activeJobs.length ? `${activeJobs.length} running` : 'Background tasks'}
+            </button>}
+          </Stack>
+        </Box>
+      </Box>
+
+      {!inline && <DumpPicker open={pickerOpen} onClose={() => setPickerOpen(false)} dumps={dumps}
+        currentDump={currentDump} liveDownloads={liveDownloads}
+        onSelect={(id) => { selectDump(id); setPickerOpen(false); }} />}
       {viz && <VisualizationDialog request={viz} inline={inline} onClose={() => setViz(null)}
         onKindChange={(kind) => setViz((current) => current ? { ...current, kind } : current)} />}
     </AppContext.Provider>

@@ -2,10 +2,11 @@ import { useEffect, useRef } from 'react';
 import * as echarts from 'echarts';
 import type { EChartsOption } from 'echarts';
 
-export function EChart({ option, onClick, height = 560 }: {
+export function EChart({ option, onClick, height = 560, fill = false }: {
   option: EChartsOption;
   onClick?: (params: unknown) => void;
   height?: number | string;
+  fill?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const chart = useRef<echarts.ECharts | null>(null);
@@ -32,5 +33,6 @@ export function EChart({ option, onClick, height = 560 }: {
     chart.current?.setOption(option, { notMerge: true, lazyUpdate: false });
   }, [option]);
 
-  return <div ref={host} style={{ width: '100%', height, minHeight: 320 }} aria-label="Interactive heap treemap" />;
+  return <div ref={host} style={{ width: '100%', height, minHeight: fill ? 160 : 320, flex: fill ? 1 : undefined }}
+    aria-label="Interactive heap treemap" />;
 }

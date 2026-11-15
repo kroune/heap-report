@@ -97,7 +97,7 @@ export function VisualizationDialog({ request, inline, onClose, onKindChange }: 
   };
 
   return <Dialog open onClose={onClose} maxWidth={false} fullWidth
-    PaperProps={{ sx: { width: '96vw', maxWidth: 1560, height: '94vh', m: 0 } }}>
+    PaperProps={{ className: 'visualization-dialog', sx: { width: '96vw', maxWidth: 1560, height: '94vh', m: 0 } }}>
     <DialogTitle sx={{ pb: 0 }}>
       <Stack direction="row" alignItems="flex-start" gap={2}>
         <Box sx={{ minWidth: 0, flex: 1 }}>

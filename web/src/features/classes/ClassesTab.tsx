@@ -6,6 +6,7 @@ import {
   Button,
   Chip,
   IconButton,
+  InputAdornment,
   Paper,
   Skeleton,
   Stack,
@@ -20,6 +21,10 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import SearchIcon from '@mui/icons-material/Search';
 import { useApp } from '../../app/AppContext';
 import { categoryColors, categoryOf, formatBytes, formatNumber, shortClassName } from '../../data/format';
 import { errorMessage, unwrap } from '../../data/http';
@@ -45,7 +50,7 @@ const SORTABLE_COLUMNS = [
   { key: 'name', label: 'class', numeric: false },
   { key: 'c', label: 'objects', numeric: true },
   { key: 's', label: 'shallow', numeric: true },
-  { key: 'pi', label: 'per inst', numeric: true },
+  { key: 'pi', label: 'shallow / obj', numeric: true },
   { key: 'r', label: 'retained', numeric: true },
 ] as const;
 
@@ -214,41 +219,48 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
     if (!inline) analyzeMutation.mutate({ dumpId: dump.id, className });
   };
 
-  return <Stack spacing={1.5}>
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Stack direction={{ xs: 'column', lg: 'row' }} spacing={1.5} alignItems={{ lg: 'center' }}>
+  return <Stack className="classes-view" spacing={1}>
+    <Paper variant="outlined" className="class-toolbar">
+      <Stack direction="row" flexWrap="wrap" spacing={1} alignItems="center">
         <TextField
+          id="class-filter"
           size="small"
-          label="Filter classes"
-          placeholder="filter classes, e.g. CachePolicy or com.android…"
+          placeholder="Filter by class or package…"
           value={visibleFilterInput}
           onChange={(event) => setFilterInput(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Escape') setFilterInput(''); }}
+          inputProps={{ 'aria-label': 'Filter classes' }}
+          InputProps={{
+            startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16 }} /></InputAdornment>,
+            endAdornment: <InputAdornment position="end"><kbd className="class-filter-kbd">/</kbd></InputAdornment>,
+          }}
           sx={{ minWidth: { xs: '100%', sm: 340 } }}
         />
-        <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>
-          retained/per-instance appear once a class is analyzed (click Analyze or open a viz).{' '}
-          Lambda specializations are merged into $$Lambda* families.
-        </Typography>
-        <Stack direction="row" spacing={1} alignItems="center" sx={{ whiteSpace: 'nowrap' }}>
-          <Typography variant="body2">{loadingFirstPage ? '…' : `${formatNumber(total)} classes`}</Typography>
+        <Tooltip title="Retained and retained-per-object values appear after analysis. Lambda specializations are merged into $$Lambda* families."
+          className="filter-help">
+          <IconButton aria-label="About class analysis"><InfoOutlinedIcon sx={{ fontSize: 16 }} /></IconButton>
+        </Tooltip>
+        <Box sx={{ flexGrow: 1 }} />
+        <Box className="class-table-summary">
+          <Typography>{loadingFirstPage ? 'Loading…' : `${formatNumber(total)} classes`}</Typography>
           <IconButton
             aria-label="previous class page"
             disabled={visiblePage <= 0 || !pageData}
             onClick={() => setPage((current) => Math.max(0, current - 1))}
-          >‹</IconButton>
-          <Typography variant="body2" className="numeric">{pageData ? `${visiblePage + 1}/${pages}` : ''}</Typography>
+          ><ChevronLeftIcon fontSize="small" /></IconButton>
+          <Typography variant="body2" className="numeric">{pageData ? `${visiblePage + 1} / ${pages}` : ''}</Typography>
           <IconButton
             aria-label="next class page"
             disabled={!pageData || visiblePage >= pages - 1}
             onClick={() => setPage((current) => Math.min(pages - 1, current + 1))}
-          >›</IconButton>
-        </Stack>
+          ><ChevronRightIcon fontSize="small" /></IconButton>
+        </Box>
       </Stack>
-      {note && <Typography variant="body2" color="text.secondary" role="status" sx={{ mt: 1 }}>{note}</Typography>}
+      {note && <Typography variant="body2" color="text.secondary" role="status" sx={{ mt: 0.75 }}>{note}</Typography>}
     </Paper>
 
-    <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 'calc(100vh - 260px)', minHeight: 240 }}>
-      <Table stickyHeader size="small" aria-label="Classes" sx={{ opacity: classesQuery.isFetching && pageData ? 0.55 : 1 }}>
+    <TableContainer component={Paper} variant="outlined" className="data-grid class-grid">
+      <Table stickyHeader size="small" aria-label="Classes" sx={{ minWidth: 1050, opacity: classesQuery.isFetching && pageData ? 0.55 : 1 }}>
         <TableHead>
           <TableRow>
             {SORTABLE_COLUMNS.map((column) => <TableCell key={column.key} align={column.numeric ? 'right' : 'left'}>
@@ -258,7 +270,7 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
                 onClick={() => changeSort(column.key)}
               >{column.label}</TableSortLabel>
             </TableCell>)}
-            <TableCell align="right">per inst</TableCell>
+            <TableCell align="right">retained / obj</TableCell>
             <TableCell>analysis</TableCell>
             <TableCell align="right">actions</TableCell>
           </TableRow>
@@ -287,13 +299,13 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
                     <Box component="span" title={category} sx={{
                       width: 9, height: 9, borderRadius: '50%', flex: '0 0 auto', backgroundColor: categoryColors[category],
                     }} />
-                    <Tooltip title={pkg}><Button
+                    <Tooltip title={display}><Button
+                      className="class-link"
                       variant="text"
                       size="small"
                       onClick={() => openViz('anatomy', dump.id, display)}
-                      sx={{ p: 0, minWidth: 0, color: 'text.primary', textTransform: 'none', fontWeight: 400 }}
-                    >{name}</Button></Tooltip>
-                    {row.lams && <Button size="small" variant="text" aria-expanded={expanded} onClick={() => toggleLambdas(display)}>
+                    ><span>{name}</span><span className="class-package">{pkg}</span></Button></Tooltip>
+                    {row.lams && <Button className="lambda-toggle" size="small" variant="text" aria-expanded={expanded} onClick={() => toggleLambdas(display)}>
                       {expanded ? '▾' : '▸'} {row.lams.length}
                     </Button>}
                   </Stack>
@@ -306,7 +318,7 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
                   {row.r != null ? formatBytes(row.r / Math.max(1, row.c || 1)) : '—'}
                 </TableCell>
                 <TableCell>
-                  <Stack direction="row" spacing={0.5}>
+                  <Stack direction="row" spacing={0.5} className="class-analysis-chips">
                     {row.comp && <Chip size="small" color="primary" variant="outlined" label="rs" title="retained-set composition available" />}
                     {(row.anat || []).map((samples) => <Chip
                       key={samples} size="small" color="primary" variant="outlined"
@@ -314,9 +326,9 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
                     />)}
                   </Stack>
                 </TableCell>
-                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                <TableCell align="right" className="class-actions" sx={{ whiteSpace: 'nowrap' }}>
                   <Button size="small" onClick={() => openViz('anatomy', dump.id, display)}
-                    title="open visualizations for this class (switch kinds inside the popup)">viz ▸</Button>
+                    title="Inspect class visualizations">Inspect</Button>
                   {!inline && row.analyzable && !hasAnalysis && <Button
                     size="small"
                     variant="outlined"
