@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,
@@ -23,7 +23,9 @@ import {
 } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import FirstPageIcon from '@mui/icons-material/FirstPage';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import LastPageIcon from '@mui/icons-material/LastPage';
 import SearchIcon from '@mui/icons-material/Search';
 import { useApp } from '../../app/AppContext';
 import { categoryColors, categoryOf, formatBytes, formatNumber, shortClassName } from '../../data/format';
@@ -81,6 +83,7 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
   const [note, setNote] = useState<string | null>(null);
   const [pendingJobs, setPendingJobs] = useState<PendingAnalysis[]>([]);
   const [actualDataDump, setActualDataDump] = useState<string | null>(null);
+  const tableContainer = useRef<HTMLDivElement | null>(null);
 
   const controlsAreCurrent = controlsDump === dumpId;
   const visibleFilterInput = controlsAreCurrent ? filterInput : '';
@@ -113,6 +116,10 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
     sort: visibleSort,
     page: visiblePage,
   }), [visibleFilter, visiblePage, visibleSort]);
+
+  useEffect(() => {
+    if (tableContainer.current) tableContainer.current.scrollTop = 0;
+  }, [dumpId, visibleFilter, visiblePage, visibleSort]);
 
   const unavailable = dump?.state === 'failed' || dump?.state === 'remote';
   const classesQuery = useClasses(dumpId, classQuery, Boolean(dumpId) && !unavailable);
@@ -243,23 +250,13 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
         <Box sx={{ flexGrow: 1 }} />
         <Box className="class-table-summary">
           <Typography>{loadingFirstPage ? 'Loading…' : `${formatNumber(total)} classes`}</Typography>
-          <IconButton
-            aria-label="previous class page"
-            disabled={visiblePage <= 0 || !pageData}
-            onClick={() => setPage((current) => Math.max(0, current - 1))}
-          ><ChevronLeftIcon fontSize="small" /></IconButton>
-          <Typography variant="body2" className="numeric">{pageData ? `${visiblePage + 1} / ${pages}` : ''}</Typography>
-          <IconButton
-            aria-label="next class page"
-            disabled={!pageData || visiblePage >= pages - 1}
-            onClick={() => setPage((current) => Math.min(pages - 1, current + 1))}
-          ><ChevronRightIcon fontSize="small" /></IconButton>
         </Box>
       </Stack>
       {note && <Typography variant="body2" color="text.secondary" role="status" sx={{ mt: 0.75 }}>{note}</Typography>}
     </Paper>
 
-    <TableContainer component={Paper} variant="outlined" className="data-grid class-grid">
+    <Paper variant="outlined" className="class-table-frame">
+    <TableContainer ref={tableContainer} component={Box} className="data-grid class-grid">
       <Table stickyHeader size="small" aria-label="Classes" sx={{ minWidth: 1050, opacity: classesQuery.isFetching && pageData ? 0.55 : 1 }}>
         <TableHead>
           <TableRow>
@@ -351,6 +348,20 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
         </TableBody>
       </Table>
     </TableContainer>
+    <Box component="nav" className="class-grid-footer" aria-label="Class pages">
+      <Typography>{pageData ? `${formatNumber(rows.length)} rows on this page` : 'No rows loaded'}</Typography>
+      <Box flex={1} />
+      <IconButton aria-label="first class page" disabled={visiblePage <= 0 || !pageData}
+        onClick={() => setPage(0)}><FirstPageIcon fontSize="small" /></IconButton>
+      <IconButton aria-label="previous class page" disabled={visiblePage <= 0 || !pageData}
+        onClick={() => setPage((current) => Math.max(0, current - 1))}><ChevronLeftIcon fontSize="small" /></IconButton>
+      <Typography className="numeric">{pageData ? `Page ${visiblePage + 1} of ${pages}` : 'Page —'}</Typography>
+      <IconButton aria-label="next class page" disabled={!pageData || visiblePage >= pages - 1}
+        onClick={() => setPage((current) => Math.min(pages - 1, current + 1))}><ChevronRightIcon fontSize="small" /></IconButton>
+      <IconButton aria-label="last class page" disabled={!pageData || visiblePage >= pages - 1}
+        onClick={() => setPage(pages - 1)}><LastPageIcon fontSize="small" /></IconButton>
+    </Box>
+    </Paper>
   </Stack>;
 }
 

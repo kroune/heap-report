@@ -68,6 +68,7 @@ export function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (pickerOpen || viz) return;
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === 'o' && !inline) {
         event.preventDefault();
         setPickerOpen(true);
@@ -90,7 +91,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [availableTools, inline, tab]);
+  }, [availableTools, inline, pickerOpen, tab, viz]);
 
   useEffect(() => {
     let downloadsFinished = false;
@@ -212,7 +213,7 @@ export function App() {
             {!inline && <button type="button" className="status-action" onClick={() => setJobsOpen((open) => !open)}
               aria-expanded={jobsOpen}>
               <SyncIcon className={activeJobs.length ? 'is-spinning' : undefined} />
-              {activeJobs.length ? `${activeJobs.length} running` : 'Background tasks'}
+              {activeJobs.length ? `${activeJobs.length} active` : 'Background tasks'}
             </button>}
           </Stack>
         </Box>

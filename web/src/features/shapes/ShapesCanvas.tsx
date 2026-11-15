@@ -98,9 +98,12 @@ function ShapeSummary({ vm }: { vm: ViewModel }) {
       Plain node size = {vm.metric === 'count' ? 'collapsed object count' : 'shallow total'}; edge width = projected reference count.</Typography>
     <Typography variant="body2" color="text.secondary" mt={1}>Click a shape for details. Double-click a plain class to open flow.
       Zoom into SCC boxes for every stored member and internal connection. Sub-pixel detail becomes dots; nothing is removed.</Typography>
-    {analysis && <Typography variant="body2" color="text.secondary" mt={2}>
-      Source refs: {formatNumber(analysis.sourceEdges)} · projected refs: {formatNumber(analysis.projectedEdges)}
-    </Typography>}
+    {analysis && (Number.isFinite(analysis.sourceEdges) || Number.isFinite(analysis.projectedEdges)) &&
+      <Typography variant="body2" color="text.secondary" mt={2}>
+        {Number.isFinite(analysis.sourceEdges) && <>Source refs: {formatNumber(analysis.sourceEdges)}</>}
+        {Number.isFinite(analysis.sourceEdges) && Number.isFinite(analysis.projectedEdges) && ' · '}
+        {Number.isFinite(analysis.projectedEdges) && <>Projected refs: {formatNumber(analysis.projectedEdges)}</>}
+      </Typography>}
     {analysis?.relaxation && <Typography variant="body2" color="text.secondary" mt={1}>
       Structural relaxation: {analysis.relaxation.file || 'rules'}@{analysis.relaxation.sha1 || '?'} · population and byte totals remain exact.
     </Typography>}

@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
 import {
   Alert, Box, Button, Chip, Dialog, DialogActions, DialogContent, DialogTitle,
   IconButton, InputAdornment, MenuItem, Paper, Select, Stack, TextField, Typography,
@@ -28,6 +28,7 @@ const derivedTags = (id: string) => [...new Set(id.split('-').filter((tag) => ta
 const manualTags = (dump: DumpInfo) => Array.isArray(dump.meta?.tags) ? dump.meta.tags : [];
 const allTags = (dump: DumpInfo) => [...new Set([...derivedTags(dump.id), ...manualTags(dump)])];
 const dateOf = (dump: DumpInfo) => dump.meta?.created_at || '';
+const isSelectable = (dump: DumpInfo) => dump.state !== 'remote' && dump.state !== 'failed';
 
 function actionLabel(dump: DumpInfo, live: boolean) {
   if (dump.state === 'remote') return 'Download';
@@ -46,7 +47,19 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
   const [tagDraft, setTagDraft] = useState('');
   const [deleteCandidate, setDeleteCandidate] = useState<DumpInfo | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [focusedDump, setFocusedDump] = useState<string | null>(null);
+  const resultRefs = useRef(new Map<string, HTMLElement>());
   const mutation = useDumpMutation();
+
+  useEffect(() => {
+    if (!open) return;
+    setSearch('');
+    setActiveTags(new Set());
+    setFocusedDump(null);
+    setAddingFor(null);
+    setDeleteCandidate(null);
+    setOperationError(null);
+  }, [open]);
 
   const tagCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -71,6 +84,9 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
     });
   }, [activeTags, dumps, search, sort]);
 
+  const selectableDumps = useMemo(() => visibleDumps.filter(isSelectable), [visibleDumps]);
+  const focusedRowId = selectableDumps.some((dump) => dump.id === focusedDump) ? focusedDump : selectableDumps[0]?.id;
+
   const closePicker = () => {
     setAddingFor(null);
     setDeleteCandidate(null);
@@ -78,8 +94,17 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
   };
 
   const selectDump = (id: string) => {
+    const dump = dumps.find((candidate) => candidate.id === id);
+    if (!dump || !isSelectable(dump)) return;
     onSelect(id);
     closePicker();
+  };
+
+  const focusResult = (index: number) => {
+    const dump = selectableDumps[index];
+    if (!dump) return;
+    setFocusedDump(dump.id);
+    resultRefs.current.get(dump.id)?.focus();
   };
 
   const runOperation = async (action: DumpAction, id: string, tags?: string[]) => {
@@ -106,7 +131,16 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
   };
 
   const rowKeyDown = (event: KeyboardEvent<HTMLElement>, id: string) => {
-    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return;
+    if (event.target !== event.currentTarget) return;
+    const index = selectableDumps.findIndex((dump) => dump.id === id);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
+      event.preventDefault();
+      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? selectableDumps.length - 1
+        : Math.max(0, Math.min(selectableDumps.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+      focusResult(nextIndex);
+      return;
+    }
+    if (event.key !== 'Enter' && event.key !== ' ') return;
     event.preventDefault();
     selectDump(id);
   };
@@ -124,6 +158,10 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
         </Stack>
         <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} mt={1}>
           <TextField autoFocus fullWidth size="small" value={search} onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && selectableDumps.length > 0) { event.preventDefault(); selectDump(selectableDumps[0].id); }
+              if (event.key === 'ArrowDown' && selectableDumps.length > 0) { event.preventDefault(); focusResult(0); }
+            }}
             placeholder="Search by name or tag…" inputProps={{ 'aria-label': 'Search dumps' }}
             InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon sx={{ fontSize: 16 }} /></InputAdornment> }} />
           <Select size="small" value={sort} onChange={(event) => setSort(event.target.value as Sort)}
@@ -158,13 +196,22 @@ export function DumpPicker({ open, onClose, dumps, currentDump, liveDownloads, o
               const busy = isBusy(dump.id);
               const manual = manualTags(dump);
               const date = dateOf(dump);
-              return <Paper key={dump.id} variant="outlined" role="button" tabIndex={0}
-                aria-label={`Select dump ${dump.id}`} aria-current={dump.id === currentDump ? 'true' : undefined}
-                onClick={() => selectDump(dump.id)} onKeyDown={(event) => rowKeyDown(event, dump.id)}
+              const selectable = isSelectable(dump);
+              return <Paper key={dump.id} variant="outlined"
+                ref={(element: HTMLDivElement | null) => {
+                  if (element) resultRefs.current.set(dump.id, element);
+                  else resultRefs.current.delete(dump.id);
+                }}
+                role={selectable ? 'button' : undefined} tabIndex={selectable ? (dump.id === focusedRowId ? 0 : -1) : undefined}
+                aria-label={selectable ? `Select dump ${dump.id}` : undefined}
+                aria-current={selectable && dump.id === currentDump ? 'true' : undefined}
+                onFocus={() => { if (selectable) setFocusedDump(dump.id); }}
+                onClick={() => { if (selectable) selectDump(dump.id); }} onKeyDown={(event) => rowKeyDown(event, dump.id)}
                 sx={{
-                  p: 1.5, cursor: 'pointer', borderColor: dump.id === currentDump ? 'primary.main' : 'divider',
-                  bgcolor: dump.id === currentDump ? 'action.selected' : 'background.paper',
-                  '&:hover': { borderColor: 'primary.main' },
+                  p: 1.5, cursor: selectable ? 'pointer' : 'default',
+                  borderColor: selectable && dump.id === currentDump ? 'primary.main' : 'divider',
+                  bgcolor: selectable && dump.id === currentDump ? 'action.selected' : 'background.paper',
+                  '&:hover': selectable ? { borderColor: 'primary.main' } : undefined,
                 }}>
                 <Stack direction={{ xs: 'column', md: 'row' }} spacing={1.5} alignItems={{ md: 'center' }}>
                   <Box flex={1} minWidth={0}>

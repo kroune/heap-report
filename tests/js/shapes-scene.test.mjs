@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { adjSlice, buildScene, fitTransform, hitTest, makeSpatialGrid,
+import { adjSlice, buildScene, fitTransform, hitTest, makeSpatialGrid, resizeTransform,
   zoomTransform } from "../../web/viz/shapes/scene.js";
 
 function sceneLayout() {
@@ -76,6 +76,20 @@ test("fit and zoom stay finite for empty worlds and tiny viewports", () => {
     assert.ok(zoomed.k > 0 && Number.isFinite(zoomed.k));
     assert.ok(Number.isFinite(zoomed.x) && Number.isFinite(zoomed.y));
   }
+});
+
+test("resize refits the default view and preserves a custom world center", () => {
+  const initial = fitTransform(800, 600, 400, 300);
+  assert.deepEqual(resizeTransform(initial, 800, 600, 480, 700, 400, 300, false),
+    fitTransform(480, 700, 400, 300));
+
+  const custom = { k: 2, x: -100, y: 50 };
+  const centerX = (400 - custom.x) / custom.k;
+  const centerY = (300 - custom.y) / custom.k;
+  const resized = resizeTransform(custom, 800, 600, 480, 700, 400, 300, true);
+  assert.equal(resized.k, custom.k);
+  assert.equal((240 - resized.x) / resized.k, centerX);
+  assert.equal((350 - resized.y) / resized.k, centerY);
 });
 
 test("zoom preserves the world point under the pointer", () => {

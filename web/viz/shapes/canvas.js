@@ -3,7 +3,7 @@
    overview bitmap, CSR adjacency and rAF-throttled painting. No data is
    fetched or capped here. mountShapesCanvas returns an idempotent cleanup. */
 
-import { adjSlice, buildScene, edgeWidthBucket, fitTransform, hitTest, zoomTransform, EDGE_BUCKETS } from "./scene.js";
+import { adjSlice, buildScene, edgeWidthBucket, fitTransform, hitTest, resizeTransform, zoomTransform, EDGE_BUCKETS } from "./scene.js";
 import { defaultSide, mountRefLists, nodeDetailHead } from "./details.js";
 
 const TINY_R = 0.7;
@@ -91,9 +91,15 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     return true;
   }
 
-  let zm = fitTransform(W(), H(), layout.width, layout.height);
-  const fit = () => { zm = fitTransform(W(), H(), layout.width, layout.height); };
+  let customView = false;
+  let viewW = W(), viewH = H();
+  let zm = fitTransform(viewW, viewH, layout.width, layout.height);
+  const fit = () => {
+    customView = false;
+    zm = fitTransform(W(), H(), layout.width, layout.height);
+  };
   const zoomAt = (mx, my, dk) => {
+    customView = true;
     zm = zoomTransform(zm, mx, my, dk, W(), H(), layout.width, layout.height);
   };
 
@@ -515,9 +521,18 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
 
   function resize() {
     if (!active()) return;
+    const nextW = W(), nextH = H();
+    zm = resizeTransform(zm, viewW, viewH, nextW, nextH, layout.width, layout.height, customView);
+    const changed = nextW !== viewW || nextH !== viewH;
+    viewW = nextW;
+    viewH = nextH;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(W() * dpr));
-    canvas.height = Math.max(1, Math.round(H() * dpr));
+    canvas.width = Math.max(1, Math.round(nextW * dpr));
+    canvas.height = Math.max(1, Math.round(nextH * dpr));
+    if (changed) {
+      scheduleBitmap();
+      scheduleLabels();
+    }
     schedule();
   }
 
@@ -558,6 +573,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       const rc = canvas.getBoundingClientRect();
       zoomAt(e.clientX - rc.left, e.clientY - rc.top, e.deltaY < 0 ? 1.18 : 1 / 1.18);
     } else {
+      customView = true;
       zm.x -= e.deltaX;
       zm.y -= e.deltaY;
     }
@@ -580,6 +596,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       canvas.classList.add("panning");
     }
     if (moved) {
+      customView = true;
       zm.x = drag.zx + dx;
       zm.y = drag.zy + dy;
       schedule();

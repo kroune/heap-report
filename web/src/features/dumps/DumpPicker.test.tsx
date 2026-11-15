@@ -8,8 +8,9 @@ import type { DumpInfo } from '../../data/types';
 import { DumpPicker } from './DumpPicker';
 
 const dumps: DumpInfo[] = [
-  { id: 'run-idea-13-base', state: 'remote', size: 100, meta: { created_at: '2025-01-02' } },
+  { id: 'run-idea-13-base', state: 'ready', size: 100, meta: { created_at: '2025-01-02' } },
   { id: 'run-gradle-8', state: 'ready', size: 200, meta: { created_at: '2025-01-01', tags: ['local'] } },
+  { id: 'run-remote-9', state: 'remote', size: 300, meta: { created_at: '2025-01-03' } },
 ];
 
 function clientWrapper(client: QueryClient) {
@@ -41,6 +42,29 @@ describe('DumpPicker', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it('opens the first usable search result from the keyboard', () => {
+    const { onSelect, onClose } = renderPicker();
+    const search = screen.getByRole('textbox', { name: 'Search dumps' });
+    fireEvent.change(search, { target: { value: 'run-' } });
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    const first = screen.getByRole('button', { name: 'Select dump run-idea-13-base' });
+    expect(first).toHaveFocus();
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    const second = screen.getByRole('button', { name: 'Select dump run-gradle-8' });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: 'Enter' });
+    expect(onSelect).toHaveBeenCalledWith('run-gradle-8');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('does not treat remote rows as selectable dumps', () => {
+    const { onSelect, onClose } = renderPicker();
+    expect(screen.queryByRole('button', { name: 'Select dump run-remote-9' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('run-remote-9')[0]);
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('starts downloads and invalidates the dump query', async () => {
     const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     vi.spyOn(dumpRepository, 'startDownload').mockResolvedValue({
@@ -49,7 +73,7 @@ describe('DumpPicker', () => {
     renderPicker();
     fireEvent.click(screen.getByRole('button', { name: 'Download' }));
 
-    await waitFor(() => expect(dumpRepository.startDownload).toHaveBeenCalledWith('run-idea-13-base'));
+    await waitFor(() => expect(dumpRepository.startDownload).toHaveBeenCalledWith('run-remote-9'));
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.dumps }));
   });
 

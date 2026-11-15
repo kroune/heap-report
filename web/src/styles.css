@@ -140,7 +140,12 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .class-table-summary > p { color: var(--muted); font-size: 11px; }
 .class-table-summary .MuiIconButton-root { border: 1px solid transparent; }
 .class-table-summary .MuiIconButton-root:hover:not(.Mui-disabled) { border-color: var(--border); background: rgba(255,255,255,.035); }
-.class-grid { flex: 1; min-height: 240px; max-height: none !important; }
+.class-table-frame { display: flex; flex: 1; flex-direction: column; min-height: 240px; overflow: hidden; background: var(--bg); border-radius: 3px; }
+.class-grid { flex: 1; min-height: 0; max-height: none !important; border: 0 !important; border-radius: 0 !important; }
+.class-grid-footer { display: flex; align-items: center; gap: 2px; flex: 0 0 32px; padding: 0 5px 0 10px; color: var(--muted); background: var(--panel-header); border-top: 1px solid var(--border); }
+.class-grid-footer > p { color: inherit; font-size: 10px; white-space: nowrap; }
+.class-grid-footer .MuiIconButton-root { padding: 3px; }
+.class-grid-footer .MuiIconButton-root svg { width: 16px; height: 16px; }
 .class-grid .MuiTableCell-root:first-child { min-width: 280px; }
 .class-grid .MuiTableCell-root:last-child { min-width: 164px; }
 .class-link.MuiButton-root { display: inline-flex; justify-content: flex-start; min-width: 0; max-width: 100%; min-height: 22px; padding: 0; color: var(--text); font-size: 12px; font-weight: 400; line-height: 1.3; text-align: left; }
@@ -155,6 +160,11 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .class-analysis-chips .MuiChip-label { padding: 0 5px; }
 .filter-help { flex: none; }
 .treemap-view, .shapes-view { display: flex; flex-direction: column; height: 100%; min-height: 500px; overflow: hidden; background: var(--panel); }
+.treemap-metric-description { flex: 1; min-width: 250px; }
+.treemap-node-search { flex: 0 1 280px; width: 280px; margin-left: auto; }
+.treemap-node-search .MuiOutlinedInput-root { padding-right: 4px !important; }
+.treemap-option-name { flex: 1; min-width: 0; margin-right: 12px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.MuiAutocomplete-popper li { gap: 8px; }
 .treemap-view .MuiBreadcrumbs-root { flex: none; padding: 5px 10px !important; background: #242628; border-bottom: 1px solid var(--border-soft); }
 .treemap-legend { flex: none; padding: 6px 8px !important; background: var(--panel-header); border-top: 1px solid var(--border); }
 .treemap-legend .MuiChip-root { background: #242628; }
@@ -175,17 +185,41 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .compare-view .MuiAccordionDetails-root { padding: 8px; }
 
 /* Background tasks tool window */
-.jobs-tool-window { display: flex; flex-direction: column; flex: 0 0 min(310px, 38vh); min-height: 180px; background: var(--panel); border-top: 1px solid #4b4e55; }
+.jobs-tool-window { display: flex; flex: 0 0 auto; flex-direction: column; max-height: clamp(180px, 32vh, 320px); min-height: 0; background: var(--panel); border-top: 1px solid #4b4e55; }
+.jobs-tool-window.empty { flex-basis: 145px; min-height: 130px; }
 .jobs-window-header { display: flex; align-items: center; gap: 7px; flex: 0 0 32px; padding: 0 5px 0 10px; background: var(--panel-header); border-bottom: 1px solid var(--border); }
 .jobs-window-header > svg { width: 15px; height: 15px; color: var(--muted); }
 .jobs-window-header p { color: var(--text); font-size: 11px; font-weight: 600; }
 .jobs-window-header .MuiChip-root { height: 17px; color: var(--muted); font-size: 9px; }
-.jobs-window-content { flex: 1; min-height: 0; padding: 6px; overflow: auto; }
-.jobs-window-content > .MuiStack-root { gap: 5px; }
-.job-entry { border-radius: 3px !important; background: var(--bg) !important; }
-.job-entry .MuiCardContent-root { padding: 7px 9px !important; }
-.job-entry .MuiCardContent-root:last-child { padding-bottom: 7px !important; }
-.job-entry pre { margin-top: 5px !important; border: 1px solid var(--border-soft); border-radius: 2px !important; background: #1a1b1e !important; }
+.jobs-window-header > .MuiButton-root { min-height: 23px; font-size: 10px; }
+.jobs-window-content { flex: 0 1 auto; min-height: 0; padding: 5px; overflow: auto; }
+.jobs-list { display: flex; flex-direction: column; gap: 4px; }
+.job-row { min-width: 0; overflow: hidden; background: var(--bg); border: 1px solid var(--border-soft); border-left: 2px solid #6f7278; border-radius: 3px; }
+.job-row.running { border-left-color: var(--accent); }
+.job-row.queued { border-left-color: #8a8d93; }
+.job-row.done { border-left-color: var(--c-agp); }
+.job-row.failed { border-left-color: #e55765; }
+.job-main-line { display: flex; align-items: center; gap: 7px; min-height: 31px; padding: 3px 4px 3px 7px; }
+.job-status-icon { width: 14px !important; height: 14px !important; flex: none; color: var(--muted); }
+.job-status-icon.running { color: var(--accent); }
+.job-status-icon.done { color: var(--c-agp); }
+.job-status-icon.failed { color: #e55765; }
+.job-kind { flex: 0 0 72px; overflow: hidden; color: var(--muted); font-family: "JetBrains Mono", monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.job-title { flex: 1; min-width: 60px; overflow: hidden; color: var(--text); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.job-source { flex: none; color: var(--muted); font-size: 10px; }
+.job-state-chip { flex: none; height: 18px !important; font-size: 9px !important; }
+.job-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.job-actions .MuiButton-root { min-height: 22px; padding: 1px 5px; font-size: 10px; }
+.job-actions .MuiIconButton-root { padding: 3px; }
+.job-log-toggle .MuiButton-startIcon { margin-right: 2px; }
+.job-log-toggle svg { width: 14px; height: 14px; transition: transform 120ms ease; }
+.job-log-toggle svg.expanded { transform: rotate(180deg); }
+.job-progress-line { display: flex; align-items: center; gap: 7px; padding: 0 8px 6px 28px; }
+.job-progress-line .MuiLinearProgress-root { flex: 0 0 140px; width: 140px; }
+.job-progress-percent { flex: 0 0 30px; color: var(--muted); font-size: 10px; }
+.job-progress-label { flex: 1; min-width: 0; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.job-inline-alert { margin: 3px 6px 6px 28px; }
+.job-log { max-height: 160px; margin: 0 6px 6px 28px; padding: 7px 8px; overflow: auto; color: var(--muted); background: #1a1b1e; border: 1px solid var(--border-soft); border-radius: 2px; font-family: "JetBrains Mono", monospace; font-size: 10px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
 
 /* Dialogs use the same compact IDE language. */
 .dump-picker-dialog .MuiDialogTitle-root { background: var(--panel-header); border-bottom: 1px solid var(--border); }
@@ -235,7 +269,9 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
   .command-bar { gap: 8px; }
   .product-identity h1 { display: none; }
   .command-bar .dump-switcher { max-width: 58vw; }
-  .class-toolbar .filter-help { display: none; }
+  .class-toolbar .filter-help, .treemap-metric-description { display: none; }
+  .job-kind, .job-source { display: none; }
+  .job-progress-line .MuiLinearProgress-root { flex-basis: 110px; width: 110px; }
   .reference-graph-content, .shapes-graph-content { flex-direction: column; }
   .reference-graph-side, .shapes-side-panel { width: 100%; max-height: 240px; }
   .reference-graph-canvas, .shapes-canvas-wrap { min-height: 420px; }
@@ -253,10 +289,22 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
   .class-package, .status-separator, .status-section p:nth-of-type(2) { display: none; }
   .class-grid .MuiTableCell-root:first-child { min-width: 200px; }
   .class-toolbar .MuiTextField-root { min-width: 100% !important; }
+  .treemap-node-search { flex-basis: 100%; width: 100%; margin-left: 0; }
+  .class-grid-footer > p:first-child { display: none; }
   .class-table-summary { width: 100%; justify-content: flex-end; }
   .class-toolbar .filter-help { display: none; }
   .compare-toolbar { top: -6px; }
-  .jobs-tool-window { flex-basis: 45vh; }
+  .jobs-tool-window { flex-basis: auto; max-height: 42vh; }
+  .jobs-tool-window.empty { flex-basis: 130px; }
+  .job-main-line { display: flex; flex-wrap: wrap; gap: 4px; }
+  .job-title { min-width: 0; }
+  .job-state-chip { display: none !important; }
+  .job-actions { flex: 0 0 100%; justify-content: flex-start; padding-left: 18px; }
+  .job-actions .MuiIconButton-root:last-child { margin-left: auto; }
+  .job-progress-line { padding-left: 24px; }
+  .job-progress-line .MuiLinearProgress-root { flex-basis: 75px; width: 75px; }
+  .job-progress-label { font-size: 9px; }
+  .job-log { margin-left: 12px; }
 }
 
 @media (max-width: 700px) {

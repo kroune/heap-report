@@ -240,6 +240,13 @@ export function fitTransform(viewW, viewH, worldW, worldH) {
   return { k, x: (viewW - worldW * k) / 2, y: (viewH - worldH * k) / 2 };
 }
 
+export function resizeTransform(zm, previousW, previousH, nextW, nextH, worldW, worldH, customView) {
+  if (!customView) return fitTransform(nextW, nextH, worldW, worldH);
+  const centerX = (previousW / 2 - zm.x) / zm.k;
+  const centerY = (previousH / 2 - zm.y) / zm.k;
+  return { k: zm.k, x: nextW / 2 - centerX * zm.k, y: nextH / 2 - centerY * zm.k };
+}
+
 export function zoomTransform(zm, mx, my, dk, viewW, viewH, worldW, worldH) {
   if (!Number.isFinite(dk) || dk <= 0) return { ...zm };
   const minK = Math.max(1e-9, 0.9 * Math.min((viewW - 40) / Math.max(1, worldW),

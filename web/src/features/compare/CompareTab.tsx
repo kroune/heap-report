@@ -105,7 +105,7 @@ function ComparisonStats({ comparison }: { comparison: ComparePayload }) {
       <Typography variant="h6">{formatNumber(oldObjects)} → {formatNumber(newObjects)}</Typography>
       <Typography color="text.secondary">live objects</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-        Δ {formatSignedBytes(newObjects - oldObjects)}
+        Δ <CountDelta value={newObjects - oldObjects} />
       </Typography>
     </Paper>
   </Stack>;

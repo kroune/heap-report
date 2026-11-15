@@ -76,7 +76,7 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
 
   return <Card variant="outlined" className="tool-panel shapes-view"
     sx={{ height: '100%', minHeight: 500, display: 'flex', flexDirection: 'column' }}>
-    {controls}
+    {query.data && controls}
     {status && <Alert severity={status.includes('failed') ? 'error' : 'info'} sx={{ mb: 1 }}>{status}</Alert>}
     {query.isLoading ? <LoadingState>Loading heap-wide shapes…</LoadingState>
       : query.isError ? <ErrorState error={query.error} title="Unable to load shapes" />
