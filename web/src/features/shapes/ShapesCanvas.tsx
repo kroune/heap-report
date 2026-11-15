@@ -30,7 +30,7 @@ export function ShapesCanvas({ vm }: { vm: ViewModel }) {
 
   return <Box className="shapes-graph-content">
     <Box className="shapes-canvas-wrap">
-      <canvas ref={canvas} className="shapes-canvas" aria-label="Exact structural shapes graph" />
+      <canvas ref={canvas} className="shapes-canvas" tabIndex={0} aria-label="Exact structural shapes graph" />
       <ButtonGroup size="small" variant="contained" sx={{ position: 'absolute', top: 8, right: 8 }}>
         <Button aria-label="Zoom out" onClick={() => controls.current?.zoomOut()}>−</Button>
         <Button aria-label="Zoom in" onClick={() => controls.current?.zoomIn()}>+</Button>

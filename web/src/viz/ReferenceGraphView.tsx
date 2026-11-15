@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow, Background, Controls, MiniMap, BaseEdge, getBezierPath, MarkerType, Handle, Position,
-  type Edge, type EdgeProps, type Node, type NodeProps,
+  type Edge, type EdgeProps, type Node, type NodeProps, type ReactFlowInstance,
 } from '@xyflow/react';
 import {
   Alert, Box, Button, Chip, Collapse, IconButton, Paper, Slider, Stack, TextField,
@@ -147,8 +147,44 @@ function ReferenceGraphContent({ vm, flow, setParams, inline, analyze, analysisS
   const [pinError, setPinError] = useState('');
   const [minInput, setMinInput] = useState(vm.minR ? formatBytes(vm.minR) : '');
   const [minError, setMinError] = useState('');
+  const graphElement = useRef<HTMLDivElement | null>(null);
+  const flowInstance = useRef<ReactFlowInstance<HeapNode, Edge> | null>(null);
+  const customViewport = useRef(false);
+  const viewportSize = useRef({ width: 0, height: 0 });
+  const fitGraph = (instance: ReactFlowInstance<HeapNode, Edge>) => {
+    customViewport.current = false;
+    void instance.fitView({ padding: 0.12, duration: 0 });
+  };
 
   useEffect(() => {
+    const element = graphElement.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.round(entry.contentRect.width);
+      const height = Math.round(entry.contentRect.height);
+      if (width <= 0 || height <= 0) return;
+      const previous = viewportSize.current;
+      viewportSize.current = { width, height };
+      const instance = flowInstance.current;
+      if (!instance || (previous.width === width && previous.height === height)) return;
+      if (!customViewport.current) { fitGraph(instance); return; }
+      if (!previous.width || !previous.height) return;
+      const viewport = instance.getViewport();
+      const centerX = (previous.width / 2 - viewport.x) / viewport.zoom;
+      const centerY = (previous.height / 2 - viewport.y) / viewport.zoom;
+      void instance.setViewport({
+        x: width / 2 - centerX * viewport.zoom,
+        y: height / 2 - centerY * viewport.zoom,
+        zoom: viewport.zoom,
+      }, { duration: 0 });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    customViewport.current = false;
+    if (flowInstance.current) fitGraph(flowInstance.current);
     setSelected(null);
     setTopDraft(vm.top);
     setScale(vm.scale || 'sample');
@@ -257,9 +293,11 @@ function ReferenceGraphContent({ vm, flow, setParams, inline, analyze, analysisS
     {analysisStatus && <Alert severity="info" sx={{ mb: 1 }}>{analysisStatus}</Alert>}
 
     <Box className="reference-graph-content">
-      <Box className="reference-graph-canvas">
+      <Box className="reference-graph-canvas" ref={graphElement}>
         <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
-          fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.1} maxZoom={10}
+          onInit={(instance) => { flowInstance.current = instance; fitGraph(instance); }}
+          onMoveStart={(event) => { if (event) customViewport.current = true; }}
+          minZoom={0.1} maxZoom={10}
           onlyRenderVisibleElements nodesDraggable={false} nodesConnectable={false} elementsSelectable={false}
           panOnScroll zoomOnScroll={false} zoomActivationKeyCode={['Control', 'Shift']} zoomOnDoubleClick={false}
           onPaneClick={() => setSelected(null)}
@@ -267,7 +305,10 @@ function ReferenceGraphContent({ vm, flow, setParams, inline, analyze, analysisS
           onNodeDoubleClick={(_event, node) => openViz('anatomy', vm.dumpId, node.data.fullName)}>
           <Background color="#232b38" gap={24} />
           <MiniMap pannable zoomable nodeColor={(node) => String(node.data.color || '#7d8590')} />
-          <Controls showInteractive={false} />
+          <Controls showInteractive={false}
+            onZoomIn={() => { customViewport.current = true; }}
+            onZoomOut={() => { customViewport.current = true; }}
+            onFitView={() => { customViewport.current = false; }} />
         </ReactFlow>
         {flow && helpOpen && <Alert severity="info" onClose={() => setHelpOpen(false)} className="flow-help">
           <strong>Controls:</strong> drag or scroll to pan; Ctrl/Shift+scroll to zoom. Node size is inclusive retained;

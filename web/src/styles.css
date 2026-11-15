@@ -101,6 +101,8 @@ code, .numeric, kbd { font-family: "JetBrains Mono", ui-monospace, SFMono-Regula
 .editor-tabbar-spacer { flex: 1; }
 .editor-context { align-self: center; padding: 0 12px; color: #7f8289; font-size: 11px; }
 .editor-content { flex: 1; min-height: 0; min-width: 0; padding: 9px 10px; overflow: auto; background: var(--bg); }
+.tool-view-host { flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.tool-view-host > * { min-width: 0; }
 .editor-classes { display: flex; flex-direction: column; overflow: hidden; }
 .editor-classes > * { flex: 1; min-height: 0; }
 .workspace-alert { flex: none !important; margin-bottom: 8px; }
@@ -147,10 +149,14 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .class-grid-footer .MuiIconButton-root { padding: 3px; }
 .class-grid-footer .MuiIconButton-root svg { width: 16px; height: 16px; }
 .class-grid .MuiTableCell-root:first-child { min-width: 280px; }
-.class-grid .MuiTableCell-root:last-child { min-width: 164px; }
+.class-grid .MuiTableCell-root:first-child > .MuiStack-root { min-width: 0; }
+.class-grid .class-actions { position: sticky; right: 0; z-index: 2; min-width: 0; background: var(--bg); border-left: 1px solid var(--border-soft); }
+.class-grid .class-actions-head { z-index: 4; background: var(--panel-header); }
+.class-grid .MuiTableRow-root:hover .class-actions { background: #242628; }
 .class-link.MuiButton-root { display: inline-flex; justify-content: flex-start; min-width: 0; max-width: 100%; min-height: 22px; padding: 0; color: var(--text); font-size: 12px; font-weight: 400; line-height: 1.3; text-align: left; }
 .class-link.MuiButton-root:hover { color: #b8cdfd; background: transparent; }
-.class-link .class-package { margin-left: 8px; overflow: hidden; color: #7f8289; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.class-link > span:first-child { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.class-link .class-package { flex: 0 1 auto; min-width: 0; margin-left: 8px; overflow: hidden; color: #7f8289; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .class-link:hover .class-package { color: #9da0a8; }
 .lambda-toggle.MuiButton-root { min-width: 30px; min-height: 20px; padding: 0 4px; color: var(--muted); font-size: 10px; }
 .class-actions .MuiButton-root { min-height: 23px; padding: 1px 6px; font-size: 11px; }
@@ -166,7 +172,8 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .treemap-option-name { flex: 1; min-width: 0; margin-right: 12px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .MuiAutocomplete-popper li { gap: 8px; }
 .treemap-view .MuiBreadcrumbs-root { flex: none; padding: 5px 10px !important; background: #242628; border-bottom: 1px solid var(--border-soft); }
-.treemap-legend { flex: none; padding: 6px 8px !important; background: var(--panel-header); border-top: 1px solid var(--border); }
+.treemap-empty { display: grid; flex: 1; min-height: 160px; place-items: center; }
+.treemap-legend { flex: none; align-content: flex-start; max-height: 112px; padding: 6px 8px !important; overflow-y: auto; background: var(--panel-header); border-top: 1px solid var(--border); }
 .treemap-legend .MuiChip-root { background: #242628; }
 .shapes-view { padding: 0 !important; }
 .shapes-view > .MuiStack-root:first-child { flex: none; min-height: 40px; margin: 0 !important; padding: 5px 7px; background: var(--panel-header); border-bottom: 1px solid var(--border); }
@@ -178,6 +185,10 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .compare-view { min-height: 100%; padding: 0 !important; background: var(--bg); }
 .compare-toolbar { position: sticky; top: -9px; z-index: 4; padding: 6px 8px; }
 .compare-results { padding: 4px 10px 18px; }
+.compare-result-identity { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 8px; padding: 5px 8px; background: rgba(53,116,240,.06); border-left: 2px solid var(--accent); }
+.compare-result-identity.stale { background: rgba(199,125,85,.08); border-left-color: #c77d55; }
+.compare-result-identity p { font-size: 11px; }
+.compare-table-filter { width: 190px; }
 .compare-view .metric-strip { padding: 10px 12px !important; background: var(--panel); }
 .compare-view section { margin-top: 4px; }
 .compare-view .MuiTableContainer-root { background: var(--bg); }
@@ -261,6 +272,7 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
 .shapes-graph-content { display: flex; gap: 8px; flex: 1; min-height: 0; padding: 7px; }
 .shapes-canvas-wrap { position: relative; flex: 1; min-width: 0; background: #1a1b1e; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
 .shapes-canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+.shapes-canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .shapes-canvas.panning { cursor: grabbing; }
 .shapes-side-panel { width: 330px; flex: none; padding: 10px; overflow: hidden; }
 
@@ -273,8 +285,11 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
   .job-kind, .job-source { display: none; }
   .job-progress-line .MuiLinearProgress-root { flex-basis: 110px; width: 110px; }
   .reference-graph-content, .shapes-graph-content { flex-direction: column; }
+  .shapes-graph-content { overflow-y: auto; }
   .reference-graph-side, .shapes-side-panel { width: 100%; max-height: 240px; }
+  .shapes-side-panel { flex: 0 0 240px; overflow-y: auto; }
   .reference-graph-canvas, .shapes-canvas-wrap { min-height: 420px; }
+  .shapes-canvas-wrap { flex: 1 0 420px; }
 }
 
 @media (max-width: 600px) {
@@ -294,6 +309,7 @@ kbd { display: inline-block; min-width: 14px; padding: 0 3px; color: #aeb1b7; ba
   .class-table-summary { width: 100%; justify-content: flex-end; }
   .class-toolbar .filter-help { display: none; }
   .compare-toolbar { top: -6px; }
+  .compare-table-filter { width: 100%; }
   .jobs-tool-window { flex-basis: auto; max-height: 42vh; }
   .jobs-tool-window.empty { flex-basis: 130px; }
   .job-main-line { display: flex; flex-wrap: wrap; gap: 4px; }

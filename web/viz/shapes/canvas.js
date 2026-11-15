@@ -612,7 +612,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
   }
 
   function onKey(e) {
-    if (!active()) return;
+    if (!active() || document.activeElement !== canvas || !canvas.getClientRects().length ||
+        document.querySelector('[role="dialog"][aria-modal="true"]')) return;
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     if (e.key === "+" || e.key === "=") zoomAt(W() / 2, H() / 2, 1.25);

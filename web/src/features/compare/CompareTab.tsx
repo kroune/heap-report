@@ -18,6 +18,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
 } from '@mui/material';
 import CompareArrowsIcon from '@mui/icons-material/CompareArrows';
@@ -187,12 +188,25 @@ function BuildProxies({ comparison }: { comparison: ComparePayload }) {
 
 function DominatorDeltas({ comparison }: { comparison: ComparePayload }) {
   const dominators = comparison.dom || [];
+  const [filter, setFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const normalized = filter.trim().toLowerCase();
+  const filtered = normalized ? dominators.filter((row) => row[0].toLowerCase().includes(normalized)) : dominators;
+  const visible = showAll ? filtered : filtered.slice(0, 200);
   return <Box component="section">
     <SectionHeading title="Dominator deltas"
-      subtitle="(top-level dominators only — owned memory, closest to the cause; MAT rolls dominated objects into their owner)" />
+      subtitle="(top-level dominators only — owned memory, closest to the cause; MAT rolls dominated objects into their owner)">
+      <Stack direction="row" spacing={0.75} alignItems="center" sx={{ ml: { md: 'auto' } }}>
+        <TextField className="compare-table-filter" size="small" placeholder="Filter dominators…"
+          inputProps={{ 'aria-label': 'Filter dominator deltas' }} value={filter} onChange={(event) => setFilter(event.target.value)} />
+        {filtered.length > 200 && <Button size="small" onClick={() => setShowAll((current) => !current)}>
+          {showAll ? 'Show top 200' : `Show all ${formatNumber(filtered.length)}`}
+        </Button>}
+      </Stack>
+    </SectionHeading>
     <CompareTable label="Dominator deltas"
       headers={['class', 'old objs', 'new objs', 'old retained', 'new retained', 'Δ retained', 'Δ shallow']}>
-      {dominators.slice(0, 200).map((row) => {
+      {visible.map((row) => {
         const shallowDelta = row[4] - row[3];
         const retainedDelta = row[7];
         return <TableRow key={row[0]}>
@@ -207,7 +221,7 @@ function DominatorDeltas({ comparison }: { comparison: ComparePayload }) {
       })}
     </CompareTable>
     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-      top 200 by |Δ retained| · {formatNumber(dominators.length)} dominator classes total
+      {formatNumber(visible.length)} of {formatNumber(filtered.length)} matching dominators · {formatNumber(dominators.length)} total
     </Typography>
   </Box>;
 }
@@ -290,10 +304,17 @@ function ClassDeltas({ comparison, sortMode, onSort, onDrill, renderDrill }: {
   renderDrill: RenderDrill;
 }) {
   const rows = comparison.rows || [];
+  const [filter, setFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const sorted = sortRows(rows, sortMode);
+  const normalized = filter.trim().toLowerCase();
+  const filtered = normalized ? sorted.filter((row) => row[0].toLowerCase().includes(normalized)) : sorted;
+  const visible = showAll ? filtered : filtered.slice(0, 400);
   return <Box component="section">
     <SectionHeading title="Class deltas — raw histogram (lambda-normalized)">
       <Stack direction="row" useFlexGap flexWrap="wrap" spacing={0.5} alignItems="center" sx={{ ml: { md: 'auto' } }}>
+        <TextField className="compare-table-filter" size="small" placeholder="Filter class deltas…"
+          inputProps={{ 'aria-label': 'Filter class deltas' }} value={filter} onChange={(event) => setFilter(event.target.value)} />
         <Typography variant="body2">sort:</Typography>
         {COMPARE_SORTS.map((sort, index) => <Fragment key={sort.key}>
           {index > 0 && <Typography component="span" color="text.secondary">·</Typography>}
@@ -302,11 +323,14 @@ function ClassDeltas({ comparison, sortMode, onSort, onDrill, renderDrill }: {
             {sort.label}
           </Button>
         </Fragment>)}
+        {filtered.length > 400 && <Button size="small" onClick={() => setShowAll((current) => !current)}>
+          {showAll ? 'Show top 400' : `Show all ${formatNumber(filtered.length)}`}
+        </Button>}
       </Stack>
     </SectionHeading>
     <CompareTable label="Class deltas"
       headers={['class', 'old objs', 'new objs', 'Δ objs', 'old shallow', 'new shallow', 'Δ shallow']}>
-      {sorted.slice(0, 400).map((row) => {
+      {visible.map((row) => {
         const drillKey = `class:${row[0]}`;
         return <Fragment key={row[0]}>
           <TableRow>
@@ -325,7 +349,7 @@ function ClassDeltas({ comparison, sortMode, onSort, onDrill, renderDrill }: {
       })}
     </CompareTable>
     <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-      top 400 by current sort · {formatNumber(rows.length)} classes total · this table is zero-sum noise at the ceiling — the sections above explain it
+      {formatNumber(visible.length)} of {formatNumber(filtered.length)} matching classes · {formatNumber(rows.length)} total · this table is zero-sum noise at the ceiling — the sections above explain it
     </Typography>
   </Box>;
 }
@@ -519,6 +543,7 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
   }
 
   const comparison = compareQuery.data;
+  const resultsChanged = submitted != null && (oldId !== submitted.oldId || newId !== submitted.newId);
   const renderDrill: RenderDrill = (key, className, colSpan) => {
     if (!openDrills.has(key) || !submitted || !comparison) return null;
     return <TableRow sx={{ backgroundColor: 'action.hover' }}>
@@ -569,6 +594,10 @@ export function CompareTab({ dumps, inline }: CompareTabProps) {
         compare failed: {errorMessage(compareQuery.error)}
       </Alert>}
       {submitted && comparison && !compareQuery.isFetching && !compareQuery.isError && <Box>
+        <Box className={`compare-result-identity${resultsChanged ? ' stale' : ''}`}>
+          <Typography variant="body2">Results: <strong>{submitted.oldId} → {submitted.newId}</strong></Typography>
+          {resultsChanged && <Typography variant="body2" color="warning.main">Selectors changed — click Compare to update.</Typography>}
+        </Box>
         <ComparisonStats comparison={comparison} />
         <WaterfallSection waterfall={(comparison.waterfall || {}) as WaterfallData} />
         <BuildProxies comparison={comparison} />

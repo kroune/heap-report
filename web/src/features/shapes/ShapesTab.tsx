@@ -29,10 +29,15 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
     enabled: !blocked && Boolean(dump), retry: false,
   });
 
+  const activeShapesJobId = jobsQuery.data?.find((job) => job.kind === 'shapes' && job.dump === dump?.id &&
+    (job.state === 'queued' || job.state === 'running'))?.id ?? null;
+  const effectivePendingJob = pendingJob ?? activeShapesJobId;
+  const analysisBusy = starting || effectivePendingJob != null || jobsQuery.isLoading;
+
   useEffect(() => { setPendingJob(null); setStatus(''); }, [dump?.id]);
   useEffect(() => {
-    if (pendingJob == null) return;
-    const job = jobsQuery.data?.find((item) => item.id === pendingJob);
+    if (effectivePendingJob == null) return;
+    const job = jobsQuery.data?.find((item) => item.id === effectivePendingJob);
     if (!job) return;
     if (job.state === 'done') {
       setPendingJob(null); setStatus('Exact analysis finished.');
@@ -40,7 +45,7 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
     } else if (job.state === 'failed' || job.state === 'cancelled') {
       setPendingJob(null); setStatus(`Analysis ${job.state}: ${job.error || 'see jobs panel'}`);
     } else setStatus(`Analysis ${job.state}…`);
-  }, [jobsQuery.data, pendingJob, dump, queryClient]);
+  }, [jobsQuery.data, effectivePendingJob, dump, queryClient]);
 
   const analyze = async () => {
     if (!dump || inline) return;
@@ -48,7 +53,10 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
     try {
       const result = await repository.shapesAnalyze(dump.id);
       if (!result.ok) { setStatus(`Analysis failed: ${result.error}`); return; }
-      if (result.data.state === 'done') queryClient.invalidateQueries({ queryKey: queryKeys.shapes(dump.id) });
+      if (result.data.state === 'done') {
+        setStatus('Exact analysis finished.');
+        queryClient.invalidateQueries({ queryKey: queryKeys.shapes(dump.id) });
+      }
       else if (result.data.state === 'failed' || result.data.state === 'cancelled') setStatus(`Analysis ${result.data.state}: ${result.data.error || ''}`);
       else setPendingJob(result.data.id);
     } catch (error) { setStatus(`Analysis failed: ${errorMessage(error)}`); }
@@ -70,7 +78,7 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
       <ToggleButton value="auto">Auto</ToggleButton><ToggleButton value="dag">DAG</ToggleButton><ToggleButton value="compact">Compact</ToggleButton>
     </ToggleButtonGroup>
     {!inline && <Button size="small" variant="outlined" onClick={analyze}
-      disabled={starting || pendingJob != null || dump.state !== 'ready'}>{query.data ? 'Re-analyze exact' : 'Analyze exact'}</Button>}
+      disabled={analysisBusy || dump.state !== 'ready'}>{query.data ? 'Re-analyze exact' : 'Analyze exact'}</Button>}
     {query.data && <Typography variant="caption" color="text.secondary">{query.data.shapes.length.toLocaleString()} shapes · exact, no sampling</Typography>}
   </Stack>;
 
@@ -88,7 +96,7 @@ export function ShapesTab({ dump, inline }: { dump: DumpInfo | null; inline: boo
               : 'Build an exact structural collapse of every non-class object. No sampling.'}
           </Typography>
           {!inline && <Button variant="outlined" onClick={analyze}
-            disabled={starting || pendingJob != null || dump.state !== 'ready'}>Analyze exact heap</Button>}
+            disabled={analysisBusy || dump.state !== 'ready'}>Analyze exact heap</Button>}
         </Box> : <ShapesCanvas vm={vm} />}
   </Card>;
 }

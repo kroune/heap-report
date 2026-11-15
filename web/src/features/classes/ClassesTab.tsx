@@ -257,7 +257,12 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
 
     <Paper variant="outlined" className="class-table-frame">
     <TableContainer ref={tableContainer} component={Box} className="data-grid class-grid">
-      <Table stickyHeader size="small" aria-label="Classes" sx={{ minWidth: 1050, opacity: classesQuery.isFetching && pageData ? 0.55 : 1 }}>
+      <Table stickyHeader size="small" aria-label="Classes" sx={{ minWidth: 1050, tableLayout: 'fixed', opacity: classesQuery.isFetching && pageData ? 0.55 : 1 }}>
+        <colgroup>
+          <col style={{ width: '40%' }} /><col style={{ width: '8%' }} /><col style={{ width: '8%' }} />
+          <col style={{ width: '9%' }} /><col style={{ width: '8%' }} /><col style={{ width: '9%' }} />
+          <col style={{ width: '6%' }} /><col style={{ width: '12%' }} />
+        </colgroup>
         <TableHead>
           <TableRow>
             {SORTABLE_COLUMNS.map((column) => <TableCell key={column.key} align={column.numeric ? 'right' : 'left'}>
@@ -269,7 +274,7 @@ export function ClassesTab({ dump, inline }: ClassesTabProps) {
             </TableCell>)}
             <TableCell align="right">retained / obj</TableCell>
             <TableCell>analysis</TableCell>
-            <TableCell align="right">actions</TableCell>
+            <TableCell align="right" className="class-actions-head">actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>

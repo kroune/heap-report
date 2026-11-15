@@ -118,12 +118,11 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
   if (blocked) return <EmptyState>Dump “{dump.id}” is {dump.state}.{dump.error ? ` ${dump.error}` : ''}</EmptyState>;
   if (query.isLoading) return <LoadingState>Loading heap trees…</LoadingState>;
   if (query.isError) return <ErrorState error={query.error} title="Unable to load heap trees" />;
-  if (!visibleNodes.length) return <EmptyState>No tree data for this metric.</EmptyState>;
 
-  const activateNode = (node: TreeNode) => {
+  const activateNode = (node: TreeNode, fromRoot = false) => {
     if (!dump) return;
     if (node.leaf) openViz('anatomy', dump.id, node.disp || node.name);
-    else setZoomPath((path) => [...path, node.name]);
+    else setZoomPath((path) => [...(fromRoot ? [] : path), node.name]);
   };
 
   const onChartClick = (params: unknown) => {
@@ -177,11 +176,15 @@ export function TreemapTab({ dump, inline }: { dump: DumpInfo | null; inline: bo
       {zoomPath.map((name, index) => <Link component="button" color="secondary" key={name}
         onClick={() => setZoomPath((path) => path.slice(0, index + 1))}>{name}</Link>)}
     </Breadcrumbs>
-    <EChart option={option} onClick={onChartClick} height="100%" fill />
+    {visibleNodes.length ? <EChart option={option} onClick={onChartClick} height="100%" fill />
+      : <Box className="treemap-empty"><EmptyState>
+        No blocks at this level for {activeMetric.label.toLowerCase()}.{' '}
+        <Button size="small" onClick={() => setZoomPath([])}>Back to all</Button>
+      </EmptyState></Box>}
     <Stack direction="row" gap={0.75} flexWrap="wrap" className="treemap-legend">
       {(baseTree?.children || []).filter((node) => nodeValue(node, metric) > 0).map((node) => {
         const value = nodeValue(node, metric);
-        return <Chip key={node.name} clickable onClick={() => setZoomPath([node.name])}
+        return <Chip key={node.name} clickable onClick={() => activateNode(node, true)}
           avatar={<Box sx={{ width: 11, height: 11, ml: 1, borderRadius: 0.4, bgcolor: categoryColors[nodeCategory(node)] }} />}
           label={`${node.name} — ${formatMetric(metric, value)} (${total ? (100 * value / total).toFixed(1) : '0.0'}%)`} />;
       })}

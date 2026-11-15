@@ -48,6 +48,7 @@ export function App() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [tab, setTab] = useState<TabName>('classes');
+  const [visitedTools, setVisitedTools] = useState<ReadonlySet<TabName>>(() => new Set(['classes']));
   const [viz, setViz] = useState<VizRequest | null>(null);
   const terminalDownloads = useRef(new Set<number>());
 
@@ -56,6 +57,15 @@ export function App() {
   const activeJobs = useMemo(() => jobs.filter((job) => job.state === 'queued' || job.state === 'running'), [jobs]);
   const availableTools = inline ? tools.filter((tool) => tool.id !== 'compare') : tools;
   const activeTool = tools.find((tool) => tool.id === tab)!;
+  const activateTool = useCallback((next: TabName) => {
+    setVisitedTools((current) => {
+      if (current.has(next)) return current;
+      const visited = new Set(current);
+      visited.add(next);
+      return visited;
+    });
+    setTab(next);
+  }, []);
 
   useEffect(() => {
     if (inline || !dumps.length) return;
@@ -78,7 +88,7 @@ export function App() {
         const tool = availableTools[Number(event.code.slice(-1)) - 1];
         if (tool) {
           event.preventDefault();
-          setTab(tool.id);
+          activateTool(tool.id);
         }
         return;
       }
@@ -91,7 +101,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [availableTools, inline, pickerOpen, tab, viz]);
+  }, [activateTool, availableTools, inline, pickerOpen, tab, viz]);
 
   useEffect(() => {
     let downloadsFinished = false;
@@ -158,7 +168,7 @@ export function App() {
               const selected = tab === tool.id;
               return <Tooltip key={tool.id} title={`${tool.label}  Alt+${index + 1}`} placement="right">
                 <button type="button" className={`tool-strip-button${selected ? ' selected' : ''}`}
-                  aria-label={`${tool.label} tool`} aria-pressed={selected} onClick={() => setTab(tool.id)}>
+                  aria-label={`${tool.label} tool`} aria-pressed={selected} onClick={() => activateTool(tool.id)}>
                   <Icon />
                   <span>{tool.label}</span>
                 </button>
@@ -189,15 +199,25 @@ export function App() {
                 Cannot load the dump list: {dumpsQuery.error.message}. The last successful list remains available.
               </Alert>}
               {!inline && dumpsQuery.isLoading ? <LoadingState>Discovering heap dumps…</LoadingState> : <>
-                {tab === 'classes' && <ClassesTab dump={selectedDump} inline={inline} />}
-                {tab === 'treemap' && <TreemapTab dump={selectedDump} inline={inline} />}
-                {tab === 'shapes' && <ShapesTab dump={selectedDump} inline={inline} />}
-                {tab === 'compare' && !inline && <CompareTab dumps={dumps} inline={inline} />}
+                {visitedTools.has('classes') && <Box className="tool-view-host" sx={{ display: tab === 'classes' ? 'flex' : 'none' }}>
+                  <ClassesTab dump={selectedDump} inline={inline} />
+                </Box>}
+                {visitedTools.has('treemap') && <Box className="tool-view-host" sx={{ display: tab === 'treemap' ? 'flex' : 'none' }}>
+                  <TreemapTab dump={selectedDump} inline={inline} />
+                </Box>}
+                {visitedTools.has('shapes') && <Box className="tool-view-host" sx={{ display: tab === 'shapes' ? 'flex' : 'none' }}>
+                  <ShapesTab dump={selectedDump} inline={inline} />
+                </Box>}
+                {visitedTools.has('compare') && !inline && <Box className="tool-view-host" sx={{ display: tab === 'compare' ? 'flex' : 'none' }}>
+                  <CompareTab dumps={dumps} inline={inline} />
+                </Box>}
               </>}
             </Box>
 
-            {!inline && jobsOpen && <JobsPanel jobs={jobsQuery.data} isLoading={jobsQuery.isLoading}
-              error={jobsQuery.error} onClose={() => setJobsOpen(false)} />}
+            {!inline && <Box sx={{ display: jobsOpen ? 'contents' : 'none' }}>
+              <JobsPanel jobs={jobsQuery.data} isLoading={jobsQuery.isLoading}
+                error={jobsQuery.error} onClose={() => setJobsOpen(false)} />
+            </Box>}
           </Box>
         </Box>
 
