@@ -21,7 +21,6 @@ internal class ShapeAnalysisDebugSnapshot(
 class ShapesAnalyzer @JvmOverloads constructor(
     private val graph: ObjectGraph,
     relaxationRules: ShapeRelaxationRules = ShapeRelaxationRules(),
-    private val setSemantics: Boolean = DEFAULT_SET_SEMANTICS,
 ) {
     var progress: (String) -> Unit = {}
 
@@ -59,7 +58,6 @@ class ShapesAnalyzer @JvmOverloads constructor(
             graph,
             relaxationPolicy,
             relaxationStats,
-            setSemantics,
             progress,
         ).collapse(components)
         progress(
@@ -78,8 +76,4 @@ class ShapesAnalyzer @JvmOverloads constructor(
     }
 
     private fun elapsedMillis(startedAt: Long): Long = (System.nanoTime() - startedAt) / 1_000_000
-
-    companion object {
-        val DEFAULT_SET_SEMANTICS: Boolean = System.getenv("SHAPES_SET_SEMANTICS") == "1"
-    }
 }

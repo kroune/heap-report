@@ -13,7 +13,7 @@ internal class SccColorRefinement(
     private val classNames: Array<ClassName>,
     private val externalEdges: Array<out List<ChildShapeReference>>,
     private val internalEdges: Array<out List<Int>>,
-    private val setSemantics: Boolean,
+    private val setChildren: Boolean,
     private val edgeComparator: Comparator<ChildShapeReference>,
 ) {
     class Result(
@@ -48,7 +48,7 @@ internal class SccColorRefinement(
             colors = Array(memberCount) { memberIndex ->
                 val neighborColors = internalEdges[memberIndex]
                     .map { colorRanks[it] }
-                    .let { if (setSemantics) it.distinct() else it }
+                    .let { if (setChildren) it.distinct() else it }
                     .sorted()
                 SccMemberColor(
                     className = colors[memberIndex].className,

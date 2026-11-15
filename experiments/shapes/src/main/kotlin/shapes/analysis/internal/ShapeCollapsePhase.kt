@@ -16,7 +16,6 @@ internal class ShapeCollapsePhase(
     private val graph: ObjectGraph,
     private val relaxationPolicy: ShapeRelaxationPolicy,
     private val relaxationStats: ShapeRelaxationStats,
-    private val setSemantics: Boolean,
     private val progress: (String) -> Unit,
 ) {
     fun collapse(components: StronglyConnectedComponents): ShapeCollapseResult {
@@ -37,7 +36,6 @@ internal class ShapeCollapsePhase(
             graph,
             relaxationPolicy,
             relaxationStats,
-            setSemantics,
             shapes,
             shapeOfComponent,
             components,
@@ -93,15 +91,14 @@ internal class ShapeCollapsePhase(
                     }
 
                     sortChildShapeIds(shapes, childShapeIds, childCount)
-                    val useSetSemantics = setSemantics ||
-                        relaxation == StructuralRelaxation.SET_CHILDREN
+                    val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
                     val packedCount = packChildEdges(
                         childShapeIds,
                         childCount,
                         packedChildEdges,
-                        useSetSemantics,
+                        setChildren,
                     )
-                    if (relaxation == StructuralRelaxation.SET_CHILDREN) {
+                    if (setChildren) {
                         relaxationStats.setChildrenHiddenEdges += childCount - packedCount
                     }
                     acyclicInterner.intern(
@@ -175,7 +172,7 @@ internal class ShapeCollapsePhase(
         childIds: IntArray,
         childCount: Int,
         packedEdges: LongArray,
-        useSetSemantics: Boolean,
+        setChildren: Boolean,
     ): Int {
         var packedCount = 0
         var previousChildId = -1
@@ -188,7 +185,7 @@ internal class ShapeCollapsePhase(
                 if (previousChildId >= 0) {
                     packedEdges[packedCount++] = ChildShapeEdge(
                         previousChildId,
-                        if (useSetSemantics) 1 else multiplicity,
+                        if (setChildren) 1 else multiplicity,
                     ).packed
                 }
                 previousChildId = childId
@@ -198,7 +195,7 @@ internal class ShapeCollapsePhase(
         if (previousChildId >= 0) {
             packedEdges[packedCount++] = ChildShapeEdge(
                 previousChildId,
-                if (useSetSemantics) 1 else multiplicity,
+                if (setChildren) 1 else multiplicity,
             ).packed
         }
         return packedCount

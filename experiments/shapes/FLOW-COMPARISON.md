@@ -44,7 +44,6 @@ verified to match MAT's histogram exactly.
 | + serializer cache concealment (traced owner) | 3,168 | 268 |
 | + resolved-closure concealment (`DefaultVisitedArtifactResults`) | 1,713 | 81 |
 | + cached resolution-result concealment (2 targeted owners) | **1,656** | **78** |
-| global set semantics (every class, reference point) | 1,598 | 113 |
 
 ## Why raw exact shapes explode: physical map topology
 
@@ -191,9 +190,7 @@ shapes** (serializer concealment). Before the deliberate closure exclusion
 below, 268 was the content floor: 0 (tier,closure) signature splits, 48
 content groups per resolved role, the implementation family at 3
 (population + build-logic + app), kotlin at 3 — and every remaining variant
-was a module that genuinely resolved or depends-on something different. At
-that point the global-set-semantics reference (113) was lower because it
-also erased resolution-content cardinality.
+was a module that genuinely resolved or depends-on something different.
 
 ## Deliberate resolved-closure exclusion
 
@@ -259,11 +256,8 @@ merging the bottom-level leaf groups saves only ~150 shapes. Differences
 propagate upward through child multiplicities — but they **originate** in
 the content and artifacts above.
 
-⇒ Multiplicities stay in the shape key. Set semantics (all multiplicities
-→ 1) collapses the graph to 1,811 shapes / 139 root shapes, but at the cost
-of merging real composition differences (e.g. attribute payloads) — it is a
-diagnostic view, not the default. Array-multiplicity ablations show the same
-sensitivity pattern on the reachable scope.
+⇒ Multiplicities stay in the shape key. Array-multiplicity ablations show
+the same sensitivity pattern on the reachable scope.
 
 (Side measurement: refs leaving the retained set create per-class LEAF/NODE
 noise, but materializing them as boundary stubs adds as many distinctions as

@@ -14,7 +14,6 @@ internal class CyclicShapeCollapser(
     private val graph: ObjectGraph,
     private val relaxationPolicy: ShapeRelaxationPolicy,
     private val relaxationStats: ShapeRelaxationStats,
-    private val setSemantics: Boolean,
     private val shapes: ArrayList<CanonicalShape>,
     private val shapeOfComponent: IntArray,
     private val components: StronglyConnectedComponents,
@@ -33,7 +32,7 @@ internal class CyclicShapeCollapser(
         val relaxations = Array(memberCount) { memberIndex ->
             relaxationPolicy.relaxationOf(graph.classIndex(memberIds[memberIndex]))
         }
-        val useSetSemantics = setSemantics || relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
+        val setChildren = relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
         val externalEdges = Array(memberCount) { mutableListOf<ChildShapeReference>() }
         val internalNeighbors = Array(memberCount) { mutableListOf<Int>() }
 
@@ -42,7 +41,7 @@ internal class CyclicShapeCollapser(
                 objectId = memberIds[memberIndex],
                 memberIndex = memberIndex,
                 relaxation = relaxations[memberIndex],
-                useSetSemantics = useSetSemantics,
+                setChildren = setChildren,
                 localIndexByObjectId = localIndexByObjectId,
                 externalEdges = externalEdges,
                 internalNeighbors = internalNeighbors,
@@ -54,7 +53,7 @@ internal class CyclicShapeCollapser(
             classNames,
             externalEdges,
             internalNeighbors,
-            useSetSemantics,
+            setChildren,
             edgeComparator,
         )
         val refinementResult = refinement.refine()
@@ -67,7 +66,7 @@ internal class CyclicShapeCollapser(
         val keysBeforeQuotient = orderedMemberIndices.map { memberIndex ->
             val internalColorRanks = internalNeighbors[memberIndex]
                 .map { colorRanks[it] }
-                .let { if (useSetSemantics) it.distinct() else it }
+                .let { if (setChildren) it.distinct() else it }
                 .sorted()
             SccMemberStructuralKey(
                 classNames[memberIndex],
@@ -78,7 +77,7 @@ internal class CyclicShapeCollapser(
 
         val keptKeyByPreQuotientIndex = IntArray(keysBeforeQuotient.size) { it }
         var sourceIndexByCanonicalIndex = IntArray(keysBeforeQuotient.size) { it }
-        val canonicalKeys = if (!useSetSemantics) {
+        val canonicalKeys = if (!setChildren) {
             keysBeforeQuotient
         } else {
             applySetQuotient(
@@ -105,7 +104,7 @@ internal class CyclicShapeCollapser(
                 keptKeyByPreQuotientIndex,
                 internalNeighbors,
                 uniformExternalEdges,
-                useSetSemantics,
+                setChildren,
             )
         }
     }
@@ -114,7 +113,7 @@ internal class CyclicShapeCollapser(
         objectId: Int,
         memberIndex: Int,
         relaxation: StructuralRelaxation,
-        useSetSemantics: Boolean,
+        setChildren: Boolean,
         localIndexByObjectId: Int2IntOpenHashMap,
         externalEdges: Array<MutableList<ChildShapeReference>>,
         internalNeighbors: Array<MutableList<Int>>,
@@ -148,8 +147,8 @@ internal class CyclicShapeCollapser(
             }
         }
         externalEdges[memberIndex] = multiplicityByChildShape.map { (childShapeId, multiplicity) ->
-            if (useSetSemantics) relaxationStats.setChildrenHiddenEdges += multiplicity - 1
-            ChildShapeReference(childShapeId, if (useSetSemantics) 1 else multiplicity)
+            if (setChildren) relaxationStats.setChildrenHiddenEdges += multiplicity - 1
+            ChildShapeReference(childShapeId, if (setChildren) 1 else multiplicity)
         }.sortedWith(edgeComparator).toMutableList()
     }
 
@@ -196,7 +195,7 @@ internal class CyclicShapeCollapser(
         keptKeyByPreQuotientIndex: IntArray,
         internalNeighbors: Array<MutableList<Int>>,
         uniformExternalEdges: Boolean,
-        useSetSemantics: Boolean,
+        setChildren: Boolean,
     ): CyclicShape {
         val preQuotientIndexByOriginalIndex = IntArray(originalMemberCount)
         for (preQuotientIndex in orderedMemberIndices.indices) {
@@ -209,7 +208,7 @@ internal class CyclicShapeCollapser(
             val targets = internalNeighbors[sourceIndex]
                 .map { keptKeyByPreQuotientIndex[preQuotientIndexByOriginalIndex[it]] }
                 .sorted()
-            val internalConnections = foldConnections(targets, useSetSemantics)
+            val internalConnections = foldConnections(targets, setChildren)
             CanonicalSccMember(
                 key.className,
                 key.internalColorRanks.size,
@@ -239,13 +238,13 @@ internal class CyclicShapeCollapser(
             packedChildEdges = packedChildEdges,
             totalExternalEdges = totalExternalEdges,
             members = memberPayload,
-            quotient = useSetSemantics,
+            quotient = setChildren,
         ).also(shapes::add)
     }
 
     private fun foldConnections(
         sortedTargets: List<Int>,
-        useSetSemantics: Boolean,
+        setChildren: Boolean,
     ): List<SccMemberConnection> {
         val connections = ArrayList<SccMemberConnection>(sortedTargets.size)
         var previousTarget = -1
@@ -257,7 +256,7 @@ internal class CyclicShapeCollapser(
                 if (previousTarget >= 0) {
                     connections += SccMemberConnection(
                         previousTarget,
-                        if (useSetSemantics) 1 else multiplicity,
+                        if (setChildren) 1 else multiplicity,
                     )
                 }
                 previousTarget = target
@@ -267,7 +266,7 @@ internal class CyclicShapeCollapser(
         if (previousTarget >= 0) {
             connections += SccMemberConnection(
                 previousTarget,
-                if (useSetSemantics) 1 else multiplicity,
+                if (setChildren) 1 else multiplicity,
             )
         }
         return connections
