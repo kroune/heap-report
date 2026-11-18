@@ -156,7 +156,7 @@ internal class CyclicShapeCollapser(
 
     private fun applySetQuotient(
         keys: List<SccMemberStructuralKey>,
-        orderedMemberIndices: List<Int>,
+        orderedMemberIndices: IntArray,
         internalNeighbors: Array<MutableList<Int>>,
         keptKeyByPreQuotientIndex: IntArray,
     ): QuotientResult {
@@ -187,7 +187,7 @@ internal class CyclicShapeCollapser(
     private fun createCanonicalShape(
         originalMemberCount: Int,
         canonicalKeys: List<SccMemberStructuralKey>,
-        orderedMemberIndices: List<Int>,
+        orderedMemberIndices: IntArray,
         sourceIndexByCanonicalIndex: IntArray,
         keptKeyByPreQuotientIndex: IntArray,
         internalNeighbors: Array<MutableList<Int>>,

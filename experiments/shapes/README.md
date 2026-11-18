@@ -209,10 +209,12 @@ Perf/memory, JFR-driven (in order of what profiles showed):
 4. Per-lookup cons-key allocations + `LinkedHashMap` kid grouping — top of
    cons → open-addressed cons-map over packed `(classIdx, kids)` keys,
    scratch-buffer kid building, zero allocation on hits (Path: 2.7 → 0.6 s).
-5. Per-member refinement structures cost roughly 200 B/member on very large
-   SCCs. The former alternate mega-SCC path was removed intentionally; the
-   current implementation always performs WL refinement, so this remains an
-   explicit memory limitation rather than a hidden behavioral fallback.
+5. WL refinement uses flat primitive scratch arrays reused across rounds,
+   primitive member ordering, and a uniform-regular fast path. Its working
+   storage is about 12 B/member + 4 B/internal edge (8 B/member when neighbor
+   signatures are unnecessary), instead of roughly 200 B/member in the former
+   object-key implementation. The former alternate mega-SCC path remains
+   removed intentionally; there is no hidden behavioral fallback.
 6. Footprint pass over the whole pipeline (driven by the 256.9M-object
    FlatSourceDirectoriesImpl scope — 98.9% of the heap, 105M components):
    CharArray class idx (2 B), packed shallow (4 B + overflow side-table),
