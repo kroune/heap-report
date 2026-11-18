@@ -18,8 +18,17 @@ interface HeapObjectSource : AutoCloseable {
     fun namedReferences(objectId: Int): List<NamedReference>
     fun isClassObject(objectId: Int): Boolean
 
+    /** MAT removes GC-unreachable objects while indexing; direct sources apply the same default. */
+    fun isObjectLive(objectId: Int): Boolean = true
+
     /** Exact name matches, or the complete subtype hierarchy when requested. */
     fun classesNamed(name: ClassName, includeSubclasses: Boolean = false): List<HeapClassDescription>
+
+    /** Physical candidates for a late authoritative retained-set query. */
+    fun classesNamedIncludingUnreachable(
+        name: ClassName,
+        includeSubclasses: Boolean = false,
+    ): List<HeapClassDescription> = classesNamed(name, includeSubclasses)
 
     /** Source ids in the input's retained-set semantics. */
     fun retainedSet(rootIds: IntArray): IntArray

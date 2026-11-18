@@ -33,7 +33,9 @@ internal class HeapScopeSelector(
         val selected = BitSet(heap.objectCount)
         val queue = IntStack()
         for (rootId in rootIds) {
-            if (!selected.get(rootId) && !classObjectExclusion.isExcluded(rootId)) {
+            if (heap.isObjectLive(rootId) && !selected.get(rootId) &&
+                !classObjectExclusion.isExcluded(rootId)
+            ) {
                 selected.set(rootId)
                 queue.push(rootId)
             }
@@ -45,7 +47,7 @@ internal class HeapScopeSelector(
         while (queueHead < queue.size) {
             val sourceId = queue[queueHead++]
             for (targetId in referenceFilter.references(sourceId)) {
-                if (targetId >= 0 && !selected.get(targetId) &&
+                if (targetId >= 0 && heap.isObjectLive(targetId) && !selected.get(targetId) &&
                     !classObjectExclusion.isExcluded(targetId)
                 ) {
                     selected.set(targetId)
@@ -73,9 +75,10 @@ internal class HeapScopeSelector(
                 "${retainedSelection.cardinality()} non-class objects"
         )
 
+        val retainedRootIds = rootIds.filter { retainedSelection.get(it) }.toIntArray()
         return restrictRetainedSelectionToFilteredReferences(
             retainedSelection,
-            rootIds,
+            retainedRootIds,
             retainedIds.size,
         )
     }
@@ -134,7 +137,7 @@ internal class HeapScopeSelector(
     private fun selectWholeHeap(rootIds: IntArray): HeapObjectSelection {
         val selected = BitSet(heap.objectCount)
         for (objectId in 0 until heap.objectCount) {
-            if (!classObjectExclusion.isExcluded(objectId)) {
+            if (heap.isObjectLive(objectId) && !classObjectExclusion.isExcluded(objectId)) {
                 selected.set(objectId)
             }
         }
@@ -178,7 +181,11 @@ internal object ClassInstanceRootsResolver {
     ): IntArray {
         if (scope !is HeapExtractionScope.ClassScope) return IntArray(0)
 
-        val matchingClasses = heap.classesNamed(scope.className)
+        val matchingClasses = if (scope is HeapExtractionScope.RetainedByClass) {
+            heap.classesNamedIncludingUnreachable(scope.className)
+        } else {
+            heap.classesNamed(scope.className)
+        }
         require(matchingClasses.isNotEmpty()) { "class not found: ${scope.className}" }
         val roots = matchingClasses.flatMap { it.instanceIds.asIterable() }.distinct().toIntArray()
         progress(

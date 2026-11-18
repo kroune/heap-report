@@ -16,8 +16,8 @@ dependencies {
     implementation("it.unimi.dsi:fastutil:8.5.16")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
-    // MAT library, for the heap-dump extractor only: compile against the MAT
-    // jars, run with the whole plugins dir on the classpath (equinox deps of MAT).
+    // MAT is used only for retained-set queries and diagnostics. Normal HPROF
+    // extraction is direct; retained queries need the whole MAT runtime.
     compileOnly(files(matPlugins.listFiles { f -> f.extension == "jar" && f.name.startsWith("org.eclipse.mat") }))
     runtimeOnly(fileTree(matPlugins) { include("*.jar") })
 }

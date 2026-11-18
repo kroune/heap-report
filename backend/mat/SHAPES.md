@@ -49,7 +49,9 @@ survive, including an alias also referenced through a removed technical field.
 TreeNode, custom map classes and other collections are not guessed/normalized.
 No object, count, shallow bytes or root is dropped; the projection changes
 **reference semantics**, not the population. Ordering is intentionally absent
-in this projection.
+in this projection. Named-field projection uses HPROF addresses internally
+and resolves dense MAT ids only for targets selected by projection, rather
+than eagerly reverse-mapping every named reference.
 
 An optional `SMD1` length-prefixed JSON trailer in the same SHP1 file records
 extraction mode, pipeline version, object/root/shallow totals, original

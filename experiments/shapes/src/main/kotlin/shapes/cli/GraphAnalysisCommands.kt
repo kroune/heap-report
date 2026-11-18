@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
 import com.github.ajalt.clikt.parameters.groups.required
 import com.github.ajalt.clikt.parameters.options.convert
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -15,6 +16,7 @@ import shapes.extraction.HeapExtractionOptions
 import shapes.extraction.HeapExtractionScope
 import shapes.extraction.HeapObjectGraphExtractor
 import shapes.graph.ClassName
+import shapes.input.hprof.HprofHeapObjectSource
 import shapes.mat.MatHeapObjectSource
 import shapes.relaxation.FieldConcealmentRules
 import shapes.relaxation.ShapeRelaxationRules
@@ -29,9 +31,9 @@ private fun rootClass(value: String): AnalysisRootChoice =
 
 internal class AnalyzeMatHeapCommand : AnalysisCommand(
     "mat-analyze",
-    "Extract and analyze a MAT heap snapshot in one JVM",
+    "Extract HPROF directly and analyze in one JVM; MAT is used only for retained sets",
 ) {
-    private val hprof by option("--hprof", help = "Heap dump with pre-built MAT indexes")
+    private val hprof by option("--hprof", help = "Heap dump to analyze")
         .path(mustExist = true, canBeDir = false)
         .required()
     private val rootChoice: AnalysisRootChoice by mutuallyExclusiveOptions(
@@ -54,6 +56,10 @@ internal class AnalyzeMatHeapCommand : AnalysisCommand(
         "--raw-references",
         help = "Keep soft/weak/phantom-reference edges",
     ).flag()
+    private val heapSource by option(
+        "--heap-source",
+        help = "Benchmark control: direct HPROF (default) or the legacy MAT adapter",
+    ).choice("hprof", "mat").default("hprof")
 
     override fun run() {
         val extractionScope = extractionScope()
@@ -66,7 +72,11 @@ internal class AnalyzeMatHeapCommand : AnalysisCommand(
                 ExtractionBoundary.DropReferences
             },
         )
-        val result = MatHeapObjectSource.open(hprof).use { heap ->
+        val source = when (heapSource) {
+            "hprof" -> HprofHeapObjectSource.open(hprof, ::println)
+            else -> MatHeapObjectSource.open(hprof)
+        }
+        val result = source.use { heap ->
             HeapObjectGraphExtractor(
                 heap,
                 options,

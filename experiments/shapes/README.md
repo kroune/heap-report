@@ -1,8 +1,8 @@
 # shapes — exact structural collapse
 
 Implementation of `backend/mat/SHAPES.md`, in Kotlin. The analyzer operates on
-a compact in-memory graph; the supported MAT extractor produces that graph
-from real heap dumps. The historical `experiments/shapes` path is retained
+a compact in-memory graph; the direct HPROF extractor produces that graph
+from real heap dumps. MAT is deferred to retained-set queries and diagnostics. The historical `experiments/shapes` path is retained
 while the implementation is being hardened, to keep existing build and
 diagnostic workflows compatible.
 Spec section references below are to SHAPES.md.
@@ -43,8 +43,8 @@ Spec section references below are to SHAPES.md.
 
 ## Deferred / current limitations
 
-- Per-object retained-size annotation (`retainedTotal` column). MAT extraction
-  itself is implemented and used by the backend.
+- Per-object retained-size annotation (`retainedTotal` column). Direct HPROF
+  extraction is used by the backend; MAT retained-set queries remain available.
 - All parallelism (frontier-split BFS, level-synchronous striped cons) —
   v1 here is single-threaded; the spec presents these as scale
   optimizations, not semantics. Sequential Tarjan stands as spec'd.
@@ -60,6 +60,8 @@ Spec section references below are to SHAPES.md.
   hides CSR references, compact unsigned-long values and primitive stacks.
 - `input/heap/` — `HeapObjectSource`, the random-access heap contract used
   by extraction; it has no MAT or analysis dependency.
+- `input/hprof/` — sequential HPROF scanner, compact persistent object index,
+  buffered field/array reader and `HeapObjectSource` implementation.
 - `extraction/` — typed scope selection, reference filtering, structural
   projection, dense-id remapping, boundary stubs and graph materialization.
 - `analysis/` — `ShapesAnalyzer`, typed `AnalysisScope` and the public result.
@@ -68,7 +70,8 @@ Spec section references below are to SHAPES.md.
 - `relaxation/` — typed structural/field rules, TSV parser and exact counters.
 - `artifact/` — SHP1/SCC1 writer.
 - `verification/` — invariant and full edge-accounting verifiers.
-- `mat/` — MAT snapshot loading, `HeapObjectSource` adapter and MAT queries.
+- `mat/` — late MAT retained-set loading, the benchmark-control adapter and
+  legacy MAT diagnostics.
 - `cli/` — Clikt commands, reports and the shared analysis workflow.
 - `synthetic/` — synthetic graphs used by demos and tests.
 
@@ -87,23 +90,39 @@ to 6 shapes, roots histogram is a single row `(synth.Module, 3000)` —
 exactly the spec's target. 300k modules (1.8M objects) analyze in ~2 s
 single-threaded.
 
-## Real heap dumps (MAT extractor)
+## Real heap dumps (direct HPROF extractor)
 
-`MatHeapObjectSource` adapts a MAT snapshot to the source-independent
-`HeapObjectSource` contract. `HeapObjectGraphExtractor` selects a
-retained/reachable/whole-heap scope, then builds the dense in-memory
-`ObjectGraph` in one materialization pass. `mat-analyze` runs collapse
-immediately in the same JVM, without a serialized intermediate or reparsing step.
+`HprofHeapObjectSource` implements the source-independent `HeapObjectSource`
+contract directly over HPROF class, instance and array records.
+`HeapObjectGraphExtractor` selects a retained/reachable/whole-heap scope, then
+builds the dense in-memory `ObjectGraph` in one materialization pass.
+`mat-analyze` retains its historical command name for backend compatibility,
+but uses direct HPROF by default and runs collapse immediately in the same JVM.
+
+The first open makes two sequential HPROF scans and writes a compact cache at
+`<dump>.shapes-hprof-v3/`: object address, record offset and class index
+(20 bytes/object, plus 4 bytes/object only when addresses need sorting), GC
+roots and a one-bit/object liveness bitmap. A direct GC-root walk applies MAT's
+default unreachable-object removal, including the class pseudo-references used
+by MAT's marker, class statics and class-loader links. Later runs memory-map the index and read the bitmap; object fields and
+references remain in the HPROF. The cache is keyed by HPROF size and
+modification time and is rebuilt when invalid. No MAT snapshot is opened for
+whole-heap or reachable analysis.
+Retained scope opens MAT only after direct HPROF root resolution, converts the
+retained set by object address, and closes MAT before graph materialization.
+
+For the legacy/new and MAT/HPROF JFR controls, `--heap-source mat` selects the
+unchanged `MatHeapObjectSource`; `--heap-source hprof` is the default.
 
 Scope selection is necessarily separate: retained membership requires MAT's
 retained-set computation (and filtered-scope restriction), while reachable
 membership requires BFS. Only after membership is known can dense target ids
 be assigned during the single materialization pass.
 
-Opening bypasses the OSGi-dependent `SnapshotFactory` (deserializes
-`daemon.index` + private `SnapshotImpl` ctor via reflection; everything used
-is index-backed except named field reads, which use a standalone
-`HprofHeapObjectReader` subclass that skips OSGi preferences).
+The late MAT boundary and diagnostic commands bypass the OSGi-dependent
+`SnapshotFactory` (deserializing `daemon.index` + the private `SnapshotImpl`
+constructor via reflection). Retained-set queries are index-backed and do not
+install MAT's HPROF object-field reader.
 `java.lang.ref.Reference.discovered` edges are filtered during traversal and
 materialization — VM bookkeeping, not program structure (SHAPES.md
 "Definitions"). Diagnostic commands:
@@ -150,8 +169,9 @@ Findings on `run-jfr-38` (15.8 GB hprof, 259.8M objects, Gradle daemon,
 1. **MAT's outbound index includes the pseudo-reference to the object's
    `java.lang.Class`.** Following it pulls statics and (via the class
    loader) most of the heap: 8M Strings reached 38M objects instead of
-   15.8M. The extractor filters `isClass(w)` — SHAPES.md should pin this
-   down ("outbound references (MAT index)" is ambiguous).
+   15.8M. The MAT adapter filters `isClass(w)`; direct HPROF reads real fields
+   and never manufactures this edge. SHAPES.md should pin this down
+   ("outbound references (MAT index)" is ambiguous).
 2. **Reachable scope explodes for service-graph classes** (spec open
    point 1): from ONE `EventDirectoryStream` (retained 63 MB) reachable is
    65M+ objects; `DefaultDirectoryVar` (885k instances) → 70M+. Retained
@@ -239,6 +259,28 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    `ShapeEdgeAccountingVerifier` (CLI `--verify-edges`) re-derives every ref
    against the artifact: 600,058,408 refs, exact.
 
+## MAT/HPROF source benchmark
+
+`benchmark-hprof-sources.sh` runs the same class scope sequentially in three
+JFR-recorded JVMs: a preserved legacy fat jar, the new jar with
+`--heap-source mat`, and the new jar with direct HPROF. It also writes SHP1
+artifacts and extraction statistics for equivalence checks:
+
+```bash
+./benchmark-hprof-sources.sh \
+  /tmp/shapes-legacy-mat.jar ../../dumps/run-jfr-38/daemon.hprof \
+  /tmp/shapes-source-benchmark java.lang.String reachable
+```
+
+The legacy→new-MAT delta measures incidental rewrite/JAR changes; new-MAT→new-HPROF
+measures the source change on the same extractor and analyzer. Cold HPROF index
+creation is reported separately from warm-index source comparisons.
+
+See [HPROF-MAT-BENCHMARK.md](HPROF-MAT-BENCHMARK.md) for the validated results.
+Headline: shared rewrite changes are 6.2% faster, but direct HPROF is 63.7%
+slower than new-MAT on the random String-reachable workload; the source-change
+hypothesis is therefore not supported for that scope.
+
 ## Flow comparison diagnostics
 
 See [FLOW-COMPARISON.md](FLOW-COMPARISON.md) — conclusions of the
@@ -254,12 +296,12 @@ or every collection implementation.
 
 - `Edge`/`Shape` graphs are interned and acyclic (DAG + SCC payloads), so
   structural equality via interned identity is exact and O(1).
-- MAT extraction remaps ids to dense (SHAPES.md's "no id remapping" is an
+- Extraction remaps ids to dense (SHAPES.md's "no id remapping" is an
   in-MAT-JVM trade-off; in a separate process, memory ∝ |R| wins).
-- MAT extraction BFS is single-threaded and I/O-bound on random outbound
-  index reads (~80–300k objects/s depending on page cache); materialization
-  runs once in sorted source-id order. Parallelism + bulk index reads are the
-  spec's frontier-split BFS upgrade.
+- Direct HPROF BFS is single-threaded and uses buffered random record reads;
+  materialization runs once in source-record order. Parallelism and bulk
+  sequential reads remain possible scale upgrades. The historical MAT BFS was
+  I/O-bound on random outbound-index reads (~80–300k objects/s).
 - Analyzer footprint after the footprint pass: ~26 B per R object live
   (breakdown above); the 15.8M-object String scope analyzes with -Xmx544m
   (was -Xmx768m). Next step when it matters: off-heap graph storage (spec

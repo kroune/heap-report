@@ -1,5 +1,7 @@
 package shapes.extraction
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import shapes.graph.ClassName
 import shapes.input.heap.HeapObjectSource
 import shapes.input.heap.NamedReference
@@ -12,8 +14,8 @@ import shapes.relaxation.FieldConcealmentRules
  */
 internal class HeapReferenceFilter private constructor(
     private val heap: HeapObjectSource,
-    private val referenceClassIds: Set<Int>,
-    private val concealedFieldsByClassId: Map<Int, Set<String>>,
+    private val referenceClassIds: IntOpenHashSet,
+    private val concealedFieldsByClassId: Int2ObjectOpenHashMap<Set<String>>,
     filterReferenceMechanics: Boolean,
 ) {
     private val filteredReferenceFields = if (filterReferenceMechanics) {
@@ -30,8 +32,9 @@ internal class HeapReferenceFilter private constructor(
     fun references(objectId: Int): IntArray = read(objectId).targetIds
 
     fun read(objectId: Int): FilteredReferences {
-        val concealedFields = concealedFieldsByClassId[heap.classId(objectId)].orEmpty()
-        val isReferenceObject = heap.classId(objectId) in referenceClassIds
+        val classId = heap.classId(objectId)
+        val concealedFields = concealedFieldsByClassId.get(classId).orEmpty()
+        val isReferenceObject = classId in referenceClassIds
         if (concealedFields.isEmpty() && !isReferenceObject) {
             return FilteredReferences(heap.indexedReferences(objectId), 0)
         }
@@ -51,8 +54,9 @@ internal class HeapReferenceFilter private constructor(
 
     /** Named view used by structural projection, with identical filtering. */
     fun namedReferences(objectId: Int): List<NamedReference> {
-        val concealedFields = concealedFieldsByClassId[heap.classId(objectId)].orEmpty()
-        val isReferenceObject = heap.classId(objectId) in referenceClassIds
+        val classId = heap.classId(objectId)
+        val concealedFields = concealedFieldsByClassId.get(classId).orEmpty()
+        val isReferenceObject = classId in referenceClassIds
         if (concealedFields.isEmpty() && !isReferenceObject) return heap.namedReferences(objectId)
 
         return heap.namedReferences(objectId).filter { reference ->
@@ -71,8 +75,10 @@ internal class HeapReferenceFilter private constructor(
             filterReferenceMechanics: Boolean,
             progress: (String) -> Unit,
         ): HeapReferenceFilter {
-            val referenceClassIds = heap.classesNamed(ClassName("java.lang.ref.Reference"), true)
-                .mapTo(HashSet()) { it.classObjectId }
+            val referenceClassIds = IntOpenHashSet()
+            for (heapClass in heap.classesNamed(ClassName("java.lang.ref.Reference"), true)) {
+                referenceClassIds.add(heapClass.classObjectId)
+            }
             val filteredFields = if (filterReferenceMechanics) {
                 REFERENCE_MECHANICS_FIELDS
             } else {
@@ -83,13 +89,15 @@ internal class HeapReferenceFilter private constructor(
                     "filtered fields: $filteredFields"
             )
 
-            val concealedFieldsByClassId = HashMap<Int, Set<String>>()
+            val concealedFieldsByClassId = Int2ObjectOpenHashMap<Set<String>>()
             for ((className, fields) in fieldConcealmentRules.fieldsByClass) {
                 val matchingClasses = heap.classesNamed(className, includeSubclasses = true)
                 for (matchingClass in matchingClasses) {
                     val classId = matchingClass.classObjectId
-                    concealedFieldsByClassId[classId] =
-                        concealedFieldsByClassId[classId].orEmpty() + fields
+                    concealedFieldsByClassId.put(
+                        classId,
+                        concealedFieldsByClassId.get(classId).orEmpty() + fields,
+                    )
                 }
                 progress(
                     "conceal-field rule: $className + subclasses = " +
