@@ -17,79 +17,108 @@ internal class SccColorRefinement(
     private val edgeComparator: Comparator<ChildShapeReference>,
 ) {
     class Result(
-        val colors: Array<SccMemberColor>,
+        val orderedMemberIndices: List<Int>,
         val colorRanks: IntArray,
     )
 
     fun refine(): Result {
         val memberCount = classNames.size
-        var colors = Array(memberCount) { memberIndex ->
-            SccMemberColor(
-                className = classNames[memberIndex],
-                externalEdges = externalEdges[memberIndex],
-                internalEdgesColors = emptyList()
-            )
+        var internalEdgesColors: Array<List<Int>> = Array(memberCount) {
+            emptyList()
         }
         var colorRanks = IntArray(memberCount)
         var previousDistinctColorCount = -1
 
         while (true) {
-            val distinctColors = colors.distinct().sortedWith(::compare)
-            val rankByColor = HashMap<SccMemberColor, Int>(distinctColors.size * 2)
-            distinctColors.forEachIndexed { rank, color ->
-                rankByColor[color] = rank
+            val distinctColorsIndexes = (0 until memberCount).distinctBy {
+                SccMemberColor(
+                    className = classNames[it],
+                    externalEdges = externalEdges[it],
+                    internalEdgesColors[it]
+                )
+            }.sortedWith { first, second ->
+                compare(
+                    first, internalEdgesColors[first],
+                    second, internalEdgesColors[second],
+                )
             }
-            colorRanks = IntArray(memberCount) { rankByColor.getValue(colors[it]) }
+            val rankByColor = HashMap<SccMemberColor, Int>(distinctColorsIndexes.size * 2)
+            distinctColorsIndexes.forEachIndexed { rank, distinctColorsIndex ->
+                rankByColor[
+                    SccMemberColor(
+                        className = classNames[distinctColorsIndex],
+                        externalEdges = externalEdges[distinctColorsIndex],
+                        internalEdgesColors[distinctColorsIndex]
+                    )
+                ] = rank
+            }
+            colorRanks = IntArray(memberCount) {
+                rankByColor[
+                    SccMemberColor(
+                        className = classNames[it],
+                        externalEdges = externalEdges[it],
+                        internalEdgesColors[it]
+                    )
+                ]!!
+            }
 
-            if (distinctColors.size == previousDistinctColorCount) break
-            if (distinctColors.size == memberCount) break
-            previousDistinctColorCount = distinctColors.size
+            if (distinctColorsIndexes.size == previousDistinctColorCount) break
+            if (distinctColorsIndexes.size == memberCount) break
+            previousDistinctColorCount = distinctColorsIndexes.size
 
-            colors = Array(memberCount) { memberIndex ->
+            internalEdgesColors = Array(memberCount) { memberIndex ->
                 val neighborColors = internalEdges[memberIndex]
                     .map { colorRanks[it] }
                     .let { if (setChildren) it.distinct() else it }
                     .sorted()
-                SccMemberColor(
-                    className = colors[memberIndex].className,
-                    externalEdges = colors[memberIndex].externalEdges,
-                    internalEdgesColors = neighborColors,
-                )
+                neighborColors
             }
         }
-        return Result(colors, colorRanks)
+        val orderedMemberIndices = (0 until memberCount).sortedWith { first, second ->
+            compare(
+                first, internalEdgesColors[first],
+                second, internalEdgesColors[second]
+            )
+        }
+        return Result(orderedMemberIndices, colorRanks)
     }
 
-    fun compare(first: SccMemberColor, second: SccMemberColor): Int {
-        first.className.name.compareTo(second.className.name).also {
+    private fun compare(
+        firstIndex: Int, firstInternalEdgesColors: List<Int>,
+        secondIndex: Int, secondInternalEdgesColors: List<Int>,
+    ): Int {
+        classNames[firstIndex].compareTo(classNames[secondIndex]).also {
             if (it != 0)
                 return it
         }
 
-        first.externalEdges.size.compareTo(second.externalEdges.size).also {
+        val firstExternalEdges = externalEdges[firstIndex]
+        val secondExternalEdges = externalEdges[secondIndex]
+        firstExternalEdges.size.compareTo(secondExternalEdges.size).also {
             if (it != 0)
                 return it
         }
-        for (index in first.externalEdges.indices) {
+        for (index in firstExternalEdges.indices) {
             edgeComparator.compare(
-                first.externalEdges[index],
-                second.externalEdges[index],
+                firstExternalEdges[index],
+                secondExternalEdges[index],
             ).also {
                 if (it != 0)
                     return it
             }
         }
 
-        first.internalEdgesColors.size.compareTo(second.internalEdgesColors.size).also {
+        firstInternalEdgesColors.size.compareTo(secondInternalEdgesColors.size).also {
             if (it != 0)
                 return it
         }
-        for (index in first.internalEdgesColors.indices) {
-            first.internalEdgesColors[index].compareTo(second.internalEdgesColors[index]).also {
+        for (index in firstInternalEdgesColors.indices) {
+            firstInternalEdgesColors[index].compareTo(secondInternalEdgesColors[index]).also {
                 if (it != 0)
                     return it
             }
         }
         return 0
+
     }
 }

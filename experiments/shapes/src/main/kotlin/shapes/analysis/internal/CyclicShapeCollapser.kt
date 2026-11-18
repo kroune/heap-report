@@ -34,7 +34,7 @@ internal class CyclicShapeCollapser(
         }
         val setChildren = relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
         val externalEdges = Array(memberCount) { mutableListOf<ChildShapeReference>() }
-        val internalNeighbors = Array(memberCount) { mutableListOf<Int>() }
+        val internalEdges = Array(memberCount) { mutableListOf<Int>() }
 
         for (memberIndex in 0 until memberCount) {
             collectMemberEdges(
@@ -44,7 +44,7 @@ internal class CyclicShapeCollapser(
                 setChildren = setChildren,
                 localIndexByObjectId = localIndexByObjectId,
                 externalEdges = externalEdges,
-                internalNeighbors = internalNeighbors,
+                internalNeighbors = internalEdges,
             )
         }
 
@@ -52,19 +52,16 @@ internal class CyclicShapeCollapser(
         val refinement = SccColorRefinement(
             classNames,
             externalEdges,
-            internalNeighbors,
+            internalEdges,
             setChildren,
             edgeComparator,
         )
         val refinementResult = refinement.refine()
-        val colors = refinementResult.colors
         val colorRanks = refinementResult.colorRanks
-        val orderedMemberIndices = (0 until memberCount).sortedWith { first, second ->
-            refinement.compare(colors[first], colors[second])
-        }
+        val orderedMemberIndices = refinementResult.orderedMemberIndices
 
         val keysBeforeQuotient = orderedMemberIndices.map { memberIndex ->
-            val internalColorRanks = internalNeighbors[memberIndex]
+            val internalColorRanks = internalEdges[memberIndex]
                 .map { colorRanks[it] }
                 .let { if (setChildren) it.distinct() else it }
                 .sorted()
@@ -83,7 +80,7 @@ internal class CyclicShapeCollapser(
             applySetQuotient(
                 keysBeforeQuotient,
                 orderedMemberIndices,
-                internalNeighbors,
+                internalEdges,
                 keptKeyByPreQuotientIndex,
             ).also { quotient ->
                 sourceIndexByCanonicalIndex = quotient.sourceIndices
@@ -102,7 +99,7 @@ internal class CyclicShapeCollapser(
                 orderedMemberIndices,
                 sourceIndexByCanonicalIndex,
                 keptKeyByPreQuotientIndex,
-                internalNeighbors,
+                internalEdges,
                 uniformExternalEdges,
                 setChildren,
             )
