@@ -35,6 +35,10 @@ tasks.test {
     useJUnitPlatform()
 }
 
+tasks.withType<Test>().configureEach {
+    maxHeapSize = "8g"
+}
+
 application {
     mainClass.set("shapes.MainKt")
     // Direct CLI runs stay bounded; the backend sizes each analysis explicitly.
@@ -44,6 +48,7 @@ application {
 // Fat jar for the heap-report backend integration (SHAPES_JAR): the MAT jars
 // are signed (bouncycastle), so signatures must be stripped on repack.
 tasks.register<Jar>("fatJar") {
+    isZip64 = true
     archiveBaseName.set("shapes-experiment")
     archiveClassifier.set("all")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE

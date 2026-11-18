@@ -3,6 +3,7 @@ package shapes.extraction
 import shapes.graph.ClassName
 import shapes.input.heap.HeapObjectSource
 import shapes.input.heap.NamedReference
+import shapes.input.heap.denseTargetId
 import shapes.relaxation.FieldConcealmentRules
 
 /**
@@ -43,7 +44,7 @@ internal class HeapReferenceFilter private constructor(
                 continue
             }
             if (isReferenceObject && reference.fieldName in filteredReferenceFields) continue
-            filteredTargets.add(reference.targetObjectId)
+            filteredTargets.add(heap.denseTargetId(reference))
         }
         return FilteredReferences(filteredTargets.toIntArray(), concealedFieldCount)
     }

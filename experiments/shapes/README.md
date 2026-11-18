@@ -229,7 +229,8 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    2M-slot probe walks (25+ min in `intern`, caught by jstack + a maxProbe
    counter). Fixed with an fmix32 finalizer + double hashing + a per-shape
    keyHash precheck (maxProbe 350k → 42).
-8. **Correctness (verify-edges audit):** merged SCCs emitted `first member`'s
+8. Named-field projection now works with HPROF addresses and resolves dense MAT ids only for targets selected by projection (new map members, retained or removed fields), instead of resolving every named field up front. On run-jfr-38 whole-heap extraction this reduced the 8 GB JFR run from 862.5 s to 622.8 s with byte-identical extraction statistics; the map-rich retained scope went from 949.8 s to 740.6 s with identical shapes and edge multisets.
+9. **Correctness (verify-edges audit):** merged SCCs emitted `first member`'s
    external edges for ALL members; a non-uniform SCC (LinkedHashMap ⇄ its
    entrySet: map→table, entrySet→entries) got mults inflated by the
    × instanceCount expansion (inv3 over-count 0.15%). Fix: non-uniform SCCs

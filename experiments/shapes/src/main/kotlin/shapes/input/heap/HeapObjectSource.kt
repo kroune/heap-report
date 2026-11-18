@@ -13,6 +13,8 @@ interface HeapObjectSource : AutoCloseable {
     fun className(objectId: Int): ClassName
     fun shallowSize(objectId: Int): ULong
     fun indexedReferences(objectId: Int): IntArray
+    fun objectAddress(objectId: Int): Long
+    fun resolveObjectAddress(objectAddress: Long): Int
     fun namedReferences(objectId: Int): List<NamedReference>
     fun isClassObject(objectId: Int): Boolean
 
@@ -33,5 +35,15 @@ data class HeapClassDescription(
 
 data class NamedReference(
     val fieldName: String,
+    /** A pre-resolved id, or -1 when resolution should be deferred until after projection. */
     val targetObjectId: Int,
+    /** HPROF identity used by field-aware projection; dense ids are needed only at graph boundaries. */
+    val targetObjectAddress: Long = targetObjectId.toLong(),
 )
+
+internal fun HeapObjectSource.denseTargetId(reference: NamedReference): Int =
+    if (reference.targetObjectId >= 0) {
+        reference.targetObjectId
+    } else {
+        resolveObjectAddress(reference.targetObjectAddress)
+    }

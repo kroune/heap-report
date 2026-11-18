@@ -1,9 +1,13 @@
 package shapes.extraction
 
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
+import it.unimi.dsi.fastutil.longs.LongArrayList
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet
 import shapes.graph.ClassName
-import shapes.graph.storage.IntStack
 import shapes.input.heap.HeapObjectSource
 import shapes.input.heap.NamedReference
+import shapes.input.heap.denseTargetId
 
 /**
  * Converts implementation-level heap references into semantic structure:
@@ -80,68 +84,108 @@ internal class StructuralGraphProjector(
         namedReferences: List<NamedReference>,
         retainedFieldNames: Set<String>,
     ): IntArray {
-        val retainedTargets = namedReferences
-            .filter { it.fieldName in retainedFieldNames && it.targetObjectId >= 0 }
-            .mapTo(HashSet()) { it.targetObjectId }
-        if (retainedTargets.isEmpty()) return references
-        return references.filter { it in retainedTargets }.distinct().toIntArray()
+        val retainedAddresses = LongOpenHashSet()
+        for (reference in namedReferences) {
+            if (reference.fieldName in retainedFieldNames) {
+                retainedAddresses.add(reference.targetObjectAddress)
+            }
+        }
+        if (retainedAddresses.isEmpty()) return references
+
+        val retainedTargetIds = resolveTargetIds(namedReferences, retainedAddresses)
+        return references.filter { it in retainedTargetIds }.distinct().toIntArray()
     }
 
-    /** Removes a named edge without removing aliases through semantic fields. */
+    /** Removes a named edge by HPROF address without removing aliases through semantic fields. */
     private fun withoutNamedEdges(
         references: IntArray,
         namedReferences: List<NamedReference>,
         removedFieldNames: Set<String>,
     ): IntArray {
-        val removedTargets = HashSet<Int>()
-        val retainedTargets = HashSet<Int>()
+        val removedAddresses = LongOpenHashSet()
+        val retainedAddresses = LongOpenHashSet()
         for (reference in namedReferences) {
-            if (reference.targetObjectId < 0) continue
             if (reference.fieldName in removedFieldNames) {
-                removedTargets.add(reference.targetObjectId)
+                removedAddresses.add(reference.targetObjectAddress)
             } else {
-                retainedTargets.add(reference.targetObjectId)
+                retainedAddresses.add(reference.targetObjectAddress)
             }
         }
-        removedTargets.removeAll(retainedTargets)
-        if (removedTargets.isEmpty()) return references
+        removedAddresses.removeAll(retainedAddresses)
+        if (removedAddresses.isEmpty()) return references
 
-        val emittedTargets = HashSet<Int>()
+        val removedTargetIds = resolveTargetIds(namedReferences, removedAddresses)
+        val emittedTargets = IntOpenHashSet()
         return references
-            .filter { it !in removedTargets && emittedTargets.add(it) }
+            .filter { it !in removedTargetIds && emittedTargets.add(it) }
             .toIntArray()
     }
 
-    /** Replaces bucket placement with the set of semantic map entries. */
+    /** Resolves only addresses selected by projection, reusing any ids supplied by the source. */
+    private fun resolveTargetIds(
+        namedReferences: List<NamedReference>,
+        addresses: LongOpenHashSet,
+    ): IntOpenHashSet {
+        val targetIds = IntOpenHashSet()
+        val resolvedAddresses = LongOpenHashSet()
+        for (reference in namedReferences) {
+            if (reference.targetObjectId >= 0 && reference.targetObjectAddress in addresses) {
+                targetIds.add(reference.targetObjectId)
+                resolvedAddresses.add(reference.targetObjectAddress)
+            }
+        }
+        val pending = addresses.iterator()
+        while (pending.hasNext()) {
+            val address = pending.nextLong()
+            if (resolvedAddresses.add(address)) {
+                targetIds.add(heap.resolveObjectAddress(address))
+            }
+        }
+        return targetIds
+    }
+
+    /** Replaces bucket placement with semantic entries, traversing technical links by HPROF address. */
     private fun projectHashTable(references: IntArray): IntArray {
-        val memberIds = ObjectIdSet()
-        val pendingMembers = IntStack(initialCapacity = 16)
+        val memberIdByAddress = Long2IntOpenHashMap()
+        val pendingMembers = LongArrayList()
         val otherReferences = IntArray(references.size)
         var otherReferenceCount = 0
 
         for (targetId in references) {
             if (targetId >= 0 && isEntryNode(heap.className(targetId))) {
-                if (memberIds.add(targetId)) pendingMembers.push(targetId)
+                val address = heap.objectAddress(targetId)
+                if (!memberIdByAddress.containsKey(address)) {
+                    memberIdByAddress.put(address, targetId)
+                    pendingMembers.add(address)
+                }
             } else {
                 otherReferences[otherReferenceCount++] = targetId
             }
         }
 
         while (!pendingMembers.isEmpty()) {
-            val memberId = pendingMembers.pop()
+            val memberAddress = pendingMembers.removeLong(pendingMembers.size - 1)
+            val memberId = memberIdByAddress.get(memberAddress)
             val memberClass = heap.className(memberId)
             for (reference in referenceFilter.namedReferences(memberId)) {
-                val targetId = reference.targetObjectId
-                if (targetId < 0 || !isTechnicalLink(memberClass, reference.fieldName)) continue
-                if (isEntryNode(heap.className(targetId)) && memberIds.add(targetId)) {
-                    pendingMembers.push(targetId)
-                }
+                if (!isTechnicalLink(memberClass, reference.fieldName)) continue
+                val targetAddress = reference.targetObjectAddress
+                if (memberIdByAddress.containsKey(targetAddress)) continue
+
+                val targetId = heap.denseTargetId(reference)
+                if (!isEntryNode(heap.className(targetId))) continue
+                memberIdByAddress.put(targetAddress, targetId)
+                pendingMembers.add(targetAddress)
             }
         }
 
-        val projected = IntArray(otherReferenceCount + memberIds.size)
+        val projected = IntArray(otherReferenceCount + memberIdByAddress.size)
         otherReferences.copyInto(projected, 0, 0, otherReferenceCount)
-        memberIds.copyInto(projected, otherReferenceCount)
+        var outputIndex = otherReferenceCount
+        val members = memberIdByAddress.keys.iterator()
+        while (members.hasNext()) {
+            projected[outputIndex++] = memberIdByAddress.get(members.nextLong())
+        }
         return projected
     }
 
@@ -156,46 +200,6 @@ internal class StructuralGraphProjector(
             LINKED_HASH_MAP_ENTRY -> fieldName == "next" || fieldName == "before" || fieldName == "after"
             else -> false
         }
-
-    private class ObjectIdSet {
-        private var values = IntArray(16)
-        private var occupied = BooleanArray(16)
-        var size = 0
-            private set
-
-        fun add(value: Int): Boolean {
-            if (size * 2 >= values.size) rehash()
-            var slot = hash(value) and (values.size - 1)
-            while (occupied[slot]) {
-                if (values[slot] == value) return false
-                slot = (slot + 1) and (values.size - 1)
-            }
-            occupied[slot] = true
-            values[slot] = value
-            size++
-            return true
-        }
-
-        fun copyInto(destination: IntArray, offset: Int) {
-            var outputIndex = offset
-            for (slot in values.indices) {
-                if (occupied[slot]) destination[outputIndex++] = values[slot]
-            }
-        }
-
-        private fun rehash() {
-            val oldValues = values
-            val oldOccupied = occupied
-            values = IntArray(oldValues.size * 2)
-            occupied = BooleanArray(values.size)
-            size = 0
-            for (slot in oldValues.indices) {
-                if (oldOccupied[slot]) add(oldValues[slot])
-            }
-        }
-
-        private fun hash(value: Int): Int = value * -0x61c88647
-    }
 
     private companion object {
         const val HASH_MAP_NODE = "java.util.HashMap" + '$' + "Node"

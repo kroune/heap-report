@@ -67,6 +67,26 @@ class HeapReferenceFilterTest {
     }
 
     @Test
+    fun `reference filtering resolves only retained targets`() {
+        val heap = FakeHeapObjectSource(
+            arrayOf("java.lang.ref.Reference"),
+            longArrayOf(16),
+            arrayOf(intArrayOf(1, 2, 3)),
+            arrayOf(
+                listOf(
+                    NamedReference("referent", -1, 1),
+                    NamedReference("value", -1, 2),
+                    NamedReference("discovered", -1, 3),
+                )
+            ),
+        )
+        val filter = referenceFilterFor(heap)
+
+        assertContentEquals(intArrayOf(2), filter.references(0))
+        assertEquals(1, heap.addressResolutionReads)
+    }
+
+    @Test
     fun `reads are pure and named projection view has identical filters`() {
         val fixture = Fixture(referenceObject = true)
         val rules = FieldConcealmentRules(

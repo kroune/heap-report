@@ -23,6 +23,8 @@ internal class FakeHeapObjectSource(
     val shallowSizeReads = IntArray(classes.size)
     var namedReferenceReads = 0
         private set
+    var addressResolutionReads = 0
+        private set
 
     override fun classId(objectId: Int): Int = classId(classes[objectId])
 
@@ -36,6 +38,13 @@ internal class FakeHeapObjectSource(
     override fun indexedReferences(objectId: Int): IntArray {
         referenceReads[objectId]++
         return references[objectId]
+    }
+
+    override fun objectAddress(objectId: Int): Long = objectId.toLong()
+
+    override fun resolveObjectAddress(objectAddress: Long): Int {
+        addressResolutionReads++
+        return objectAddress.toInt()
     }
 
     override fun namedReferences(objectId: Int): List<NamedReference> {

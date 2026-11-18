@@ -23,9 +23,13 @@ class MatHeapObjectSource private constructor(
 
     override fun indexedReferences(objectId: Int): IntArray = snapshot.getOutboundReferentIds(objectId)
 
+    override fun objectAddress(objectId: Int): Long = snapshot.mapIdToAddress(objectId)
+
+    override fun resolveObjectAddress(objectAddress: Long): Int = snapshot.mapAddressToId(objectAddress)
+
     override fun namedReferences(objectId: Int): List<NamedReference> =
         snapshot.getObject(objectId).outboundReferences.map { reference ->
-            NamedReference(reference.name, reference.objectId)
+            NamedReference(reference.name, -1, reference.objectAddress)
         }
 
     override fun isClassObject(objectId: Int): Boolean = snapshot.isClass(objectId)

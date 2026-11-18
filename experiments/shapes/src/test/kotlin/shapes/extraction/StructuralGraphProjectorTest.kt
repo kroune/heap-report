@@ -185,6 +185,62 @@ class StructuralGraphProjectorTest {
     }
 
     @Test
+    fun `only removed addresses are resolved after projection`() {
+        val fixture = Fixture(
+            arrayOf("java.util.HashMap" + '$' + "Node"),
+            arrayOf(intArrayOf(7, 8, 9)),
+            arrayOf(
+                listOf(
+                    NamedReference("key", -1, 7),
+                    NamedReference("next", -1, 8),
+                    NamedReference("value", -1, 9),
+                )
+            ),
+        )
+
+        assertContentEquals(intArrayOf(7, 9), fixture.projector().projectReferences(0))
+        assertEquals(1, fixture.heap.addressResolutionReads)
+    }
+
+    @Test
+    fun `retained-only projection resolves only retained addresses`() {
+        val fixture = Fixture(
+            arrayOf("com.google.common.collect.RegularImmutableMap"),
+            arrayOf(intArrayOf(1, 2, 3)),
+            arrayOf(
+                listOf(
+                    NamedReference("entries", -1, 1),
+                    NamedReference("table", -1, 2),
+                    NamedReference("entrySet", -1, 3),
+                )
+            ),
+        )
+
+        assertContentEquals(intArrayOf(1), fixture.projector().projectReferences(0))
+        assertEquals(1, fixture.heap.addressResolutionReads)
+    }
+
+    @Test
+    fun `table traversal resolves only newly discovered members`() {
+        val fixture = Fixture(
+            arrayOf(
+                "java.util.HashMap" + '$' + "Node[]",
+                "java.util.HashMap" + '$' + "Node",
+                "java.util.HashMap" + '$' + "Node",
+            ),
+            arrayOf(intArrayOf(1), intArrayOf(2), intArrayOf(1)),
+            arrayOf(
+                emptyList(),
+                listOf(NamedReference("next", -1, 2)),
+                listOf(NamedReference("next", -1, 1)),
+            ),
+        )
+
+        assertEquals(setOf(1, 2), fixture.projector().projectReferences(0).toSet())
+        assertEquals(1, fixture.heap.addressResolutionReads)
+    }
+
+    @Test
     fun `large table has no traversal cap`() {
         val entryCount = 129
         val classes = Array(entryCount + 1) { index ->

@@ -134,7 +134,9 @@ internal class HeapScopeSelector(
     private fun selectWholeHeap(rootIds: IntArray): HeapObjectSelection {
         val selected = BitSet(heap.objectCount)
         for (objectId in 0 until heap.objectCount) {
-            if (!classObjectExclusion.isExcluded(objectId)) selected.set(objectId)
+            if (!classObjectExclusion.isExcluded(objectId)) {
+                selected.set(objectId)
+            }
         }
         progress("heap: ${selected.cardinality()} non-class objects")
         return HeapObjectSelection(selected, rootIds)
