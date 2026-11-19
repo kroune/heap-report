@@ -8,23 +8,12 @@ repositories {
     mavenCentral()
 }
 
-// MAT layout differs per platform (see tools/get_mat.py): linux unpacks to
-// .tools/mat/, macOS to .tools/MemoryAnalyzer.app/Contents/Eclipse/.
-val matPlugins = listOf(".tools/mat/plugins", ".tools/MemoryAnalyzer.app/Contents/Eclipse/plugins")
-    .map { rootDir.toPath().parent.parent.resolve(it).toFile() }
-    .firstOrNull { it.isDirectory }
-    ?: error("MAT not found under .tools/ — run `python3 tools/get_mat.py` from the repo root")
-
 dependencies {
     implementation("com.github.ajalt.clikt:clikt-jvm:5.1.0")
     implementation("com.dynatrace.hash4j:hash4j:0.31.0")
     implementation("it.unimi.dsi:fastutil:8.5.16")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
     testImplementation(kotlin("test"))
-    // MAT library, for the heap-dump extractor only: compile against the MAT
-    // jars, run with the whole plugins dir on the classpath (equinox deps of MAT).
-    compileOnly(files(matPlugins.listFiles { f -> f.extension == "jar" && f.name.startsWith("org.eclipse.mat") }))
-    runtimeOnly(fileTree(matPlugins) { include("*.jar") })
 }
 
 kotlin {
@@ -51,8 +40,7 @@ application {
     applicationDefaultJvmArgs = listOf("-Xmx2g")
 }
 
-// Fat jar for the heap-report backend integration (SHAPES_JAR): the MAT jars
-// are signed (bouncycastle), so signatures must be stripped on repack.
+// Fat jar for the heap-report backend integration (SHAPES_JAR).
 tasks.register<Jar>("fatJar") {
     isZip64 = true
     archiveBaseName.set("shapes-experiment")

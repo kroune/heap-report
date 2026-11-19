@@ -102,6 +102,14 @@ class HeapGraph internal constructor(
         return if (override >= 0) override else classShallowSizes[classIndexOf(nodeId)]
     }
 
+    /** Total shallow bytes over all selected objects, including folded leaves. */
+    fun totalShallowBytes(): Long {
+        var total = 0L
+        for (nodeId in 0 until nodeCount) total += shallowSizeOf(nodeId)
+        for (leaf in leafShapes) total += leaf.shallowTotal.toLong()
+        return total
+    }
+
     private fun overrideOf(nodeId: Int): Long {
         var low = 0
         var high = shallowOverrides.size - 1

@@ -181,7 +181,7 @@ internal class HeapGraphAssembler(
                     queue.add(element)
                 }
             } else if (members.add(element)) {
-                // The MAT outbound index is a target set, so non-entry
+                // Per-object references form a target set, so non-entry
                 // elements deduplicate as well.
                 ordered.add(element)
             }
@@ -462,8 +462,8 @@ internal class HeapGraphAssembler(
             val rowEnd = offsets.get(U32, (node.toLong() + 1) shl 2).toLong()
             for (flat in rowStart until rowEnd) {
                 val encoded = targets.get(U32, flat shl 2)
-                // Scope follows structural edges plus projection-dropped ones,
-                // like the MAT-path BFS over filtered unprojected references.
+                // Scope follows structural edges plus projection-dropped ones:
+                // membership is decided on filtered but unprojected references.
                 if (encoded and EXTRA_FLAG != 0 && encoded and PROJ_FLAG == 0) continue
                 val raw = encoded and TARGET_MASK
                 if (raw >= classBase) continue

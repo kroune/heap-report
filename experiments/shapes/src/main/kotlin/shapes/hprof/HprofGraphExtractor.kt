@@ -342,7 +342,8 @@ private class ChunkWorker(
                         dropValues[dropCount++] = value
                     }
                 }
-                // Alias-protected removal + full output dedup, as in the MAT projector.
+                // Alias-protected removal + full output dedup (a target kept
+                // through a surviving field never drops via a projected one).
                 for (dropIndex in 0 until dropCount) {
                     val value = dropValues[dropIndex]
                     if (!contains(keptValues, keptCount, value)) {
@@ -604,7 +605,7 @@ private class ChunkWorker(
         extras[extrasCount++] = encoded
     }
 
-    /** MAT's outbound index holds a target set per object; duplicates collapse. */
+    /** Each object's references form a target set; duplicate targets collapse. */
     private fun dedupeMains() {
         if (mainCount <= 1) return
         var write = 0

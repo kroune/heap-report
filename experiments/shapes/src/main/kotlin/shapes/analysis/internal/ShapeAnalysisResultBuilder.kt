@@ -112,7 +112,7 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
             )
         }
 
-        if (shape is SummarizedSccShape) {
+        if (shape is LazySccShape) {
             val topClasses = shape.members.take(3).joinToString(",") { it.className.name }
             return ShapeEntry(
                 publicId,

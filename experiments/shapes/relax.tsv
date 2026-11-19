@@ -18,8 +18,8 @@
 #                             field whose PRESENCE is state
 #
 # Rules on abstract classes cover the runtime _Decorated subclasses (exact
-# MAT class hierarchy). mat-analyze applies field rules during extraction and
-# class rules during analysis in the same JVM.
+# class hierarchy from the dump). hprof-analyze applies field rules during
+# extraction and class rules during analysis in the same JVM.
 #
 org.gradle.internal.resource.transport.http.ApacheCommonsHttpClient	class-only	With vs without an instantiated InternalHttpClient (cold-cache first resolutions vs warmed) splits per-module resolver chains; the merge is blocked only below this object (verified: run-jfr-38 retained set, SHP1 diffs terminate here)
 org.gradle.api.internal.artifacts.repositories.resolver.ExternalResourceResolver	conceal-field:cachedArtifactResolver	Lazy field (Gradle ExternalResourceResolver.kt:290 create-on-first-use): set only where a real artifact download happened (cold-cache first resolutions), null elsewhere; its presence splits the UserResolverChain SCC. Field-level concealment drops exactly this edge — the AR objects leave the scope; everything else about MavenResolver stays exact. Verified: chain SCCs merge, 181 content groups unchanged (run-jfr-38)

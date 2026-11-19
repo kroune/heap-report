@@ -54,7 +54,7 @@ internal open class CyclicShape(
  * only the most-frequent classes; aggregate edge totals replace per-member
  * edges either way.
  */
-internal class SummarizedSccShape(
+internal class LazySccShape(
     internalId: Int,
     digest: ShapeDigest,
     totalExternalEdges: List<CanonicalShapeEdge>,

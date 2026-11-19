@@ -4,20 +4,14 @@ Status: **supported heap-wide implementation; pipeline v7.** When this
 document and the code disagree, one of them is wrong — update both in the
 same commit.
 
-> **Pipeline v7:** the server job runs `hprof-analyze`, which reads the HPROF
-> file directly — no MAT indexes, no serial MAT queue, one small-heap JVM
-> (default `-Xmx2g`; the graph lives in file-backed off-heap mappings). The
-> MAT-based extraction described below remains in the standalone CLI
-> (`mat-analyze`) as the verified A/B reference; semantics (projection,
-> relaxation, collapse, artifact format) are unchanged. See
-> `experiments/shapes/README.md` ("Direct HPROF pipeline") for the new
-> extraction stages, the lazy-WL large-SCC path, and measured equivalence.
-
-The Shapes tab collapses the complete non-class object graph into a shape-DAG,
-where each node groups structurally identical objects. Everything served is
-exact: counts, shallow sums, edge multiplicities. Class-scoped extraction
-remains available in the standalone CLI for diagnostics, but is no longer part
-of the web UI or HTTP API.
+The Shapes tab collapses the complete live non-class object graph into a
+shape-DAG, where each node groups structurally identical objects. Everything
+served is exact: counts, shallow sums, edge multiplicities. The analysis tool
+(`experiments/shapes`, run as a prebuilt fat jar) reads the HPROF file
+directly in one small-heap JVM — no shared indexes, no serial analysis queue,
+only the dump file. Class-scoped extraction remains available in the
+standalone CLI for diagnostics, but is no longer part of the web UI or HTTP
+API.
 
 ## Why (design rationale)
 
@@ -34,21 +28,21 @@ of the web UI or HTTP API.
 
 ## UI/backend pipeline
 
-The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the server.
-One analysis selects the **whole heap**. There is no class or
-retained/reachable scope selector. Re-analysis atomically replaces
-`data/shapes/heap.shp1`; old per-class artifacts are not served by the web API.
+The shapes UI runs the prebuilt fat jar; Gradle is never invoked by the
+server. One analysis selects the **whole heap** — every live non-class
+object. There is no class or scope selector. Re-analysis atomically replaces
+`data/shapes/heap.shp1`; old per-class artifacts are not served by the web
+API. `backend/mat/shapes.py` owns job orchestration, publication metadata and
+validation; `SHAPES_XMX_ANALYZE` sizes the JVM and defaults to 2g (the graph
+lives off-heap in file-backed mappings). Heap-wide artifacts have no
+queried-class roots: root counts and the roots histogram are zero and the UI
+does not expose root metrics.
 
-For the heap-wide pass, scope is every non-class object in the snapshot.
-Class-scoped CLI extraction selects its scope on the original filtered object
-graph **before** map projection. Retained scope uses MAT `getRetainedSet` for all queried instances
-(with MAT's standalone-compatible ObjectMarker factory switch), then restricts
-that set to objects reachable over the filtered source references. Reference
-mechanics and `conceal-field` rules participate in this traversal for both
-retained and reachable scope. Map projection never adds or removes objects.
-The analyzer keeps every preselected object even if projection removes its path
-from a root. Heap-wide artifacts have no queried-class roots: root counts and
-the roots histogram are zero and the UI does not expose root metrics.
+Class-scoped CLI extraction (`hprof-analyze --class X`) selects the reachable
+closure of the class's instances over the filtered source references.
+Reference mechanics and `conceal-field` rules participate in this traversal.
+Map projection never adds or removes objects; the analyzer keeps every
+selected object even if projection removes its path from a root.
 
 Projection is field-aware and supports the exact JDK classes `HashMap$Node`,
 `LinkedHashMap$Entry`, `LinkedHashMap`, and `HashMap$Node[]`. It removes only
@@ -61,54 +55,42 @@ No object, count, shallow bytes or root is dropped; the projection changes
 in this projection.
 
 An optional `SMD1` length-prefixed JSON trailer in the same SHP1 file records
-extraction mode, pipeline version, object/root/shallow totals, original
-in-scope reference count, boundary reference count and projected reference
-count. Source-reference counts are MAT-index targets (deduplicated by target
-ID), not field/array-slot multiplicities. Displayed edges are explicitly
+extraction mode, pipeline version, object/root/shallow totals, the raw
+non-null reference count and the projected reference count, plus the full
+extraction statistics for diagnostics. Displayed edges are explicitly
 **projected** edges; do not compare them as raw heap edges. Before atomic
-publication the backend checks all object, root,
-shallow and expanded projected-edge totals against extraction statistics.
-The served `reachableCount` includes `setChildrenConcealedObjects`: it is the
-real scope population, not merely the sum of visible quotient-SCC counts.
-Pipeline v4 also makes extraction reference filtering side-effect free, so
-repeated projection reads cannot inflate concealed-field statistics.
+publication the backend checks all object, root, shallow and expanded
+projected-edge totals against the extractor's independent counters
+(`validate_projection`). The served `reachableCount` includes
+`setChildrenConcealedObjects`: it is the real scope population, not merely
+the sum of visible quotient-SCC counts.
 
-Pipeline v5 appends an optional `SCC1` section (after the roots histogram,
+Pipeline v5 appended an optional `SCC1` section (after the roots histogram,
 before `SMD1`) containing each stored SCC member's class and exact internal
 `(targetMember, multiplicity)` connections. The shapes canvas uses it to
 render the member graph inside an SCC box instead of treating the cycle as an
-opaque circle. Old SHP1 artifacts without SCC1 remain readable and retain the
-legacy circle until re-analyzed. The `membersComplete` flag explicitly says
-whether all members and connections are present; the current writer emits
-complete SCC member graphs.
-
-All SCC sizes use the same WL refinement path. Very large components still
-have substantial per-member working memory; there is no alternate unique-SCC
-mode or merge-cap setting. See the measured investigation in
-`experiments/shapes/FLOW-COMPARISON.md`.
+opaque circle. The `membersComplete` flag says whether all members and
+connections are present; SCCs beyond the payload cap (2^20 members) store
+only their most frequent classes.
 
 ## Definitions
 
-- **Object graph** G: heap objects + outbound references (MAT index),
-  EXCEPT:
+- **Object graph** G: live heap objects + outbound references, EXCEPT:
   - class objects (`java.lang.Class` instances — they carry statics, which
-    would drag in most of the heap). NOTE: MAT's `isClass` misses the 9
-    primitive class objects (`int.class`..`void.class` — no ClassImpl
-    entries), so the filter also excludes class-table gaps explicitly
-    (found on run-jfr-38: exactly those 9 leaked via `MethodType.rtype`
-    before the fix); a post-BFS guard fails the extract if any class
-    object is in R.
+    would drag in most of the heap). This includes the 9 primitive class
+    objects (`int.class`..`void.class`). Class-static referents stay live
+    through the class **loader**, not through per-class roots.
   - `java.lang.ref.Reference.discovered` — the GC's discovered-list
     linkage. That list is VM bookkeeping captured mid-flight, not program
     state (a dump catches ~100k references linked in one chain regardless
     of their types), and it poisons the exact collapse: a list of length k
     is a different shape than k−1, so the chain alone produced ~30k
-    shapes/layers for 1 MB of data (evidence: run-jfr-38, field-level
-    check via `mat-ref-targets`: 105,329 × `discovered -> WeakReference`).
-- **Roots** (class-scoped CLI only): every instance of the queried class (full
-  `INSTANCEOF` id list, no sampling). The heap-wide UI has no class roots.
-- **Scope** R: the web pipeline selects every non-class object in G. The CLI can
-  instead select objects retained by or reachable from queried-class roots.
+    shapes/layers for 1 MB of data (evidence: run-jfr-38,
+    105,329 × `discovered -> WeakReference`).
+- **Roots** (class-scoped CLI only): every instance of the queried class. The
+  heap-wide UI has no class roots.
+- **Scope** R: the web pipeline selects every live non-class object in G. The
+  CLI can instead select objects reachable from queried-class roots.
 - **SCC**: maximal strongly connected component. The condensation of R is a
   DAG. Cycles are rare and mostly collections/back-pointers.
 - **Shape**: structural identity of a condensation-DAG node, computed
@@ -128,16 +110,8 @@ split shapes with GC state (observed on run-jfr-38: the pre-OOM GC had
 cleared some `SoftReference`s, splitting 606 otherwise identical
 configurations from 2,289 untouched ones). Fields **declared by Reference
 subclasses** (e.g. a weak map entry's strong `value`) are payload and are
-kept; subtyping is computed from the MAT class hierarchy, not names. For
-retained scope the set is then restricted to objects still reachable from
-the roots over the filtered graph — totals therefore intentionally diverge
-from MAT's retained histogram (which counts soft/weak edges as strong);
-both numbers are recorded in the stats. Disable with `--raw-references`.
-
-Future note: if a consumer ever needs MAT-histogram parity instead of GC
-semantics, fork MAT's retained computation (`ObjectMarker`) and mark over
-the same filtered edge set — a small, well-bounded change; until then the
-divergence is intentional and reported, not hidden.
+kept; subtyping is computed from the dump's class hierarchy, not names.
+Disable with `--raw-references`.
 
 ## Relaxed classes (analyzer)
 
@@ -169,17 +143,16 @@ class-only). Relaxed edges are **concealed, not removed**: the analyzer
 counts them exactly (`--relax-stats`), `--verify-edges` exempts relaxed
 sources (and every member of a quotiented SCC), and the backend's
 publication check subtracts the concealed counters instead of assuming
-them. The rule set is validated against the run-jfr-38 retained set in
-`experiments/shapes/FLOW-COMPARISON.md`.
+them. The rule set is validated in `experiments/shapes/FLOW-COMPARISON.md`.
 
 ### Level 3: field concealment (extraction)
 
 `conceal-field:<name>` rules drop **one named field** of a class and all its
-subclasses at extraction time (the analyzer's `ObjectGraph` has no field names,
-so this level lives in `HeapObjectGraphExtractor`; `mat-analyze` applies both rule kinds
-in one JVM). The edge never enters the graph — its target may leave the scope
-entirely. This is the surgical choice for a lazy/cache field whose
-*presence* is state, not structure, e.g.:
+subclasses at extraction time (the analyzer's graph has no field names, so
+this level lives in the extractor's per-class plans; `hprof-analyze` applies
+both rule kinds in one JVM). The edge never enters the graph — its target may
+leave the scope entirely. This is the surgical choice for a lazy/cache field
+whose *presence* is state, not structure, e.g.:
 
 - `ExternalResourceResolver.cachedArtifactResolver` — lazy create-on-first-
   download field (null in cache-served resolutions). Class-only relaxation
@@ -193,7 +166,7 @@ entirely. This is the surgical choice for a lazy/cache field whose
 
 Like the reference filter, field concealment participates in the scope
 restriction: objects reachable only through concealed edges are dropped
-(counted in the extraction stats). Rules are resolved through the exact MAT
+(counted in the extraction stats). Rules are resolved through the dump's
 class hierarchy — a rule on `DefaultConfiguration` covers the runtime
 `_Decorated` subclasses.
 
@@ -215,8 +188,13 @@ class hierarchy — a rule on `DefaultConfiguration` covers the runtime
     same-color members carry identical edges. (The earlier
     discretize-or-unique rule produced 201k duplicate shapes on
     run-jfr-38 — every symmetric small SCC became its own shape.)
-  - all SCC sizes use this refinement path; large components require
-    corresponding per-member working memory.
+  - components above 1024 members intern **lazily**: a streaming
+    isomorphism-invariant signature (member count, internal edge count,
+    class histogram, external child-shape totals) decides interning, and
+    WL refinement runs only to adjudicate signature collisions — merge on
+    canonical-form match, distinct shapes otherwise. Colliding pairs
+    beyond 2^21 members stay distinct (conservative) with a logged
+    warning.
   - a self-loop object is a size-1 SCC with an internal edge → SCC path.
 - **shallow is NOT part of the key** (author decision, open point 3):
   `byte[16]` = `byte[1MB]` = one shape. Correctness is unaffected —
@@ -232,96 +210,46 @@ class hierarchy — a rule on `DefaultConfiguration` covers the runtime
   deterministic, never probabilistic. Memory cost ∝ unique shapes, not
   objects.
 - Cross-dump identity: separate **128-bit digest** over a canonical binary
-  encoding — class by **name** (MAT class ids are per-snapshot), children as
+  encoding — class by **name** (object ids are per-dump), children as
   sorted 128-bit digests. Stable across runs, JVMs and dumps; this is what
   the compare tab diffs. Hash function: XXH3-128 with a fixed zero seed,
   streamed through hash4j's `HashStream128` using little-endian primitives
   and length-delimited UTF-8 strings; never `Object.hashCode`.
 
-## Pipeline (one ANALYZE job, runs inside the MAT JVM via MatRunner)
+## Pipeline (one SHAPES job, one JVM)
 
-0. **Roots** — full instance id list of the class (existing OQL path).
-   Open: `IDS_LIMIT=1M` caps mega-classes; needs paging (open point 5).
-1. **Reachability** — parallel frontier-split BFS from roots over outbound
-   refs; visited = atomic bitmap over MAT id space (2·10⁸ bits = 25 MB).
-   Bulk int APIs only — no per-object `IObject` wrappers in hot loops.
-2. **SCC** — iterative Tarjan over R, **single-threaded** (the one
-   sequential phase; est. ~1 min @ 2·10⁸ nodes). Output: component id per
-   object, condensation DAG, member lists. Parallel upgrade path:
-   Forward-Backward divide & conquer — only if profiling demands it.
-3. **Cons** — bottom-up over the condensation DAG, level-synchronous:
-   node level = longest path to a leaf (reverse topo); levels processed in
-   order, nodes within a level are independent → K threads; cons-map
-   striped by hash prefix (one stripe per thread, key determines stripe,
-   no contention, no wait-graphs). Shape ids assigned **after** the merge
-   by sorting unique shapes by 128-bit digest → deterministic, stable.
-4. **Aggregate** — one parallel pass over R. Per shape: `instanceCount`,
-   `shallowTotal` / `shallowMin` / `shallowMax` (exact sums over actual
-   members — shallow ∉ key, so members vary in size; min/max keep the
-   spread visible), `retainedTotal` (Σ MAT per-object retained —
-   annotation, needs one bulk retained-size pass first), `rootCount`
-   (members that are class instances). Edges come from the shape keys
-   directly (child shape + multiplicity, complete — the MAX_EDGE /
-   edgesfull truncation machinery dies here).
-5. **Emit** — binary artifact (CSV is dead at this scale):
-   class-name table; shape table `(digest128, kind: leaf|tree|scc, class |
-   scc-member payload, count, shallowTotal, shallowMin, shallowMax,
-   retainedTotal, rootCount)`; edge table `(shapeId, childShapeId, multiplicity)`; roots
-   histogram `(shapeId, count)` over class instances; `SCC1` member labels
-   and exact internal target/multiplicity tables for nested rendering.
-   Ingested into `analysis.db` as part `shapes:<key>` with the usual
-   marker-row resumability (per-phase markers 1–4 so a crash mid-pipeline
-   doesn't redo Tarjan).
+Extraction reads the HPROF file directly: a parallel directory scan, a
+parallel heap-index walk (class layouts, GC roots, object addresses), a
+parallel record walk applying filtering/concealment/projection from raw
+field bytes, then assembly — CSR scatter into unlinked file-backed mappings,
+GC-root liveness with a class-statics fixpoint, and leaf folding
+(zero-out-degree objects pre-collapse to per-class leaf shapes with exact
+aggregates). The analyzer then runs reach → iterative Tarjan → bottom-up
+cons → aggregates, and emits the artifact. Shape ids are assigned post-merge
+by digest sort → deterministic (two runs produce byte-identical artifacts).
+Stage-by-stage detail, measured timings and the memory model live in
+`experiments/shapes/README.md` ("HPROF pipeline").
 
-The roots histogram is the headline number: 3000 module instances → ideally
-one row `(shape, 3000)`.
-
-## Memory budget (@ 2·10⁸ objects, 10g MAT JVM, shared with the index)
-
-| structure                    | size     | lifetime      |
-|------------------------------|----------|---------------|
-| visited bitmap               | 25 MB    | whole job     |
-| Tarjan index+lowlink+stack   | ~2.4 GB  | phase 2 only  |
-| shape-id per object (int32)  | 800 MB   | phases 3–4    |
-| per-object retained (int64)  | 1.6 GB   | phases 4 only |
-| cons-map + shape store       | ∝ unique shapes (expect ≪ 10⁶ → ~100 MB; alarm at 10⁷) |
-
-Peak ≈ MAT index + ~3 GB. All arrays are dense over MAT id space — no id
-remapping in v1.
-
-## Threading model
-
-- BFS: parallel frontier split, CAS bitmap.
-- Tarjan: sequential (v1).
-- Cons: level-synchronous + striped maps. Deterministic output regardless
-  of thread count (ids assigned post-merge by digest sort).
-- Aggregate: parallel over id ranges, per-stripe partial sums merged.
+Measured envelope on a 15.6 GB / 260M-object dump: ~150–240 s end-to-end,
+≤4 GB physical footprint at `-Xmx1500m` (CSR pages are evictable).
 
 ## Correctness invariants (smoke tests)
 
-1. Σ `shallowTotal` over shapes == Σ shallow over R (vs MAT histogram of R).
-2. Σ `rootCount` == instance count of the class.
-3. Σ edge multiplicities (expanded) == total outbound ref count within R.
+1. Σ `shallowTotal` over shapes == Σ shallow over R (vs the extractor's
+   independent counters).
+2. Σ `rootCount` == instance count of the queried class (class scopes only).
+3. Σ edge multiplicities (expanded) + concealed-edge counters == total
+   projected reference count within R.
 4. Every object in R has exactly one shape-id.
-5. One mid-size class: collapsed graph matches the current sampling payload
-   structure where samples overlap (modulo sampling error).
-6. Determinism: two runs, different thread counts → identical digests.
+5. Determinism: two runs, different thread counts → identical digests.
 
-## What this replaces / keeps
-
-- **Deletes**: `sample_even`, `samples`/`available` escalation, the
-  reach.py fixpoint and its blind spots (for tree/graph views), MAX_EDGE /
-  EDGE_FULL_CAP / ANAT_DEPTH / ANAT_KIDS truncation.
-- **Keeps**: the `rs` retained-set composition part (different view,
-  already exact), per-dump job/lock/Xmx discipline via MatRunner.
-- **Deferred**: per-instance drill-down needs a persisted shape-id array
-  (zstd, ~800 MB → ~100–200 MB/dump) — v2. Strings/values: attach one
-  representative instance per shape later (bounded by unique shapes).
+These run as `--verify` / `--verify-edges` in the CLI; the backend
+re-derives invariants 1–3 from the artifact at publication time.
 
 ## Open points (iterate here)
 
-1. **Scope**: resolved for the web UI — one whole-heap pass. Retained and
-   reachable class scopes remain CLI diagnostics only.
+1. **Scope**: resolved for the web UI — one whole-heap pass. Reachable class
+   scopes remain CLI diagnostics only.
 2. **Global vs per-class pass**: resolved — one whole-heap artifact per dump.
    Per-class drill-down from it still needs a persisted object→shape mapping.
 3. **Shallow in label**: resolved — OUT (author). `byte[16]` and
@@ -331,12 +259,10 @@ remapping in v1.
    re-split multiplies shape count — measure collapse ratio before/after
    on a real dump before adopting.
 4. **SCC canonicalization**: color-refinement merged on the WL-fixpoint
-   signature (above) — symmetric SCCs merge. The previous
-   discretize-or-unique fallback was measured on run-jfr-38: 201k
-   duplicate shapes (16% of all shapes), dominated by 2–4-entry
-   `LinkedHashMap` cycles. Alternative (never merge SCCs) rejected:
+   signature (above) — symmetric SCCs merge; large components go through
+   the lazy signature. Alternative (never merge SCCs) rejected:
    back-pointer SCCs (child→parent) are common in Gradle heaps and would
    block collapse of everything above them.
-5. **IDS_LIMIT=1M** on the roots query: needs paging for mega-classes.
-6. **Artifact format**: binary vs sqlite-direct; binary preferred, decided
-   at implementation time.
+5. **Per-instance drill-down** needs a persisted shape-id array
+   (zstd, ~800 MB → ~100–200 MB/dump) — v2. Strings/values: attach one
+   representative instance per shape later (bounded by unique shapes).

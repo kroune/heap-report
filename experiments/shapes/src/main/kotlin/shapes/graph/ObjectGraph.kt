@@ -5,7 +5,9 @@ import shapes.graph.storage.ReferencesList
 import java.util.Collections
 
 /**
- * Compact object graph with dense, zero-based object ids and outbound references.
+ * Compact in-memory object graph with dense, zero-based object ids and
+ * outbound references; used by tests and synthetic demos (real dumps go
+ * through [shapes.hprof.HeapGraph]).
  *
  * Parallel references are meaningful and preserved. Storage details are hidden
  * behind the object-oriented API so algorithms do not depend on CSR offsets or
@@ -16,8 +18,6 @@ class ObjectGraph internal constructor(
     @PublishedApi internal val classIndices: CharArray,
     @PublishedApi internal val shallowSizes: CompactULongArray,
     @PublishedApi internal val references: ReferencesList,
-    /** Object count of the source heap, or [size] when there is no larger source. */
-    override val sourceObjectCount: Long,
 ) : AnalysisGraph {
     override val size: Int
         get() = shallowSizes.size
@@ -30,6 +30,9 @@ class ObjectGraph internal constructor(
 
     override val totalEdgeCount: Long
         get() = references.referenceCount.toLong()
+
+    override val sourceObjectCount: Long
+        get() = size.toLong()
 
     override val leafShapes: List<LeafShapeAggregate>
         get() = emptyList()
@@ -58,33 +61,9 @@ class ObjectGraph internal constructor(
         references.forEachReference(references[objectId], action)
     }
 
-    fun instancesOf(className: ClassName): IntArray {
-        val requestedClassIndex = classNames.indexOf(className)
-        if (requestedClassIndex == -1) return IntArray(0)
-
-        var instanceCount = 0
-        for (classIndex in classIndices) {
-            if (classIndex.code == requestedClassIndex) instanceCount++
-        }
-
-        val instances = IntArray(instanceCount)
-        var outputIndex = 0
-        for (objectId in classIndices.indices) {
-            if (classIndices[objectId].code == requestedClassIndex) {
-                instances[outputIndex++] = objectId
-            }
-        }
-        return instances
-    }
-
-    class Builder(
-        private val sourceObjectCount: Long? = null,
-        expectedObjectCount: Int = 0,
-        expectedReferenceCount: Int = 0,
-    ) {
+    class Builder(expectedObjectCount: Int = 0) {
         init {
             require(expectedObjectCount >= 0) { "negative expected object count" }
-            require(expectedReferenceCount >= 0) { "negative expected reference count" }
         }
 
         private val classNames = ArrayList<ClassName>()
@@ -92,7 +71,7 @@ class ObjectGraph internal constructor(
         private var objectClasses = CharArray(expectedObjectCount)
         private var objectCount = 0
         private val shallowSizes = CompactULongArray(expectedObjectCount)
-        private val references = ReferencesList(expectedObjectCount, expectedReferenceCount)
+        private val references = ReferencesList(expectedObjectCount, 0)
 
         /** Registers a class once and returns its stable class-table index. */
         fun classIndex(className: ClassName): Int = classIndicesByName.getOrPut(className) {
@@ -142,7 +121,6 @@ class ObjectGraph internal constructor(
                 },
                 shallowSizes = shallowSizes,
                 references = references,
-                sourceObjectCount = sourceObjectCount ?: objectCount.toLong(),
             )
         }
     }

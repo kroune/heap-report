@@ -38,13 +38,6 @@ PIPELINE_VERSION = 7
 _METADATA_MAGIC = b"SMD1"
 
 
-def analysis_options(extraction_mode="reachable"):
-    if extraction_mode != "reachable":
-        raise core.ApiError(
-            "bad_request", "class-scoped extraction supports only reachable mode", 400)
-    return {"extractionMode": extraction_mode}
-
-
 def shapes_jar():
     """Resolve the prebuilt tool, failing at request time with an action."""
     path = os.environ.get("SHAPES_JAR", _DEFAULT_JAR)
@@ -112,22 +105,20 @@ def _publication_metadata(stats, cls, extraction_mode):
     }
 
 
-def analyze_class(job, jobs, runner, dump_dir, hprof, cls, dst, abort=None,
-                  extraction_mode="reachable"):
+def analyze(job, jobs, hprof, cls, dst, abort=None, extraction_mode="reachable"):
     """Run direct HPROF extract + collapse → validate → atomic publish.
 
     ``cls=None`` selects the complete live non-class heap
-    (``extraction_mode='heap'``). The class-scoped form remains available to
-    the standalone diagnostics. All intermediates live in one unique temporary
+    (``extraction_mode='heap'``); a class name selects its reachable closure
+    (CLI diagnostics only). All intermediates live in one unique temporary
     directory on the destination filesystem. Failure preserves the previous
     artifact; success replaces it only after every aggregate and metadata
     setting has been validated.
     """
-    if cls is None:
-        if extraction_mode != "heap":
-            raise core.ApiError("bad_request", "heap-wide extraction mode must be heap", 400)
-    else:
-        analysis_options(extraction_mode)
+    expected_mode = "heap" if cls is None else "reachable"
+    if extraction_mode != expected_mode:
+        raise core.ApiError(
+            "bad_request", f"extraction mode must be {expected_mode}", 400)
     out_dir = os.path.dirname(dst)
     os.makedirs(out_dir, exist_ok=True)
     relax_file = _relax_file()

@@ -454,12 +454,11 @@ class MatQueryEngine:
         hprof = self._prepare_analysis(dump_id)
 
         def fn(job):
-            dump_dir = self._store.dir_of(dump_id)
-            data = os.path.join(dump_dir, "data")
+            data = os.path.join(self._store.dir_of(dump_id), "data")
             dst = shapesmod.artifact_path(data)
             self._jobs.log(job, "shapes analysis of the whole heap (exact structural collapse)")
-            shapesmod.analyze_class(
-                job, self._jobs, self._runner, dump_dir, hprof, None, dst,
+            shapesmod.analyze(
+                job, self._jobs, hprof, None, dst,
                 abort=self._store.abort_event(dump_id), extraction_mode="heap")
             self.invalidate(dump_id)
             self._jobs.log(job, "done: whole heap")

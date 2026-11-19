@@ -57,18 +57,9 @@ internal class ShapesCli : ShapesCommand(
 
     init {
         subcommands(
-            AnalyzeMatHeapCommand(),
-            AnalyzeSyntheticGraphCommand(),
-            MatInfoCommand(),
-            MatHistogramCommand(),
-            MatTraceCommand(),
-            MatFieldsCommand(),
-            MatReferenceTargetsCommand(),
-            MatClassObjectsCommand(),
-            MatReachBackCommand(),
-            HprofScanCommand(),
             HprofAnalyzeCommand(),
-            MatSccHistogramCommand(),
+            HprofScanCommand(),
+            AnalyzeSyntheticGraphCommand(),
         )
     }
 

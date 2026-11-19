@@ -43,7 +43,7 @@ internal data class HprofExtractionStats(
     val foldedLeaves: Boolean,
 )
 
-/** Direct HPROF extraction + shape analysis, no MAT indexes required. */
+/** Direct HPROF extraction + shape analysis in one JVM. */
 internal class HprofAnalyzeCommand : AnalysisCommand(
     "hprof-analyze",
     "Extract and analyze a heap dump straight from HPROF in one JVM",
@@ -51,6 +51,7 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
     private val hprof by option("--hprof", help = "Heap dump file")
         .path(mustExist = true, canBeDir = false)
         .required()
+
     private val rootChoice: HprofRootChoice by mutuallyExclusiveOptions(
         option("--class", help = "Class whose live instances seed a reachable scope")
             .convert { HprofRootChoice.RootClass(it) },
@@ -58,15 +59,19 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
             .flag()
             .convert { HprofRootChoice.WholeHeap },
     ).required()
+
     private val noFold by option(
         "--no-fold",
         help = "Keep leaf objects as graph nodes (verification mode)",
     ).flag()
+
     private val rawReferences by option(
         "--raw-references",
         help = "Keep soft/weak/phantom-reference edges",
     ).flag()
+
     private val stats by option("--stats", help = "Write extraction statistics as JSON").path()
+
     private val edgeHistogram by option(
         "--edge-histogram",
         help = "Write per-class instance/out-edge counts as TSV",
@@ -82,7 +87,7 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
             val heapIndex = HprofHeapIndex.build(file, directory)
             println(
                 "hprof: ${heapIndex.counts.objects} objects, " +
-                    "${heapIndex.classStore.size} classes, ${heapIndex.chunks.size} chunks"
+                        "${heapIndex.classStore.size} classes, ${heapIndex.chunks.size} chunks"
             )
             HprofGraphExtractor(
                 file = file,
@@ -112,17 +117,12 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
         }
 
         stats?.let { path ->
-            var shallowTotal = 0L
-            for (nodeId in 0 until output.graph.nodeCount) {
-                shallowTotal += output.graph.shallowSizeOf(nodeId)
-            }
-            for (leaf in output.graph.leafShapes) shallowTotal += leaf.shallowTotal.toLong()
             writeJsonReport(
                 path,
                 HprofExtractionStats(
                     scope = scopeClass ?: "whole-heap",
                     objects = output.graph.totalObjectCount,
-                    shallowTotal = shallowTotal,
+                    shallowTotal = output.graph.totalShallowBytes(),
                     nodes = output.graph.nodeCount,
                     leafClasses = output.graph.leafShapes.size,
                     edges = output.graph.totalEdgeCount,

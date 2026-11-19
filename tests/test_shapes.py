@@ -7,8 +7,8 @@ import unittest
 
 from unittest import mock
 
-from backend.mat.shapes import (artifact_path, parse_shp1, analysis_options,
-                                analyze_class, _validate_projection)
+from backend.mat.shapes import (artifact_path, parse_shp1, analyze,
+                                _validate_projection)
 
 
 def build_shp1(labels, shapes, edges, roots, scc_details=None):
@@ -166,11 +166,12 @@ class TestShp1(unittest.TestCase):
         self.assertNotIn("members", payload["shapes"][0])
         self.assertEqual(payload["analysis"], {"objects": 1})
 
-    def test_analysis_options(self):
-        self.assertEqual(analysis_options(), {"extractionMode": "reachable"})
+    def test_rejects_wrong_extraction_mode(self):
         from backend.core import ApiError
         with self.assertRaises(ApiError):
-            analysis_options("retained")
+            analyze(None, mock.Mock(), "heap.hprof", None, "dst", extraction_mode="retained")
+        with self.assertRaises(ApiError):
+            analyze(None, mock.Mock(), "heap.hprof", "C", "dst", extraction_mode="heap")
 
     def test_publish_projected_pipeline(self):
         import json
@@ -194,7 +195,7 @@ class TestShp1(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d, "C")
             with mock.patch("backend.mat.shapes._run_java", side_effect=run):
-                analyze_class(None, mock.Mock(), mock.Mock(), d, "heap.hprof", "C", dst)
+                analyze(None, mock.Mock(), "heap.hprof", "C", dst)
             p = parse_shp1(dst)
             self.assertEqual(p["analysis"]["extractionMode"],
                              {"type": "reachable", "className": "C"})
@@ -231,8 +232,7 @@ class TestShp1(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d)
             with mock.patch("backend.mat.shapes._run_java", side_effect=run):
-                analyze_class(None, mock.Mock(), mock.Mock(), d, "heap.hprof", None, dst,
-                              extraction_mode="heap")
+                analyze(None, mock.Mock(), "heap.hprof", None, dst, extraction_mode="heap")
             self.assertEqual(parse_shp1(dst)["analysis"]["extractionMode"]["type"], "heap")
             for args in calls:
                 self.assertIn("--whole-heap", args)
@@ -275,18 +275,15 @@ class TestShp1(unittest.TestCase):
                 os.remove(path)
 
     def test_failed_analysis_preserves_artifact_and_cleans_workspace(self):
-        from contextlib import nullcontext
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d, "C")
             os.makedirs(os.path.dirname(dst))
             with open(dst, "wb") as f:
                 f.write(b"previous artifact")
-            runner = mock.Mock()
-            runner.index_read_hold.side_effect = lambda *args: nullcontext()
             with mock.patch("backend.mat.shapes._run_java",
                             side_effect=RuntimeError("extract failed")):
                 with self.assertRaisesRegex(RuntimeError, "extract failed"):
-                    analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
+                    analyze(None, mock.Mock(), "heap.hprof", "C", dst)
             with open(dst, "rb") as f:
                 self.assertEqual(f.read(), b"previous artifact")
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])

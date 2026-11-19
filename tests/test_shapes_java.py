@@ -29,7 +29,7 @@ class TestShapesJava(unittest.TestCase):
         jobs = mock.Mock()
         with mock.patch("backend.mat.shapes_java.subprocess.Popen",
                         return_value=process) as popen:
-            result = run_java(None, jobs, abort, ["mat-analyze", "--hprof", "x"],
+            result = run_java(None, jobs, abort, ["hprof-analyze", "--hprof", "x"],
                               "analyze", jar="tool.jar", repo_root="/repo")
         return result, jobs, popen
 
@@ -38,7 +38,7 @@ class TestShapesJava(unittest.TestCase):
         _, jobs, popen = self.run_with(process)
         command = popen.call_args.args[0]
         self.assertEqual(["java", "-Xmx2g", "-XX:ActiveProcessorCount=4",
-                          "-jar", "tool.jar", "mat-analyze", "--hprof", "x"], command)
+                          "-jar", "tool.jar", "hprof-analyze", "--hprof", "x"], command)
         self.assertTrue(popen.call_args.kwargs["stdout"] is not None)
         logged = [call.args[1] for call in jobs.log.call_args_list]
         self.assertIn("first", logged)
