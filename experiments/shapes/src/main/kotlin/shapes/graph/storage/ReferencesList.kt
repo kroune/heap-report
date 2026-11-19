@@ -49,13 +49,6 @@ class ReferencesList internal constructor(expectedObjects: Int = 0, expectedRefe
         return flatReferences[range.start + referenceIndex]
     }
 
-    @PublishedApi
-    internal inline fun forEachReference(range: ReferencesRange, action: (Int) -> Unit) {
-        for (flatIndex in range.start until range.end) {
-            action(flatReferences[flatIndex])
-        }
-    }
-
     fun markImmutable() {
         immutable = true
         if (referenceOffsets.size != storedObjectCount) {

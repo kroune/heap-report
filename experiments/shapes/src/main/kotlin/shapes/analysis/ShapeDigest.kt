@@ -26,15 +26,25 @@ private val digestStream = ThreadLocal.withInitial(xxh3Hash::hashStream)
 internal class CanonicalShapeDigestBuilder(
     @PublishedApi internal val stream: HashStream128,
 ) {
-    fun writeByte(value: Int) = stream.putByte(value.toByte())
+    fun writeByte(value: Int) {
+        stream.putByte(value.toByte())
+    }
 
-    fun writeInt(value: Int) = stream.putInt(value)
+    fun writeInt(value: Int) {
+        stream.putInt(value)
+    }
 
-    fun writeLong(value: Long) = stream.putLong(value)
+    fun writeLong(value: Long) {
+        stream.putLong(value)
+    }
 
-    fun writeBytes(value: ByteArray) = stream.putBytes(value)
+    fun writeBytes(value: ByteArray) {
+        stream.putBytes(value)
+    }
 
-    fun writeUtf8(value: String) = stream.putStringUTF8(value)
+    fun writeUtf8(value: String) {
+        stream.putStringUTF8(value)
+    }
 
     fun writeDigest(value: ShapeDigest) {
         stream.putLong(value.mostSignificantBits)

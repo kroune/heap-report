@@ -57,10 +57,6 @@ class ObjectGraph internal constructor(
     override fun referenceAt(objectId: Int, referenceIndex: Int): Int =
         references.getReference(references[objectId], referenceIndex)
 
-    inline fun forEachReference(objectId: Int, action: (targetObjectId: Int) -> Unit) {
-        references.forEachReference(references[objectId], action)
-    }
-
     class Builder(expectedObjectCount: Int = 0) {
         init {
             require(expectedObjectCount >= 0) { "negative expected object count" }

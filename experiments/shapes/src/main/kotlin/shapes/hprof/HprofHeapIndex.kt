@@ -78,7 +78,7 @@ class HprofHeapIndex private constructor(
                     pendingBytes = 0
                 }
             }
-            if (starts.size > 0) chunks.add(HeapChunk(starts.toLongArray(), ends.toLongArray()))
+            if (starts.isNotEmpty()) chunks.add(HeapChunk(starts.toLongArray(), ends.toLongArray()))
             return chunks
         }
 
@@ -286,7 +286,6 @@ class HprofHeapIndex private constructor(
             val jvmName = if (nameStringId != -1L) directory.string(nameStringId) else "unknown-class"
             classes.add(
                 HprofClass(
-                    classAddress,
                     HprofClassStore.convertJvmClassName(jvmName),
                     superAddress,
                     fieldNames,

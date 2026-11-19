@@ -1,7 +1,6 @@
 package shapes.hprof
 
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
-import it.unimi.dsi.fastutil.longs.LongArrayList
 
 /** One `HEAP_DUMP` / `HEAP_DUMP_SEGMENT` sub-record region. */
 class HeapSegment(val start: Long, val end: Long) {

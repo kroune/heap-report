@@ -7,7 +7,6 @@ import shapes.hprof.HprofDirectory
 import shapes.hprof.HprofFile
 import shapes.hprof.HprofHeapIndex
 import shapes.hprof.HprofSubTag
-import shapes.hprof.HprofType
 import shapes.hprof.mapChunksParallel
 import shapes.hprof.skipSubRecord
 
@@ -156,7 +155,7 @@ internal class HprofScanCommand : ShapesCommand(
                     "in ${elapsedMs(refsAt)} ms"
             )
             println(
-                "objects: ${classInstances} java.lang.Class instances, " +
+                "objects: $classInstances java.lang.Class instances, " +
                     "$unknownClassRefs unknown-class instances, $usedClasses used classes, " +
                     "addresses $minAddress..$maxAddress " +
                     "(span ${(maxAddress - minAddress) / (1 shl 30)} GiB)"

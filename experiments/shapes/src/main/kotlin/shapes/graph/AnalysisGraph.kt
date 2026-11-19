@@ -13,7 +13,7 @@ class LeafShapeAggregate(
 /**
  * Graph contract consumed by shape analysis. Node ids are dense `[0, size)`.
  * A negative reference target `-(ordinal + 1)` denotes a folded leaf class
- * described by `leafShapes[ordinal]`; graphs without folding never produce
+ * described by the [leafShapes] entry at that ordinal; graphs without folding never produce
  * negative targets and expose an empty [leafShapes] list.
  */
 interface AnalysisGraph {

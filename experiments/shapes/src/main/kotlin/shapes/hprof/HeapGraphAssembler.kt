@@ -454,7 +454,7 @@ internal class HeapGraphAssembler(
                 queue.push(denseId)
             }
         }
-        require(roots.size > 0) { "no live instances of $scopeClassName" }
+        require(roots.isNotEmpty()) { "no live instances of $scopeClassName" }
 
         while (!queue.isEmpty) {
             val node = queue.pop()
@@ -566,7 +566,6 @@ internal class HeapGraphAssembler(
         var pairCursor = 0
         var writeCursor = 0L
         var newId = 0
-        var strippedClassTargets = 0L
         var strippedExcluded = 0L
         var foldedLeafEdges = 0L
 
@@ -613,7 +612,7 @@ internal class HeapGraphAssembler(
         check(newId == nodeCount)
         progress(
             "compact: $nodeCount nodes, $writeCursor edges " +
-                "($foldedLeafEdges to leaves, $strippedClassTargets+$strippedExcluded stripped)"
+                "($foldedLeafEdges to leaves, $strippedExcluded stripped)"
         )
 
         val classNames = (0 until state.graphClassCount).map {

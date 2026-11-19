@@ -143,9 +143,6 @@ class ShapeRelaxationStats {
     var relaxedObjects: Long = 0
     var setChildrenConcealedObjects: Long = 0
 
-    val totalHidden: Long
-        get() = classOnlyHiddenEdges + setChildrenHiddenEdges
-
     fun reset() {
         relaxedObjects = 0
         classOnlyHiddenEdges = 0

@@ -257,7 +257,7 @@ class ShapesAnalyzerTest {
         assertTrue(result.entries.none { it.label == "Stray" })
     }
 
-    /** Ring of [size] objects starting at [base]; [classOf] picks the class per position. */
+    /** [ringCount] rings of [size] objects each; [classOf] picks the class per position. */
     private fun ringGraph(
         ringCount: Int,
         size: Int,

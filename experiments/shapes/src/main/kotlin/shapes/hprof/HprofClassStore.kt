@@ -4,7 +4,6 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap
 
 /** One class's metadata from `CLASS_DUMP` + `LOAD_CLASS`. */
 class HprofClass(
-    val address: Long,
     val name: String,
     val superAddress: Long,
     /** Declared instance field names, this class only, declaration order. */
@@ -42,9 +41,6 @@ class HprofClass(
     var shallowSize: Long = 0
         internal set
 
-    val isArray: Boolean
-        get() = name.endsWith("[]")
-
     private companion object {
         val EMPTY_INTS = IntArray(0)
         val EMPTY_NAMES = emptyArray<String>()
@@ -53,7 +49,6 @@ class HprofClass(
 
 /** All classes of a dump with resolved reference-field layouts. */
 class HprofClassStore private constructor(
-    private val file: HprofFile,
     val classes: ArrayList<HprofClass>,
     private val indexByAddress: Long2IntOpenHashMap,
 ) {
@@ -102,7 +97,7 @@ class HprofClassStore private constructor(
             indexByAddress: Long2IntOpenHashMap,
             compressedOops: Boolean,
         ): HprofClassStore {
-            val store = HprofClassStore(file, classes, indexByAddress)
+            val store = HprofClassStore(classes, indexByAddress)
             store.oopSize = if (compressedOops) 4 else 8
             store.resolveLayouts(file.identifierSize)
             return store

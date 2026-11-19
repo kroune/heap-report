@@ -3,7 +3,6 @@ package shapes.hprof
 import shapes.relaxation.FieldConcealmentRules
 import shapes.graph.ClassName
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -22,7 +21,6 @@ class HprofGraphExtractorTest {
                 val index = HprofHeapIndex.build(file, directory)
                 return HprofGraphExtractor(
                     file = file,
-                    directory = directory,
                     index = index,
                     concealmentRules = concealmentRules,
                     foldLeaves = foldLeaves,
@@ -252,7 +250,7 @@ class HprofGraphExtractorTest {
 
         val graph = extract(dump).graph
         val holder = graph.nodesOf("demo.Holder").single()
-        assertEquals(emptyList<String>(), graph.targetsOf(holder))
+        assertEquals(emptyList(), graph.targetsOf(holder))
         // the class instance is excluded, but its edge keeps the name alive
         assertEquals(2L, graph.totalObjectCount)
     }

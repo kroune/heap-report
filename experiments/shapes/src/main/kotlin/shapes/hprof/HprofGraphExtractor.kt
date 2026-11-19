@@ -115,11 +115,6 @@ internal class ExtractionState(
         flags.set(ValueLayout.JAVA_BYTE, denseId.toLong(), (current or bit).toByte())
     }
 
-    fun clearFlag(denseId: Int, bit: Int) {
-        val current = flags.get(ValueLayout.JAVA_BYTE, denseId.toLong()).toInt()
-        flags.set(ValueLayout.JAVA_BYTE, denseId.toLong(), (current and bit.inv()).toByte())
-    }
-
     fun classIndexOf(denseId: Int): Int =
         classIdx.get(ValueLayout.JAVA_SHORT_UNALIGNED, denseId.toLong() shl 1).toInt() and 0xFFFF
 
@@ -143,7 +138,6 @@ class HprofExtractionOutput(
  */
 class HprofGraphExtractor(
     private val file: HprofFile,
-    private val directory: HprofDirectory,
     private val index: HprofHeapIndex,
     private val concealmentRules: FieldConcealmentRules = FieldConcealmentRules(),
     private val filterReferenceMechanics: Boolean = true,

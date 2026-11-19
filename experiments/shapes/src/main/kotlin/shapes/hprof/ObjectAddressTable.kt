@@ -38,17 +38,6 @@ class ObjectAddressTable private constructor(
         return -1
     }
 
-    fun addressOf(denseId: Int): Long {
-        var low = 0
-        var high = spanFirstId.size - 2
-        while (low < high) {
-            val middle = (low + high + 1) ushr 1
-            if (spanFirstId[middle] <= denseId) low = middle else high = middle - 1
-        }
-        val delta = deltas.get(U16, denseId.toLong() shl 1).toInt() and 0xFFFF
-        return baseAddress + (low.toLong() shl SPAN_SHIFT) + delta
-    }
-
     override fun close() = arena.close()
 
     companion object {
