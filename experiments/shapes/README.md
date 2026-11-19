@@ -1,10 +1,18 @@
 # shapes — exact structural collapse
 
 Implementation of `backend/mat/SHAPES.md`, in Kotlin. The analyzer operates on
-a compact in-memory graph; the supported MAT extractor produces that graph
-from real heap dumps. The historical `experiments/shapes` path is retained
-while the implementation is being hardened, to keep existing build and
-diagnostic workflows compatible.
+a compact graph behind the `AnalysisGraph` interface; two extractors produce
+it from real heap dumps:
+
+- **`hprof-analyze` (primary)** — a standalone parallel HPROF reader with no
+  MAT dependency. Whole-heap on the 15.6 GB / 260.8M-object `run-jfr-38`
+  dump: **~175 s end-to-end, ≤4.0 GB peak physical footprint** (Xmx 1500m;
+  the CSR graph lives in unlinked file-backed mappings, so memory pressure
+  evicts instead of OOMing). See "HPROF pipeline" below.
+- **`mat-analyze` (legacy/verification)** — the original MAT-index extractor,
+  kept as the semantic reference; whole-heap does not fit even a 12 GB heap
+  (the 139M-member mega-SCC OOMs the cyclic collapser), class scopes work.
+
 Spec section references below are to SHAPES.md.
 
 ## What is implemented
@@ -80,6 +88,10 @@ Spec section references below are to SHAPES.md.
 ./gradlew run --args="demo --modules 3000 --verify"      # in-memory demo
 ./gradlew fatJar   # build/libs/shapes-experiment-all.jar — what the heap-report
                    # backend runs (SHAPES_JAR; mat-analyze)
+
+# whole heap straight from HPROF (no MAT indexes needed):
+java -Xmx1500m -jar build/libs/shapes-experiment-all.jar hprof-analyze \
+  --hprof dump.hprof --whole-heap --relax relax.tsv --out heap.shp1 --stats s.json
 ```
 
 Headline result on the synthetic 3000-module heap: 18001 objects collapse
@@ -238,6 +250,98 @@ Perf/memory, JFR-driven (in order of what profiles showed):
    `edgesPerMember=false` means "× collapsedInstances".
    `ShapeEdgeAccountingVerifier` (CLI `--verify-edges`) re-derives every ref
    against the artifact: 600,058,408 refs, exact.
+
+## HPROF pipeline (`hprof-analyze`, `shapes/hprof/`)
+
+Reads the dump directly — no OSGi, no MAT indexes — and is the path that meets
+the "whole heap in under 5 minutes within ~6 GB" target. Pipeline:
+
+1. **Directory scan** — one pass over top-level records: UTF-8 strings,
+   `LOAD_CLASS`, heap-segment extents (HotSpot writes ~1 MiB segments; they
+   are grouped into ~64 MiB chunks for balanced parallel walks).
+2. **Heap index (walk A, parallel)** — `CLASS_DUMP` layouts (reference-field
+   byte offsets over the super chain, static/loader retained addresses), GC
+   roots incl. per-thread locals, object addresses per chunk.
+3. **Address table** — dense ids are address ranks; lookup is a span table
+   (4 KiB spans → u16 deltas, ~2.1 B/object) built by parallel counting sort.
+4. **Record walk (walk B, parallel)** — per-class extraction plans apply the
+   reference-mechanics filter, conceal rules and all structural projections
+   (map/table flattening semantics identical to `StructuralGraphProjector`,
+   validated digest-for-digest) from raw field bytes; per-object deduplicated
+   main edges spill to per-chunk temp files, dropped edges are kept separately
+   for liveness, hash-table chains and `next/before/after` links defer to
+   assembly. Thread stack locals become thread-object edges (MAT semantics).
+5. **Assembly (pass C)** — chain expansion, CSR scatter (offsets + targets in
+   unlinked file-backed mappings), GC-root liveness with a class-statics
+   fixpoint, optional class-scope BFS, leaf folding (zero-out-degree objects
+   collapse to per-class leaf pseudo-shapes with exact aggregates), in-place
+   compaction to live non-leaf nodes.
+6. The analyzer runs unchanged on the folded graph: Tarjan skips leaf targets,
+   cons treats them as pre-collapsed children, and SCCs above 1024 members
+   take a **lazy-WL** path: one streaming pass computes an isomorphism-
+   invariant signature (member count, internal edge count, class histogram,
+   external child-shape totals, relaxation rules applied). A unique signature
+   — the common case, including the mega-SCC — interns the shape with no WL
+   refinement at all; a collision materializes both components' exact WL
+   canonical forms (the same machinery as small SCCs) and merges only on a
+   canonical-digest match, otherwise the shapes stay distinct with an
+   ordinal-discriminated digest. Colliding pairs beyond 2^21 members are kept
+   distinct (the conservative direction) with a logged warning. Lazy shapes up
+   to 2^20 members still carry the full per-member artifact payload
+   (`membersComplete=true`, presentational member order); above that the
+   payload is capped at the top 50 classes. Aggregate external edge totals
+   replace per-member edge rows either way.
+
+### Equivalence vs the MAT path (run-jfr-38)
+
+- Class scopes `java.lang.String` / `org.gradle.util.Path` / `java.io.File`
+  (reachable): SHP1 artifacts match the MAT pipeline **exactly** — digests,
+  instance counts, edges, multiplicities, roots histograms and shallow sizes
+  (compressed-oops layout model, auto-detected via max heap address < 32 GiB).
+- Whole heap: live set = MAT's objects − the pseudo "system class loader"
+  object MAT synthesizes (259,731,971 vs 259,731,972); the mega-SCC matches
+  exactly (139,136,834 members / 3,057 classes / 279,776,747 internal edges).
+- Leaf folding is transparent: fold vs no-fold whole-heap artifacts match
+  structurally across all 104,612 shapes and 382,413 edge rows.
+- Intentional deltas: (1) per-object target dedup is uniform — the old path
+  skipped dedup for conceal-rule and Reference classes read through named
+  references (801,106 edges on this dump); (2) SCCs above 1024 members carry
+  the lazy signature digest, not a WL key (eager vs lazy verified equivalent
+  on this dump: all 31 large SCCs identical in membership, counts and internal
+  edges, and unit tests cover both collision outcomes); (3) no pseudo
+  class-loader object; (4) GC-root liveness replaces "MAT discarded
+  unreachable" — measured equal on this dump modulo the 9 primitive
+  `java.lang.Class` instances that are excluded from the graph either way.
+  For set-children members of lazy SCCs, external totals aggregate over actual
+  members (deduped per member) rather than over eager quotient
+  representatives — 144 edge rows on this dump, exempt from edge-accounting
+  verification like all relaxed components.
+
+### Whole-heap result (run-jfr-38, M1 Max, warm-ish cache)
+
+259,731,971 objects / 587,440,446 refs → 104,612 shapes (collapse 2,483×).
+Phases: directory ~3 s, heap index ~18 s, address table ~3.5 s, record walk
+14–45 s, scatter ~6 s, liveness ~21 s, fold+compact ~11 s, Tarjan ~13–16 s,
+cons ~16 s (lazy WL), aggregate ~15 s; **total ~150–240 s** (cache-state
+dependent)
+in one JVM at Xmx 1500m, peak physical footprint **≤4.0 GB** (plus evictable
+file-backed pages).
+`--verify` passes inv1/2/4; inv3 differs by exactly the class-only concealed
+edge count when relax rules are active (those edges are accounted by
+`ShapeRelaxationStats`, as in the old path).
+
+Diagnostics: `hprof-scan` (reader validation counts), `mat-scc-histogram`
+(MAT-path SCC histogram + per-class edge histogram used for A/B),
+`--edge-histogram` on both analyze commands, `--no-fold` (verification mode).
+Class scopes in `hprof-analyze` (`--class X`, reachable semantics) disable
+folding because roots may be leaves.
+
+Backend note: `backend/mat/shapes.py` invokes `hprof-analyze` (pipeline
+version 7) — no MAT indexes, no serial MAT queue; `_publication_metadata`
+maps `HprofExtractionStats` onto the published SMD1 keys and
+`validate_projection` cross-checks artifact aggregates against the
+extractor's independent counters. The MAT-reading `mat-analyze` command
+remains as the A/B reference.
 
 ## Flow comparison diagnostics
 

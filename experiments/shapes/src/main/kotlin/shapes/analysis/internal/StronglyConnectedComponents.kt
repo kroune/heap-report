@@ -1,27 +1,56 @@
 package shapes.analysis.internal
 
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
+import java.lang.foreign.Arena
+import java.lang.foreign.MemorySegment
+import java.lang.foreign.ValueLayout
 
-/** Object-to-component mapping; the sign-encoded working representation is private. */
-internal class ComponentAssignment(private val encodedComponentIds: IntArray) {
-    fun componentOf(objectId: Int): Int = -encodedComponentIds[objectId] - 2
+/**
+ * Object-to-component mapping; the sign-encoded working representation is
+ * private. Off-heap (GC-managed arena) because it costs 4 B per object.
+ */
+internal class ComponentAssignment(
+    @PublishedApi internal val encodedComponentIds: MemorySegment,
+) {
+    fun componentOf(objectId: Int): Int = -get(objectId) - 2
+
+    internal fun get(objectId: Int): Int =
+        encodedComponentIds.get(ValueLayout.JAVA_INT_UNALIGNED, objectId.toLong() shl 2)
+
+    internal fun set(objectId: Int, value: Int) {
+        encodedComponentIds.set(ValueLayout.JAVA_INT_UNALIGNED, objectId.toLong() shl 2, value)
+    }
 }
 
-/** Compact component membership with singleton members stored inline. */
+/**
+ * Compact component membership: singleton members inline, multi-member lists
+ * in CSR rows, and components over [scanThreshold] members scanned from the
+ * assignment instead of being stored (the giant SCC would dominate memory).
+ */
 internal class ComponentMembers(
     val count: Int,
     @PublishedApi internal val sizes: IntArray,
     @PublishedApi internal val firstMembers: IntArray,
     @PublishedApi internal val multiMemberOffsets: IntArray,
     @PublishedApi internal val multiMemberIds: IntArray,
+    @PublishedApi internal val assignment: ComponentAssignment,
+    @PublishedApi internal val scopeSize: Int,
+    @PublishedApi internal val scanThreshold: Int,
 ) {
     fun size(componentId: Int): Int = sizes[componentId]
 
     fun singletonMember(componentId: Int): Int = firstMembers[componentId]
 
     inline fun forEachMember(componentId: Int, action: (objectId: Int) -> Unit) {
-        if (sizes[componentId] == 1) {
+        val memberCount = sizes[componentId]
+        if (memberCount == 1) {
             action(firstMembers[componentId])
+            return
+        }
+        if (memberCount > scanThreshold) {
+            for (objectId in 0 until scopeSize) {
+                if (assignment.componentOf(objectId) == componentId) action(objectId)
+            }
             return
         }
         val row = -firstMembers[componentId] - 1
@@ -37,9 +66,12 @@ internal class StronglyConnectedComponents(
 )
 
 /** Iterative Tarjan over the selected analysis objects. */
-internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph) {
+internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGraph) {
     fun find(scope: AnalysisObjectSet): StronglyConnectedComponents {
-        val dfsIndexAndComponent = IntArray(graph.size) { UNVISITED }
+        val dfsIndexAndComponent = ComponentAssignment(
+            Arena.ofAuto().allocate(graph.size.toLong() shl 2),
+        )
+        for (objectId in 0 until graph.size) dfsIndexAndComponent.set(objectId, UNVISITED)
         val onStackBits = LongArray((graph.size ushr 6) + 1)
 
         var tarjanStack = IntArray(INITIAL_STACK_CAPACITY)
@@ -53,9 +85,9 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
 
         for (scopeIndex in 0 until scope.objectCount) {
             val startObjectId = scope.objectIdAt(scopeIndex)
-            if (dfsIndexAndComponent[startObjectId] != UNVISITED) continue
+            if (dfsIndexAndComponent.get(startObjectId) != UNVISITED) continue
 
-            dfsIndexAndComponent[startObjectId] = nextDfsIndex++
+            dfsIndexAndComponent.set(startObjectId, nextDfsIndex++)
             tarjanStack = ensureCapacity(tarjanStack, tarjanStackSize + 1)
             tarjanStack[tarjanStackSize++] = startObjectId
             flipOnStack(onStackBits, startObjectId)
@@ -64,7 +96,7 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
             lowLinkStack = ensureCapacity(lowLinkStack, dfsStackSize + 1)
             nextReferenceStack = ensureCapacity(nextReferenceStack, dfsStackSize + 1)
             nodeStack[dfsStackSize] = startObjectId
-            lowLinkStack[dfsStackSize] = dfsIndexAndComponent[startObjectId]
+            lowLinkStack[dfsStackSize] = dfsIndexAndComponent.get(startObjectId)
             nextReferenceStack[dfsStackSize] = 0
             dfsStackSize++
 
@@ -76,10 +108,10 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
                 if (referenceIndex < graph.referenceCount(objectId)) {
                     nextReferenceStack[frameIndex] = referenceIndex + 1
                     val targetId = graph.referenceAt(objectId, referenceIndex)
-                    if (!scope.membership.get(targetId)) continue
+                    if (targetId < 0 || !scope.membership.get(targetId)) continue
 
-                    if (dfsIndexAndComponent[targetId] == UNVISITED) {
-                        dfsIndexAndComponent[targetId] = nextDfsIndex++
+                    if (dfsIndexAndComponent.get(targetId) == UNVISITED) {
+                        dfsIndexAndComponent.set(targetId, nextDfsIndex++)
                         tarjanStack = ensureCapacity(tarjanStack, tarjanStackSize + 1)
                         tarjanStack[tarjanStackSize++] = targetId
                         flipOnStack(onStackBits, targetId)
@@ -88,11 +120,11 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
                         lowLinkStack = ensureCapacity(lowLinkStack, dfsStackSize + 1)
                         nextReferenceStack = ensureCapacity(nextReferenceStack, dfsStackSize + 1)
                         nodeStack[dfsStackSize] = targetId
-                        lowLinkStack[dfsStackSize] = dfsIndexAndComponent[targetId]
+                        lowLinkStack[dfsStackSize] = dfsIndexAndComponent.get(targetId)
                         nextReferenceStack[dfsStackSize] = 0
                         dfsStackSize++
                     } else if (isOnStack(onStackBits, targetId)) {
-                        val targetDfsIndex = dfsIndexAndComponent[targetId]
+                        val targetDfsIndex = dfsIndexAndComponent.get(targetId)
                         if (targetDfsIndex < lowLinkStack[frameIndex]) {
                             lowLinkStack[frameIndex] = targetDfsIndex
                         }
@@ -105,11 +137,11 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
                 if (dfsStackSize > 0 && lowLink < lowLinkStack[dfsStackSize - 1]) {
                     lowLinkStack[dfsStackSize - 1] = lowLink
                 }
-                if (lowLink == dfsIndexAndComponent[objectId]) {
+                if (lowLink == dfsIndexAndComponent.get(objectId)) {
                     while (true) {
                         val memberId = tarjanStack[--tarjanStackSize]
                         flipOnStack(onStackBits, memberId)
-                        dfsIndexAndComponent[memberId] = -(componentCount + 2)
+                        dfsIndexAndComponent.set(memberId, -(componentCount + 2))
                         if (memberId == objectId) break
                     }
                     componentCount++
@@ -117,9 +149,8 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
             }
         }
 
-        val assignment = ComponentAssignment(dfsIndexAndComponent)
-        val members = groupMembers(scope, assignment, componentCount)
-        return StronglyConnectedComponents(assignment, members)
+        val members = groupMembers(scope, dfsIndexAndComponent, componentCount)
+        return StronglyConnectedComponents(dfsIndexAndComponent, members)
     }
 
     private fun groupMembers(
@@ -135,13 +166,13 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
 
         var multiMemberComponentCount = 0
         for (componentId in 0 until componentCount) {
-            if (componentSizes[componentId] > 1) multiMemberComponentCount++
+            if (componentSizes[componentId] in 2..SCAN_THRESHOLD) multiMemberComponentCount++
         }
         val multiMemberOffsets = IntArray(multiMemberComponentCount + 1)
         val firstMembers = IntArray(componentCount) { -1 }
         var row = 0
         for (componentId in 0 until componentCount) {
-            if (componentSizes[componentId] > 1) {
+            if (componentSizes[componentId] in 2..SCAN_THRESHOLD) {
                 firstMembers[componentId] = -(row + 1)
                 multiMemberOffsets[row + 1] =
                     multiMemberOffsets[row] + componentSizes[componentId]
@@ -156,7 +187,7 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
             val componentId = assignment.componentOf(objectId)
             if (componentSizes[componentId] == 1) {
                 firstMembers[componentId] = objectId
-            } else {
+            } else if (componentSizes[componentId] <= SCAN_THRESHOLD) {
                 val memberRow = -firstMembers[componentId] - 1
                 multiMemberIds[fillCursors[memberRow]++] = objectId
             }
@@ -167,6 +198,9 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
             firstMembers,
             multiMemberOffsets,
             multiMemberIds,
+            assignment,
+            graph.size,
+            SCAN_THRESHOLD,
         )
     }
 
@@ -185,5 +219,8 @@ internal class StronglyConnectedComponentsFinder(private val graph: ObjectGraph)
     private companion object {
         const val UNVISITED = -1
         const val INITIAL_STACK_CAPACITY = 1 shl 16
+
+        /** Components above this size are scanned, not stored. */
+        const val SCAN_THRESHOLD = 1 shl 22
     }
 }

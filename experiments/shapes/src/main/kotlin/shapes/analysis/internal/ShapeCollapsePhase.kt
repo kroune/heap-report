@@ -1,7 +1,7 @@
 package shapes.analysis.internal
 
 import shapes.analysis.ShapeKind
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
 import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.ShapeRelaxationStats
 import shapes.relaxation.StructuralRelaxation
@@ -9,11 +9,13 @@ import shapes.relaxation.StructuralRelaxation
 internal class ShapeCollapseResult(
     val shapes: List<CanonicalShape>,
     val shapeOfComponent: IntArray,
+    /** Internal shape ids of folded leaf classes, by leaf ordinal. */
+    val leafShapeInternalIds: IntArray,
 )
 
 /** Bottom-up structural collapse over the condensation DAG. */
 internal class ShapeCollapsePhase(
-    private val graph: ObjectGraph,
+    private val graph: AnalysisGraph,
     private val relaxationPolicy: ShapeRelaxationPolicy,
     private val relaxationStats: ShapeRelaxationStats,
     private val progress: (String) -> Unit,
@@ -23,6 +25,20 @@ internal class ShapeCollapsePhase(
         val shapeOfComponent = IntArray(components.members.count) { -1 }
         val acyclicInterner = ShapeInterner(progress)
         val cyclicInterner = HashMap<SccStructuralKey, CyclicShape>()
+
+        // Folded leaf classes become LEAF shapes up front, through the same
+        // interner, so class-only relaxed objects merge with them exactly.
+        val leafShapeInternalIds = IntArray(graph.leafShapes.size) { leafOrdinal ->
+            val classIndex = graph.leafShapes[leafOrdinal].classIndex
+            acyclicInterner.intern(
+                shapes,
+                classIndex,
+                graph.classNames[classIndex],
+                ShapeKind.LEAF,
+                EMPTY_EDGES,
+                0,
+            ).internalId
+        }
         val edgeComparator = Comparator<ChildShapeReference> { first, second ->
             val childComparison = compareChildShapeIds(
                 shapes,
@@ -41,6 +57,7 @@ internal class ShapeCollapsePhase(
             components,
             cyclicInterner,
             edgeComparator,
+            leafShapeInternalIds,
         )
 
         var childShapeIds = IntArray(64)
@@ -51,8 +68,11 @@ internal class ShapeCollapsePhase(
             var hasSelfLoop = false
             if (memberCount == 1) {
                 val objectId = components.members.singletonMember(componentId)
-                graph.forEachReference(objectId) { targetId ->
-                    if (targetId == objectId) hasSelfLoop = true
+                for (referenceIndex in 0 until graph.referenceCount(objectId)) {
+                    if (graph.referenceAt(objectId, referenceIndex) == objectId) {
+                        hasSelfLoop = true
+                        break
+                    }
                 }
             }
 
@@ -80,11 +100,16 @@ internal class ShapeCollapsePhase(
                         packedChildEdges = LongArray(childShapeIds.size)
                     }
                     var childCount = 0
-                    graph.forEachReference(objectId) { targetId ->
-                        val targetComponent = components.assignment.componentOf(targetId)
-                        val childShapeId = shapeOfComponent[targetComponent]
+                    for (referenceIndex in 0 until referenceCount) {
+                        val targetId = graph.referenceAt(objectId, referenceIndex)
+                        val childShapeId = if (targetId < 0) {
+                            leafShapeInternalIds[-targetId - 1]
+                        } else {
+                            val targetComponent = components.assignment.componentOf(targetId)
+                            shapeOfComponent[targetComponent]
+                        }
                         check(childShapeId >= 0) {
-                            "child component $targetComponent collapsed after parent — " +
+                            "child of $objectId collapsed after parent — " +
                                 "topological order violated"
                         }
                         childShapeIds[childCount++] = childShapeId
@@ -110,6 +135,8 @@ internal class ShapeCollapsePhase(
                         packedCount,
                     )
                 }
+            } else if (memberCount > LAZY_WL_THRESHOLD) {
+                cyclicCollapser.collapseLazy(componentId, memberCount, progress)
             } else {
                 val memberIds = IntArray(memberCount)
                 var memberIndex = 0
@@ -130,7 +157,7 @@ internal class ShapeCollapsePhase(
                 )
             }
         }
-        return ShapeCollapseResult(shapes, shapeOfComponent)
+        return ShapeCollapseResult(shapes, shapeOfComponent, leafShapeInternalIds)
     }
 
     private fun compareChildShapeIds(
@@ -166,6 +193,17 @@ internal class ShapeCollapsePhase(
             compareChildShapeIds(shapes, first, second)
         }
         sorted.forEachIndexed { index, childId -> childIds[index] = childId }
+    }
+
+    private companion object {
+        val EMPTY_EDGES = LongArray(0)
+
+        /**
+         * SCCs above this member count take the lazy-WL path: an invariant
+         * signature decides interning, and WL refinement runs only when two
+         * components collide on it.
+         */
+        const val LAZY_WL_THRESHOLD = 1024
     }
 
     private fun packChildEdges(

@@ -12,18 +12,27 @@ import java.util.Collections
  * packed primitive values.
  */
 class ObjectGraph internal constructor(
-    val classNames: List<ClassName>,
+    override val classNames: List<ClassName>,
     @PublishedApi internal val classIndices: CharArray,
     @PublishedApi internal val shallowSizes: CompactULongArray,
     @PublishedApi internal val references: ReferencesList,
     /** Object count of the source heap, or [size] when there is no larger source. */
-    val sourceObjectCount: Long,
-) {
-    val size: Int
+    override val sourceObjectCount: Long,
+) : AnalysisGraph {
+    override val size: Int
         get() = shallowSizes.size
 
     val referenceCount: Int
         get() = references.referenceCount
+
+    override val totalObjectCount: Long
+        get() = size.toLong()
+
+    override val totalEdgeCount: Long
+        get() = references.referenceCount.toLong()
+
+    override val leafShapes: List<LeafShapeAggregate>
+        get() = emptyList()
 
     init {
         require(classNames.size <= MAX_CLASS_COUNT) {
@@ -34,15 +43,15 @@ class ObjectGraph internal constructor(
         }
     }
 
-    fun className(objectId: Int): ClassName = classNames[classIndices[objectId].code]
+    override fun className(objectId: Int): ClassName = classNames[classIndices[objectId].code]
 
-    internal fun classIndex(objectId: Int): Int = classIndices[objectId].code
+    override fun classIndex(objectId: Int): Int = classIndices[objectId].code
 
-    fun shallowSize(objectId: Int): ULong = shallowSizes[objectId]
+    override fun shallowSize(objectId: Int): ULong = shallowSizes[objectId]
 
-    fun referenceCount(objectId: Int): Int = references[objectId].size
+    override fun referenceCount(objectId: Int): Int = references[objectId].size
 
-    fun referenceAt(objectId: Int, referenceIndex: Int): Int =
+    override fun referenceAt(objectId: Int, referenceIndex: Int): Int =
         references.getReference(references[objectId], referenceIndex)
 
     inline fun forEachReference(objectId: Int, action: (targetObjectId: Int) -> Unit) {

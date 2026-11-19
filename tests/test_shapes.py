@@ -167,26 +167,24 @@ class TestShp1(unittest.TestCase):
         self.assertEqual(payload["analysis"], {"objects": 1})
 
     def test_analysis_options(self):
-        self.assertEqual(analysis_options(), {"extractionMode": "retained"})
+        self.assertEqual(analysis_options(), {"extractionMode": "reachable"})
         from backend.core import ApiError
         with self.assertRaises(ApiError):
-            analysis_options("bad")
+            analysis_options("retained")
 
     def test_publish_projected_pipeline(self):
         import json
-        from contextlib import nullcontext
         row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
                "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
                "roots": 2, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
-        metadata = dict(extractionMode={"type": "retained", "className": "C"},
-                        objects=2, roots=2, shallowTotal=32, sourceEdges=1,
-                        scopeBoundaryEdges=4, projectedEdges=0)
+        stats = dict(scope="C", objects=2, roots=2, shallowTotal=32, edges=0,
+                     nodes=2, rawNonNullRefs=1)
         calls = []
         def run(job, jobs, abort, args, what, xmx=None):
             calls.append((args, what, xmx))
             target = args[args.index("--out") + 1]
             with open(args[args.index("--stats") + 1], "w") as f:
-                json.dump(metadata, f)
+                json.dump(stats, f)
             with open(target, "wb") as f:
                 f.write(build_shp1(["C"], [row], [], [(0, 2)], []))
             with open(args[args.index("--relax-stats") + 1], "w") as f:
@@ -195,38 +193,36 @@ class TestShp1(unittest.TestCase):
                            "setChildrenConcealedObjects": 0}, f)
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d, "C")
-            runner = mock.Mock()
-            runner.index_read_hold.side_effect = lambda *a: nullcontext()
             with mock.patch("backend.mat.shapes._run_java", side_effect=run):
-                analyze_class(None, mock.Mock(), runner, d, "heap.hprof", "C", dst)
+                analyze_class(None, mock.Mock(), mock.Mock(), d, "heap.hprof", "C", dst)
             p = parse_shp1(dst)
-            self.assertEqual(p["analysis"]["extractionMode"]["type"], "retained")
-            self.assertEqual(p["analysis"]["sourceEdges"], 1)
-            self.assertEqual(p["analysis"]["pipelineVersion"], 6)
+            self.assertEqual(p["analysis"]["extractionMode"],
+                             {"type": "reachable", "className": "C"})
+            self.assertEqual(p["analysis"]["extraction"]["rawNonNullRefs"], 1)
+            self.assertEqual(p["analysis"]["pipelineVersion"], 7)
             self.assertEqual(len(calls), 1)
-            self.assertEqual(calls[0][0][0], "mat-analyze")
+            self.assertEqual(calls[0][0][0], "hprof-analyze")
+            self.assertIn("--class", calls[0][0])
             self.assertEqual(calls[0][1], "analyze")
             self.assertEqual(os.listdir(os.path.dirname(dst)), [os.path.basename(dst)])
-            bad = dict(metadata, objects=3)
+            bad = dict(p["analysis"], objects=3)
             with self.assertRaisesRegex(RuntimeError, "objects"):
                 _validate_projection(dst, bad)
 
     def test_publish_heap_wide_pipeline(self):
         import json
-        from contextlib import nullcontext
         row = {"hi": 0, "lo": 1, "kind": 0, "labelIdx": 0, "count": 2,
                "shallowTotal": 32, "shallowMin": 16, "shallowMax": 16,
                "roots": 0, "sccSize": 1, "internalEdges": 0, "edgesPerMember": False}
-        metadata = dict(extractionMode={"type": "heap"}, objects=2, roots=0,
-                        shallowTotal=32, sourceEdges=0, scopeBoundaryEdges=0,
-                        projectedEdges=0)
+        stats = dict(scope="whole-heap", objects=2, roots=0, shallowTotal=32,
+                     edges=0)
         calls = []
 
         def run(job, jobs, abort, args, what, xmx=None):
             calls.append(args)
             target = args[args.index("--out") + 1]
             with open(args[args.index("--stats") + 1], "w") as f:
-                json.dump(metadata, f)
+                json.dump(stats, f)
             with open(target, "wb") as f:
                 f.write(build_shp1(["C"], [row], [], [], []))
             with open(args[args.index("--relax-stats") + 1], "w") as f:
@@ -234,15 +230,14 @@ class TestShp1(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             dst = artifact_path(d)
-            runner = mock.Mock()
-            runner.index_read_hold.side_effect = lambda *a: nullcontext()
             with mock.patch("backend.mat.shapes._run_java", side_effect=run):
-                analyze_class(None, mock.Mock(), runner, d, "heap.hprof", None, dst,
+                analyze_class(None, mock.Mock(), mock.Mock(), d, "heap.hprof", None, dst,
                               extraction_mode="heap")
             self.assertEqual(parse_shp1(dst)["analysis"]["extractionMode"]["type"], "heap")
             for args in calls:
                 self.assertIn("--whole-heap", args)
                 self.assertNotIn("--class", args)
+                self.assertEqual(args[0], "hprof-analyze")
 
     def test_reachable_count_includes_quotient_concealed_objects(self):
         import json

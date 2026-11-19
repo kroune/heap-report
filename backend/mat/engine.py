@@ -448,8 +448,8 @@ class MatQueryEngine:
 
     def analyze_shapes(self, dump_id):
         """Queue one exact structural collapse of the complete heap. The
-        prebuilt shapes jar reads MAT indexes directly, so index acquisition
-        and the serial MAT queue follow the same discipline as MAT itself."""
+        prebuilt shapes jar reads the HPROF file directly, so the job needs
+        neither MAT indexes nor the serial MAT queue — only the dump file."""
         shapesmod.shapes_jar()   # fail fast at request time, not inside the job
         hprof = self._prepare_analysis(dump_id)
 
@@ -458,9 +458,9 @@ class MatQueryEngine:
             data = os.path.join(dump_dir, "data")
             dst = shapesmod.artifact_path(data)
             self._jobs.log(job, "shapes analysis of the whole heap (exact structural collapse)")
-            self._with_indexes(job, dump_id, lambda: shapesmod.analyze_class(
+            shapesmod.analyze_class(
                 job, self._jobs, self._runner, dump_dir, hprof, None, dst,
-                abort=self._store.abort_event(dump_id), extraction_mode="heap"))
+                abort=self._store.abort_event(dump_id), extraction_mode="heap")
             self.invalidate(dump_id)
             self._jobs.log(job, "done: whole heap")
 

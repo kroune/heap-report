@@ -66,6 +66,9 @@ internal class ShapesCli : ShapesCommand(
             MatReferenceTargetsCommand(),
             MatClassObjectsCommand(),
             MatReachBackCommand(),
+            HprofScanCommand(),
+            HprofAnalyzeCommand(),
+            MatSccHistogramCommand(),
         )
     }
 

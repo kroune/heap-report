@@ -4,16 +4,16 @@ import shapes.analysis.ShapeAnalysisResult
 import shapes.analysis.ShapeEdge
 import shapes.analysis.ShapeEntry
 import shapes.analysis.SccMemberEntry
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
 import java.util.BitSet
 
 /** Computes per-shape aggregates and assigns deterministic public shape ids. */
-internal class ShapeAnalysisResultBuilder(private val graph: ObjectGraph) {
+internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
     fun build(
         collapse: ShapeCollapseResult,
         components: StronglyConnectedComponents,
         rootIds: IntArray,
-        reachableObjectCount: Int,
+        reachableObjectCount: Long,
     ): ShapeAnalysisResult {
         val shapes = collapse.shapes
         val shapeCount = shapes.size
@@ -24,6 +24,19 @@ internal class ShapeAnalysisResultBuilder(private val graph: ObjectGraph) {
         val rootCounts = LongArray(shapeCount)
         val rootMembership = BitSet(graph.size)
         for (rootId in rootIds) rootMembership.set(rootId)
+
+        for ((leafOrdinal, aggregate) in graph.leafShapes.withIndex()) {
+            val internalId = collapse.leafShapeInternalIds[leafOrdinal]
+            instanceCounts[internalId] += aggregate.instanceCount
+            shallowTotals[internalId] += aggregate.shallowTotal
+            if (aggregate.shallowMin < shallowMinimums[internalId]) {
+                shallowMinimums[internalId] = aggregate.shallowMin
+            }
+            if (aggregate.shallowMax > shallowMaximums[internalId]) {
+                shallowMaximums[internalId] = aggregate.shallowMax
+            }
+            rootCounts[internalId] += aggregate.rootCount
+        }
 
         for (componentId in 0 until components.members.count) {
             val shapeId = collapse.shapeOfComponent[componentId]
@@ -96,6 +109,28 @@ internal class ShapeAnalysisResultBuilder(private val graph: ObjectGraph) {
                 edgesPerMember = shape.packedChildEdges.isNotEmpty(),
                 members = null,
                 membersComplete = false,
+            )
+        }
+
+        if (shape is SummarizedSccShape) {
+            val topClasses = shape.members.take(3).joinToString(",") { it.className.name }
+            return ShapeEntry(
+                publicId,
+                shape.digest,
+                shape.kind,
+                "scc[${shape.memberCount} members/${shape.distinctClassCount} classes: $topClasses,...]",
+                instanceCount,
+                shallowTotal,
+                shallowMin,
+                shallowMax,
+                rootCount,
+                sccInstanceSize = shape.memberCount,
+                internalEdgesPerInstance = shape.totalInternalEdges,
+                edgesPerMember = false,
+                members = shape.members.map { member ->
+                    SccMemberEntry(member.className, member.internalConnections)
+                },
+                membersComplete = shape.members.size == shape.memberCount,
             )
         }
 

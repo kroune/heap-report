@@ -1,7 +1,7 @@
 package shapes.analysis.internal
 
 import shapes.analysis.AnalysisScope
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
 import java.util.BitSet
 
 internal class AnalysisObjectSet(
@@ -13,7 +13,7 @@ internal class AnalysisObjectSet(
     fun objectIdAt(index: Int): Int = orderedObjectIds?.get(index) ?: index
 }
 
-internal class AnalysisScopeResolver(private val graph: ObjectGraph) {
+internal class AnalysisScopeResolver(private val graph: AnalysisGraph) {
     fun resolve(scope: AnalysisScope): AnalysisObjectSet = when (scope) {
         is AnalysisScope.EntireGraph -> AnalysisObjectSet(
             BitSet(graph.size).apply { set(0, graph.size) },
@@ -38,8 +38,10 @@ internal class AnalysisScopeResolver(private val graph: ObjectGraph) {
         }
         while (head < tail) {
             val sourceId = orderedIds[head++]
-            graph.forEachReference(sourceId) { targetId ->
-                if (!reachable.get(targetId)) {
+            val referenceCount = graph.referenceCount(sourceId)
+            for (referenceIndex in 0 until referenceCount) {
+                val targetId = graph.referenceAt(sourceId, referenceIndex)
+                if (targetId >= 0 && !reachable.get(targetId)) {
                     reachable.set(targetId)
                     orderedIds[tail++] = targetId
                 }

@@ -61,8 +61,9 @@ def run_java(job, jobs, abort, args, what, *, jar, repo_root,
     if drain_error:
         raise RuntimeError(f"shapes {what} log reader failed") from drain_error[0]
     if process.returncode != 0:
-        hint = ("\n  hint: the analyzer needs ~24 B/reachable object + 4 B/ref "
-                "— set SHAPES_XMX_ANALYZE (e.g. 10g for a 200M-object scope)"
+        hint = ("\n  hint: the graph lives off-heap; a modest heap usually "
+                "suffices — raise SHAPES_XMX_ANALYZE (e.g. 4g) only on "
+                "OutOfMemoryError"
                 if any("OutOfMemoryError" in line for line in tail) else "")
         raise RuntimeError(
             f"shapes {what} failed (rc={process.returncode}):\n"

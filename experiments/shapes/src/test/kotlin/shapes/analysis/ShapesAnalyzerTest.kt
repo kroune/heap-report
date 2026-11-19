@@ -194,7 +194,7 @@ class ShapesAnalyzerTest {
         val (graph, roots) = SyntheticObjectGraphs.modules(500)
         val result = analyze(graph, roots)
 
-        assertEquals(graph.size, result.reachableObjectCount)
+        assertEquals(graph.size.toLong(), result.reachableObjectCount)
         assertEquals(6, result.entries.size)
         assertEquals(mapOf(result.entry("synth.Module").id to 500L), result.rootsHistogram)
         assertEquals(1, result.entry("synth.SharedProps").instanceCount)
@@ -255,5 +255,59 @@ class ShapesAnalyzerTest {
 
         assertEquals(2, result.reachableObjectCount)
         assertTrue(result.entries.none { it.label == "Stray" })
+    }
+
+    /** Ring of [size] objects starting at [base]; [classOf] picks the class per position. */
+    private fun ringGraph(
+        ringCount: Int,
+        size: Int,
+        classOf: (ring: Int, position: Int) -> ClassName,
+    ): ObjectGraph {
+        val total = ringCount * size
+        val classes = Array(total) { classOf(it / size, it % size) }
+        val shallow = ULongArray(total) { 16U }
+        val refs = Array(total) { index ->
+            val base = (index / size) * size
+            intArrayOf(base + (index % size + 1) % size)
+        }
+        return ObjectGraph.of(classes, shallow, refs)
+    }
+
+    @Test
+    fun `isomorphic large sccs merge on the lazy path`() {
+        // Two identical 2048-member alternating X/Y rings: above the lazy-WL
+        // threshold, same invariant signature, isomorphic -> WL adjudication
+        // must merge them into one shape.
+        val x = ClassName("X")
+        val y = ClassName("Y")
+        val graph = ringGraph(ringCount = 2, size = 2048) { _, position ->
+            if (position % 2 == 0) x else y
+        }
+        val result = analyze(graph, intArrayOf(0, 2048))
+
+        val sccEntries = result.entries.filter { it.sccInstanceSize > 1 }
+        assertEquals(1, sccEntries.size)
+        assertEquals(4096, sccEntries.single().instanceCount)
+        assertEquals(2048, sccEntries.single().sccInstanceSize)
+        assertEquals(2, sccEntries.single().rootCount)
+    }
+
+    @Test
+    fun `same-signature non-isomorphic large sccs stay distinct`() {
+        // Both rings have 1024 X + 1024 Y members and 2048 internal edges, so
+        // the lazy signatures collide; the wiring differs (alternating XYXY vs
+        // two blocks XX..YY), so WL adjudication must keep them distinct.
+        val x = ClassName("X")
+        val y = ClassName("Y")
+        val graph = ringGraph(ringCount = 2, size = 2048) { ring, position ->
+            val isX = if (ring == 0) position % 2 == 0 else position < 1024
+            if (isX) x else y
+        }
+        val result = analyze(graph, intArrayOf(0, 2048))
+
+        val sccEntries = result.entries.filter { it.sccInstanceSize > 1 }
+        assertEquals(2, sccEntries.size)
+        assertTrue(sccEntries.all { it.instanceCount == 2048L && it.sccInstanceSize == 2048 })
+        assertTrue(sccEntries[0].digest != sccEntries[1].digest)
     }
 }

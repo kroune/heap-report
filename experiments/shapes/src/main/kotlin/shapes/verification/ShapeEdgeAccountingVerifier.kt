@@ -2,14 +2,14 @@ package shapes.verification
 
 import shapes.analysis.ShapeAnalysisDebugSnapshot
 import shapes.analysis.ShapeAnalysisResult
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
 import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.StructuralRelaxation
 
 /** Full per-reference audit against the internal object-to-shape assignment. */
 internal object ShapeEdgeAccountingVerifier {
     internal fun verify(
-        graph: ObjectGraph,
+        graph: AnalysisGraph,
         debug: ShapeAnalysisDebugSnapshot,
         relaxationPolicy: ShapeRelaxationPolicy,
         progress: (String) -> Unit = {},
@@ -45,8 +45,13 @@ internal object ShapeEdgeAccountingVerifier {
             }
 
             nonExemptShapes.add(sourceShapeId)
-            graph.forEachReference(objectId) { targetId ->
-                val targetShapeId = shapeOfObject[targetId]
+            for (referenceIndex in 0 until graph.referenceCount(objectId)) {
+                val targetId = graph.referenceAt(objectId, referenceIndex)
+                val targetShapeId = if (targetId < 0) {
+                    publicIdByInternalId[debug.collapse.leafShapeInternalIds[-targetId - 1]]
+                } else {
+                    shapeOfObject[targetId]
+                }
                 if (targetShapeId == sourceShapeId) {
                     internalTruth.merge(sourceShapeId, 1L, Long::plus)
                 } else {
@@ -65,7 +70,7 @@ internal object ShapeEdgeAccountingVerifier {
     }
 
     private fun findQuotientExemptObjects(
-        graph: ObjectGraph,
+        graph: AnalysisGraph,
         debug: ShapeAnalysisDebugSnapshot,
         relaxationPolicy: ShapeRelaxationPolicy,
     ): BooleanArray {

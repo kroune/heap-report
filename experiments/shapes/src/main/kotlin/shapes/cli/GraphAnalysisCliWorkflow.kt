@@ -5,8 +5,8 @@ import shapes.analysis.AnalysisScope
 import shapes.analysis.ShapeAnalysisResult
 import shapes.analysis.ShapesAnalyzer
 import shapes.artifact.Shp1ArtifactWriter
+import shapes.graph.AnalysisGraph
 import shapes.graph.ClassName
-import shapes.graph.ObjectGraph
 import shapes.relaxation.RelaxationRules
 import shapes.relaxation.RelaxationRulesTsvParser
 import shapes.relaxation.ShapeRelaxationRules
@@ -16,7 +16,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 internal class GraphAnalysisRequest(
-    val graph: ObjectGraph,
+    val graph: AnalysisGraph,
     val scope: AnalysisScope,
     val rootClassName: ClassName?,
     val options: AnalysisCliOptions,
@@ -30,7 +30,9 @@ internal class GraphAnalysisCliWorkflow {
             is AnalysisScope.EntireGraph -> scope.rootsForHistogram.size
         }
         println(
-            "input: ${request.graph.size} objects / ${request.graph.referenceCount} refs " +
+            "input: ${request.graph.totalObjectCount} objects " +
+                "(${request.graph.size} nodes / ${request.graph.leafShapes.size} leaf classes) / " +
+                "${request.graph.totalEdgeCount} refs " +
                 "(source heap ${request.graph.sourceObjectCount}), " +
                 (request.rootClassName?.let { "class $it: $rootCount roots" }
                     ?: "whole heap: no class roots")

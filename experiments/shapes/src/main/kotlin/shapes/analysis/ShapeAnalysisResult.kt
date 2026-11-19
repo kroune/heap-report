@@ -42,7 +42,7 @@ data class ShapeEdge(
 )
 
 class ShapeAnalysisResult(
-    val reachableObjectCount: Int,
+    val reachableObjectCount: Long,
     val entries: List<ShapeEntry>,
     val edges: List<ShapeEdge>,
     val rootsHistogram: Map<Int, Long>,

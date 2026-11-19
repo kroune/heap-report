@@ -48,6 +48,29 @@ internal open class CyclicShape(
     override val kind: ShapeKind = ShapeKind.SCC
 }
 
+/**
+ * Large SCC interned by invariant signature (lazy WL): [members] holds either
+ * the full member payload in presentational order or, above the payload cap,
+ * only the most-frequent classes; aggregate edge totals replace per-member
+ * edges either way.
+ */
+internal class SummarizedSccShape(
+    internalId: Int,
+    digest: ShapeDigest,
+    totalExternalEdges: List<CanonicalShapeEdge>,
+    members: List<CanonicalSccMember>,
+    val memberCount: Int,
+    val totalInternalEdges: Int,
+    val distinctClassCount: Int,
+) : CyclicShape(
+    internalId = internalId,
+    digest = digest,
+    packedChildEdges = LongArray(0),
+    totalExternalEdges = totalExternalEdges,
+    members = members,
+    quotient = false,
+)
+
 internal data class CanonicalShapeEdge(
     val child: CanonicalShape,
     val multiplicity: Int,

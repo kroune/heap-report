@@ -1,8 +1,17 @@
 # SHAPES.md — exact structural collapse for the heap graph
 
-Status: **supported heap-wide implementation; pipeline v5.** When this
+Status: **supported heap-wide implementation; pipeline v7.** When this
 document and the code disagree, one of them is wrong — update both in the
 same commit.
+
+> **Pipeline v7:** the server job runs `hprof-analyze`, which reads the HPROF
+> file directly — no MAT indexes, no serial MAT queue, one small-heap JVM
+> (default `-Xmx2g`; the graph lives in file-backed off-heap mappings). The
+> MAT-based extraction described below remains in the standalone CLI
+> (`mat-analyze`) as the verified A/B reference; semantics (projection,
+> relaxation, collapse, artifact format) are unchanged. See
+> `experiments/shapes/README.md` ("Direct HPROF pipeline") for the new
+> extraction stages, the lazy-WL large-SCC path, and measured equivalence.
 
 The Shapes tab collapses the complete non-class object graph into a shape-DAG,
 where each node groups structurally identical objects. Everything served is

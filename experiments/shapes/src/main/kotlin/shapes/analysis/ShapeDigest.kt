@@ -30,6 +30,8 @@ internal class CanonicalShapeDigestBuilder(
 
     fun writeInt(value: Int) = stream.putInt(value)
 
+    fun writeLong(value: Long) = stream.putLong(value)
+
     fun writeBytes(value: ByteArray) = stream.putBytes(value)
 
     fun writeUtf8(value: String) = stream.putStringUTF8(value)

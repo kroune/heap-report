@@ -8,7 +8,12 @@ repositories {
     mavenCentral()
 }
 
-val matPlugins = rootDir.toPath().parent.parent.resolve(".tools/mat/plugins").toFile()
+// MAT layout differs per platform (see tools/get_mat.py): linux unpacks to
+// .tools/mat/, macOS to .tools/MemoryAnalyzer.app/Contents/Eclipse/.
+val matPlugins = listOf(".tools/mat/plugins", ".tools/MemoryAnalyzer.app/Contents/Eclipse/plugins")
+    .map { rootDir.toPath().parent.parent.resolve(it).toFile() }
+    .firstOrNull { it.isDirectory }
+    ?: error("MAT not found under .tools/ — run `python3 tools/get_mat.py` from the repo root")
 
 dependencies {
     implementation("com.github.ajalt.clikt:clikt-jvm:5.1.0")
@@ -23,6 +28,7 @@ dependencies {
 }
 
 kotlin {
+    jvmToolchain(21)
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
         optIn.add("kotlin.ExperimentalUnsignedTypes")

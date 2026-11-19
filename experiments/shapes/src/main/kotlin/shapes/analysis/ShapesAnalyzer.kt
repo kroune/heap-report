@@ -6,7 +6,7 @@ import shapes.analysis.internal.ShapeCollapsePhase
 import shapes.analysis.internal.ShapeCollapseResult
 import shapes.analysis.internal.StronglyConnectedComponents
 import shapes.analysis.internal.StronglyConnectedComponentsFinder
-import shapes.graph.ObjectGraph
+import shapes.graph.AnalysisGraph
 import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.ShapeRelaxationRules
 import shapes.relaxation.ShapeRelaxationStats
@@ -19,7 +19,7 @@ internal class ShapeAnalysisDebugSnapshot(
 
 /** Coordinates reachability, SCC construction, structural collapse and aggregation. */
 class ShapesAnalyzer @JvmOverloads constructor(
-    private val graph: ObjectGraph,
+    private val graph: AnalysisGraph,
     relaxationRules: ShapeRelaxationRules = ShapeRelaxationRules(),
 ) {
     var progress: (String) -> Unit = {}
@@ -38,6 +38,10 @@ class ShapesAnalyzer @JvmOverloads constructor(
 
     private fun runAnalysis(scope: AnalysisScope): ShapeAnalysisDebugSnapshot {
         relaxationStats.reset()
+
+        require(graph.leafShapes.isEmpty() || scope is AnalysisScope.EntireGraph) {
+            "folded graphs support whole-graph analysis only"
+        }
 
         var phaseStartedAt = System.nanoTime()
         val objects = AnalysisScopeResolver(graph).resolve(scope)
@@ -65,11 +69,12 @@ class ShapesAnalyzer @JvmOverloads constructor(
         )
 
         phaseStartedAt = System.nanoTime()
+        val foldedLeafInstances = graph.leafShapes.sumOf { it.instanceCount }
         val result = ShapeAnalysisResultBuilder(graph).build(
             collapse,
             components,
             objects.rootIds,
-            objects.objectCount,
+            objects.objectCount + foldedLeafInstances,
         )
         progress("aggregate: ${elapsedMillis(phaseStartedAt)} ms")
         return ShapeAnalysisDebugSnapshot(result, components, collapse)
