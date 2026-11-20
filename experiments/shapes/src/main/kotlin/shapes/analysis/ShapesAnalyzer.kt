@@ -1,6 +1,7 @@
 package shapes.analysis
 
 import shapes.analysis.internal.AnalysisScopeResolver
+import shapes.analysis.internal.ObjectRelaxations
 import shapes.analysis.internal.ShapeAnalysisResultBuilder
 import shapes.analysis.internal.ShapeCollapsePhase
 import shapes.analysis.internal.ShapeCollapseResult
@@ -15,6 +16,7 @@ internal class ShapeAnalysisDebugSnapshot(
     val result: ShapeAnalysisResult,
     val components: StronglyConnectedComponents,
     val collapse: ShapeCollapseResult,
+    val objectRelaxations: ObjectRelaxations,
 )
 
 /** Coordinates reachability, SCC construction, structural collapse and aggregation. */
@@ -58,9 +60,23 @@ class ShapesAnalyzer @JvmOverloads constructor(
         )
 
         phaseStartedAt = System.nanoTime()
-        val collapse = ShapeCollapsePhase(
+        val objectRelaxations = ObjectRelaxations.compute(
             graph,
             relaxationPolicy,
+            components,
+            objects.rootIds,
+        )
+        if (objectRelaxations.unobservableObjects > 0) {
+            progress(
+                "cascade: ${objectRelaxations.unobservableObjects} objects below concealed " +
+                    "edges relaxed to class rows in ${elapsedMillis(phaseStartedAt)} ms"
+            )
+        }
+
+        phaseStartedAt = System.nanoTime()
+        val collapse = ShapeCollapsePhase(
+            graph,
+            objectRelaxations,
             relaxationStats,
             progress,
         ).collapse(components)
@@ -77,7 +93,7 @@ class ShapesAnalyzer @JvmOverloads constructor(
             objects.objectCount + foldedLeafInstances,
         )
         progress("aggregate: ${elapsedMillis(phaseStartedAt)} ms")
-        return ShapeAnalysisDebugSnapshot(result, components, collapse)
+        return ShapeAnalysisDebugSnapshot(result, components, collapse, objectRelaxations)
     }
 
     private fun elapsedMillis(startedAt: Long): Long = (System.nanoTime() - startedAt) / 1_000_000

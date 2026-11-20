@@ -70,13 +70,16 @@ test("auto DAG keeps moderate ranks in one global downward sequence", () => {
     "the explicit legacy mode still exercises column folding");
 });
 
-test("forced DAG wraps extreme-wide ranks without folding columns", () => {
+test("extreme-wide ranks wrap toward a balanced world without folding columns", () => {
   const nodes = Array.from({ length: 2500 }, (_, i) => node(i));
   const result = computeShapesLayout(nodes, [], "count", "dag");
   assert.equal(result.layoutMode, "dag");
   assert.equal(result.layerCount, 1);
   assert.ok(new Set(result.nodes.map(nd => nd.y)).size > 1, "the extreme rank wraps");
-  assert.equal(computeShapesLayout(nodes, [], "count").layoutMode, "compact");
+  assert.ok(result.width < result.height * 8 && result.height < result.width * 8,
+    "wrapping balances the world instead of emitting a 100k-wide strip");
+  assert.equal(computeShapesLayout(nodes, [], "count").layoutMode, "dag",
+    "auto keeps the strict DAG when wrapping alone can balance it");
 });
 
 test("parallel edges retain exact totals for both multiplicity modes", () => {

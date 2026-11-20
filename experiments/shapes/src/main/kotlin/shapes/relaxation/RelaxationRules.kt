@@ -12,9 +12,16 @@ enum class StructuralRelaxation {
 
 data class ShapeRelaxationRules(
     val byClass: Map<ClassName, StructuralRelaxation> = emptyMap(),
+    /** Full-match patterns, applied in file order when no exact rule matches. */
+    val byPattern: List<PatternRelaxation> = emptyList(),
 ) {
-    fun isEmpty(): Boolean = byClass.isEmpty()
+    fun isEmpty(): Boolean = byClass.isEmpty() && byPattern.isEmpty()
 }
+
+data class PatternRelaxation(
+    val pattern: Regex,
+    val relaxation: StructuralRelaxation,
+)
 
 data class FieldConcealmentRules(
     val fieldsByClass: Map<ClassName, Set<String>> = emptyMap(),
@@ -42,13 +49,31 @@ class ShapeRelaxationPolicy(
             relaxationByClass = emptyArray()
         } else {
             val unknownClasses = rules.byClass.keys.toMutableSet()
+            val matchedPatterns = BooleanArray(rules.byPattern.size)
             relaxationByClass = Array(classNames.size) { classIndex ->
                 val className = classNames[classIndex]
-                val relaxation = rules.byClass[className] ?: StructuralRelaxation.EXACT
-                if (rules.byClass.containsKey(className)) unknownClasses.remove(className)
-                relaxation
+                val exact = rules.byClass[className]
+                if (exact != null) {
+                    unknownClasses.remove(className)
+                    exact
+                } else {
+                    var relaxation = StructuralRelaxation.EXACT
+                    for ((patternIndex, patternRule) in rules.byPattern.withIndex()) {
+                        if (patternRule.pattern.matches(className.name)) {
+                            matchedPatterns[patternIndex] = true
+                            relaxation = patternRule.relaxation
+                            break
+                        }
+                    }
+                    relaxation
+                }
             }
             unknownClasses.forEach(onUnknownClass)
+            rules.byPattern.forEachIndexed { patternIndex, patternRule ->
+                if (!matchedPatterns[patternIndex]) {
+                    onUnknownClass(ClassName("$REGEX_PREFIX${patternRule.pattern.pattern}"))
+                }
+            }
         }
     }
 
@@ -59,12 +84,15 @@ class ShapeRelaxationPolicy(
         relaxationByClass.getOrElse(classIndex) { StructuralRelaxation.EXACT }
 }
 
+const val REGEX_PREFIX = "regex:"
+
 /** Parser for `class.name<TAB>rule<TAB>reason` relaxation files. */
 object RelaxationRulesTsvParser {
     private const val CONCEAL_FIELD_PREFIX = "conceal-field:"
 
     fun parse(text: String): RelaxationRules {
         val shapeRules = LinkedHashMap<ClassName, StructuralRelaxation>()
+        val patternRules = LinkedHashMap<String, StructuralRelaxation>()
         val concealedFields = LinkedHashMap<ClassName, MutableSet<String>>()
 
         for ((lineIndex, rawLine) in text.lines().withIndex()) {
@@ -80,19 +108,47 @@ object RelaxationRulesTsvParser {
                 errorMessage(lineNumber, "a reason is required: $rawLine")
             }
 
-            val className = ClassName(columns[0].trim())
+            val classColumn = columns[0].trim()
             val ruleName = columns[1].trim()
-            if (ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
-                parseFieldConcealment(ruleName, className, concealedFields, lineNumber)
+            if (classColumn.startsWith(REGEX_PREFIX)) {
+                parsePatternRelaxation(ruleName, classColumn, patternRules, lineNumber)
+            } else if (ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
+                parseFieldConcealment(ruleName, ClassName(classColumn), concealedFields, lineNumber)
             } else {
-                parseShapeRelaxation(ruleName, className, shapeRules, lineNumber)
+                parseShapeRelaxation(ruleName, ClassName(classColumn), shapeRules, lineNumber)
             }
         }
 
         return RelaxationRules(
-            shapeRules = ShapeRelaxationRules(shapeRules),
+            shapeRules = ShapeRelaxationRules(
+                byClass = shapeRules,
+                byPattern = patternRules.map { (pattern, relaxation) ->
+                    PatternRelaxation(Regex(pattern), relaxation)
+                },
+            ),
             fieldConcealmentRules = FieldConcealmentRules(concealedFields),
         )
+    }
+
+    private fun parsePatternRelaxation(
+        ruleName: String,
+        classColumn: String,
+        patternRules: MutableMap<String, StructuralRelaxation>,
+        lineNumber: Int,
+    ) {
+        require(!ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
+            errorMessage(lineNumber, "conceal-field rules require an exact class name, not a regex")
+        }
+        val pattern = classColumn.removePrefix(REGEX_PREFIX).trim()
+        require(pattern.isNotEmpty()) { errorMessage(lineNumber, "empty regex pattern") }
+        runCatching { Regex(pattern) }.getOrElse { failure ->
+            error(errorMessage(lineNumber, "invalid regex '$pattern': ${failure.message}"))
+        }
+        val relaxation = parseRelaxationLevel(ruleName, lineNumber)
+        val previous = patternRules.put(pattern, relaxation)
+        require(previous == null || previous == relaxation) {
+            errorMessage(lineNumber, "conflicting rules for regex:$pattern")
+        }
     }
 
     private fun parseFieldConcealment(
@@ -109,13 +165,8 @@ object RelaxationRulesTsvParser {
         }
     }
 
-    private fun parseShapeRelaxation(
-        ruleName: String,
-        className: ClassName,
-        shapeRules: MutableMap<ClassName, StructuralRelaxation>,
-        lineNumber: Int,
-    ) {
-        val relaxation = when (ruleName) {
+    private fun parseRelaxationLevel(ruleName: String, lineNumber: Int): StructuralRelaxation =
+        when (ruleName) {
             "class-only" -> StructuralRelaxation.CLASS_ONLY
             "set-children" -> StructuralRelaxation.SET_CHILDREN
             else -> error(
@@ -125,6 +176,14 @@ object RelaxationRulesTsvParser {
                 )
             )
         }
+
+    private fun parseShapeRelaxation(
+        ruleName: String,
+        className: ClassName,
+        shapeRules: MutableMap<ClassName, StructuralRelaxation>,
+        lineNumber: Int,
+    ) {
+        val relaxation = parseRelaxationLevel(ruleName, lineNumber)
         val previous = shapeRules.put(className, relaxation)
         require(previous == null || previous == relaxation) {
             errorMessage(lineNumber, "conflicting rules for $className")

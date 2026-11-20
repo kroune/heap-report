@@ -38,7 +38,6 @@ class ShapeEdgeAccountingVerifierTest {
         val violations = ShapeEdgeAccountingVerifier.verify(
             graph,
             debug,
-            analyzer.relaxationPolicy,
         )
         assertTrue(violations.isEmpty(), violations.joinToString("\n"))
     }

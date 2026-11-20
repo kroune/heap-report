@@ -2,7 +2,6 @@ package shapes.analysis.internal
 
 import shapes.analysis.ShapeKind
 import shapes.graph.AnalysisGraph
-import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.ShapeRelaxationStats
 import shapes.relaxation.StructuralRelaxation
 
@@ -16,7 +15,7 @@ internal class ShapeCollapseResult(
 /** Bottom-up structural collapse over the condensation DAG. */
 internal class ShapeCollapsePhase(
     private val graph: AnalysisGraph,
-    private val relaxationPolicy: ShapeRelaxationPolicy,
+    private val relaxations: ObjectRelaxations,
     private val relaxationStats: ShapeRelaxationStats,
     private val progress: (String) -> Unit,
 ) {
@@ -50,7 +49,7 @@ internal class ShapeCollapsePhase(
         }
         val cyclicCollapser = CyclicShapeCollapser(
             graph,
-            relaxationPolicy,
+            relaxations,
             relaxationStats,
             shapes,
             shapeOfComponent,
@@ -78,7 +77,7 @@ internal class ShapeCollapsePhase(
 
             val shape = if (memberCount == 1 && !hasSelfLoop) {
                 val objectId = components.members.singletonMember(componentId)
-                val relaxation = relaxationPolicy.relaxationOf(graph.classIndex(objectId))
+                val relaxation = relaxations.relaxationOf(objectId)
                 if (relaxation != StructuralRelaxation.EXACT) relaxationStats.relaxedObjects++
 
                 val referenceCount = graph.referenceCount(objectId)

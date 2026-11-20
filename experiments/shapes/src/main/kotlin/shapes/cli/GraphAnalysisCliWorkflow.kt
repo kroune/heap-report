@@ -61,7 +61,6 @@ internal class GraphAnalysisCliWorkflow {
             val violations = ShapeEdgeAccountingVerifier.verify(
                 request.graph,
                 debug,
-                analyzer.relaxationPolicy,
                 ::println,
             )
             reportVerification("verify-edges", "edge accounting exact", violations)
@@ -167,6 +166,7 @@ internal fun loadRelaxationRules(path: Path?): RelaxationRules? = path?.let {
     RelaxationRulesTsvParser.parse(Files.readString(it)).also { rules ->
         println(
             "relax: ${rules.shapeRules.byClass.size} analyzer rules, " +
+                "${rules.shapeRules.byPattern.size} regex rules, " +
                 "${rules.fieldConcealmentRules.fieldsByClass.size} field rules from $path"
         )
     }

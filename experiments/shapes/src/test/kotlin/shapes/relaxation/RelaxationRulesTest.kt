@@ -40,6 +40,53 @@ class RelaxationRulesTest {
     }
 
     @Test
+    fun `parse reads regex rules`() {
+        val rules = RelaxationRulesTsvParser.parse(
+            "regex:jdk\\.jfr\\..*\tclass-only\trecorder infrastructure\n" +
+                "com.example.Foo\tset-children\texact rule\n"
+        )
+        assertEquals(1, rules.shapeRules.byPattern.size)
+        assertEquals(StructuralRelaxation.CLASS_ONLY, rules.shapeRules.byPattern.single().relaxation)
+        assertTrue(rules.shapeRules.byPattern.single().pattern.matches("jdk.jfr.EventType"))
+
+        assertFailsWith<IllegalStateException> {
+            RelaxationRulesTsvParser.parse("regex:a[\tclass-only\tbroken pattern")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            RelaxationRulesTsvParser.parse("regex:a.*\tconceal-field:x\tnot allowed")
+        }
+        assertFailsWith<IllegalArgumentException> {
+            RelaxationRulesTsvParser.parse(
+                "regex:a.*\tclass-only\tone\nregex:a.*\tset-children\tconflict"
+            )
+        }
+    }
+
+    @Test
+    fun `regex rules resolve after exact rules in file order and report zero matches`() {
+        val rules = RelaxationRulesTsvParser.parse(
+            "com.example.special.Node\tset-children\texact beats regex\n" +
+                "regex:com\\.example\\.special\\..*\tclass-only\tfirst matching regex wins\n" +
+                "regex:com\\.example\\..*\tset-children\tbroader fallback\n" +
+                "regex:com\\.absent\\..*\tclass-only\tmatches nothing here\n"
+        )
+        val classNames = listOf(
+            ClassName("com.example.special.Node"),
+            ClassName("com.example.special.Leaf"),
+            ClassName("com.example.Other"),
+            ClassName("org.unrelated.Thing"),
+        )
+        val unmatched = mutableListOf<String>()
+        val policy = ShapeRelaxationPolicy(rules.shapeRules, classNames) { unmatched.add(it.name) }
+
+        assertEquals(StructuralRelaxation.SET_CHILDREN, policy.relaxationOf(0))
+        assertEquals(StructuralRelaxation.CLASS_ONLY, policy.relaxationOf(1))
+        assertEquals(StructuralRelaxation.SET_CHILDREN, policy.relaxationOf(2))
+        assertEquals(StructuralRelaxation.EXACT, policy.relaxationOf(3))
+        assertEquals(listOf("regex:com\\.absent\\..*"), unmatched)
+    }
+
+    @Test
     fun `parse reads conceal-field rules`() {
         val rules = RelaxationRulesTsvParser.parse(
             "com.example.Foo\tconceal-field:lazyCache\tlazy field\n" +
@@ -57,6 +104,37 @@ class RelaxationRulesTest {
         assertFailsWith<IllegalArgumentException> {
             RelaxationRulesTsvParser.parse("com.example.Foo\tconceal-field:\treason")
         }
+    }
+
+    @Test
+    fun `cascade folds unobservable rows below concealed edges to class rows`() {
+        val builder = ObjectGraph.Builder()
+        val x = builder.addObject(ClassName("X"), 8U)
+        val y = builder.addObject(ClassName("Y"), 8U)
+        // two maps with different contents, reachable only through class-only caches
+        val ghostMap1 = builder.addObject(ClassName("Map"), 16U, intArrayOf(x))
+        val ghostMap2 = builder.addObject(ClassName("Map"), 16U, intArrayOf(y, y))
+        val cache1 = builder.addObject(ClassName("Cache"), 16U, intArrayOf(ghostMap1))
+        val cache2 = builder.addObject(ClassName("Cache"), 16U, intArrayOf(ghostMap2))
+        // a third map observed through an exact owner keeps exact identity
+        val observedMap = builder.addObject(ClassName("Map"), 16U, intArrayOf(x, x, x))
+        val root = builder.addObject(
+            ClassName("Root"),
+            24U,
+            intArrayOf(cache1, cache2, observedMap),
+        )
+        val analyzer = ShapesAnalyzer(
+            builder.build(),
+            rules(ClassName("Cache") to StructuralRelaxation.CLASS_ONLY),
+        )
+
+        val result = analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(root)))
+
+        val mapRows = result.entries.filter { it.label == "Map" }
+        assertEquals(2, mapRows.size)
+        // the two ghost maps merged into one class row despite different contents
+        assertEquals(2, mapRows.single { it.kind == ShapeKind.LEAF }.instanceCount)
+        assertEquals(1, mapRows.single { it.kind != ShapeKind.LEAF }.instanceCount)
     }
 
     @Test
@@ -81,7 +159,8 @@ class RelaxationRulesTest {
         assertEquals(2, result.entries.single { it.label == "State" }.instanceCount)
         assertEquals(2, analyzer.relaxationStats.classOnlyHiddenEdges)
         assertEquals(0, analyzer.relaxationStats.setChildrenHiddenEdges)
-        assertEquals(2, analyzer.relaxationStats.relaxedObjects)
+        // 2 rule-relaxed Relaxed objects + 2 States cascade-relaxed below them
+        assertEquals(4, analyzer.relaxationStats.relaxedObjects)
         assertTrue(result.edges.none { result.entries[it.shapeId].label == "Relaxed" })
     }
 
@@ -98,7 +177,8 @@ class RelaxationRulesTest {
 
         repeat(2) {
             analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(root)))
-            assertEquals(1, analyzer.relaxationStats.relaxedObjects)
+            // the rule-relaxed Relaxed object + the State cascade-relaxed below it
+            assertEquals(2, analyzer.relaxationStats.relaxedObjects)
             assertEquals(1, analyzer.relaxationStats.classOnlyHiddenEdges)
         }
     }
@@ -229,8 +309,10 @@ class RelaxationRulesTest {
         assertEquals(2, scc.members.orEmpty().sumOf { member ->
             member.internalConnections.sumOf { it.multiplicity }
         })
-        assertEquals(2, analyzer.relaxationStats.classOnlyHiddenEdges)
-        assertEquals(2, analyzer.relaxationStats.relaxedObjects)
+        // A's two concealed S edges + the cascade-relaxed S's edge to X
+        assertEquals(3, analyzer.relaxationStats.classOnlyHiddenEdges)
+        // 2 rule-relaxed A members + S, S, X cascade-relaxed below them
+        assertEquals(5, analyzer.relaxationStats.relaxedObjects)
     }
 
     private fun rules(

@@ -242,6 +242,7 @@ private class ChunkWorker(
     private var mainCount = 0
     private var extras = IntArray(64)
     private var extrasCount = 0
+    private var expandSeeds = IntArray(8)
     private var keptValues = LongArray(64)
     private var dropValues = LongArray(16)
     private val dedupSet = it.unimi.dsi.fastutil.longs.LongOpenHashSet(64)
@@ -357,12 +358,12 @@ private class ChunkWorker(
                     links.add(denseId)
                     var linkSlot = 0
                     for (fieldOffset in plan.linkOffsets) {
-                        if (linkSlot == 3) break
+                        if (linkSlot == MAX_LINK_FIELDS) break
                         val value = file.id(dataStart + fieldOffset)
                         links.add(if (value == 0L) -1 else table.denseIdOf(value))
                         linkSlot++
                     }
-                    while (linkSlot < 3) {
+                    while (linkSlot < MAX_LINK_FIELDS) {
                         links.add(-1)
                         linkSlot++
                     }
@@ -429,7 +430,36 @@ private class ChunkWorker(
             }
         }
 
-        finishRecord(denseId, leafWhenEmpty = true)
+        // Backbone fields (tree root, list head/tail) defer to assembly: the
+        // chain expansion rewires this instance to its full element set.
+        val hasExpansion = plan.expandOffsets.isNotEmpty()
+        if (hasExpansion) {
+            var seedCount = 0
+            expandSeeds = ensure(expandSeeds, plan.expandOffsets.size)
+            for (fieldOffset in plan.expandOffsets) {
+                val value = file.id(dataStart + fieldOffset)
+                if (value == 0L) continue
+                counters.rawNonNullRefs++
+                val target = table.denseIdOf(value)
+                if (target >= 0) {
+                    expandSeeds[seedCount++] = target
+                } else {
+                    val classTarget = classStore.indexOf(value)
+                    if (classTarget >= 0) {
+                        counters.classTargetRefs++
+                        addExtra(state.classTargetBase + classTarget)
+                    } else {
+                        counters.danglingRefs++
+                    }
+                }
+            }
+            expansion.add(denseId)
+            expansion.add(mainCount) // walk mains: expansion must not leaf-fold past them
+            expansion.add(seedCount)
+            for (seedIndex in 0 until seedCount) expansion.add(expandSeeds[seedIndex])
+        }
+
+        finishRecord(denseId, leafWhenEmpty = !hasExpansion)
         return dataStart + dataBytes
     }
 
@@ -499,6 +529,7 @@ private class ChunkWorker(
                     }
                 }
                 expansion.add(denseId)
+                expansion.add(0) // walk mains: node tables have none
                 expansion.add(elementCount)
                 for (elementIndex in 0 until elementCount) {
                     expansion.add(keptValues[elementIndex].toInt())

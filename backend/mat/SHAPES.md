@@ -1,6 +1,6 @@
 # SHAPES.md — exact structural collapse for the heap graph
 
-Status: **supported heap-wide implementation; pipeline v7.** When this
+Status: **supported heap-wide implementation; pipeline v8.** When this
 document and the code disagree, one of them is wrong — update both in the
 same commit.
 
@@ -44,15 +44,39 @@ Reference mechanics and `conceal-field` rules participate in this traversal.
 Map projection never adds or removes objects; the analyzer keeps every
 selected object even if projection removes its path from a root.
 
-Projection is field-aware and supports the exact JDK classes `HashMap$Node`,
-`LinkedHashMap$Entry`, `LinkedHashMap`, and `HashMap$Node[]`. It removes only
-`next`, `before`, `after`, `head`, `tail` as appropriate and makes tables point
-to all entries, independent of buckets/insertion order. Key/value targets
-survive, including an alias also referenced through a removed technical field.
-TreeNode, custom map classes and other collections are not guessed/normalized.
-No object, count, shallow bytes or root is dropped; the projection changes
-**reference semantics**, not the population. Ordering is intentionally absent
-in this projection.
+Projection is field-aware (`ClassExtractionPlans`). Two rule sets:
+
+- **Exact-name rules** for closed JDK/library internals: the hash-table entry
+  nodes (`HashMap$Node`, `LinkedHashMap$Entry`, `HashMap$TreeNode`,
+  `CHM$Node`/`$TreeNode`, `Hashtable$Entry`, `WeakHashMap$Entry`,
+  `TreeMap$Entry`, `LinkedList$Node`, `CLQ$Node`, Groovy's
+  `MetaMethodIndex$Entry`), their backbone arrays, the lazily instantiated
+  map views (NO_EDGES), and the reflective copy chains
+  (`Method`/`Constructor`/`Field.root`). Chain, order and tree-balance links
+  (`next`/`before`/`after`/`left`/`right`/`parent`/`prev`) drop; tables and
+  backbones point to all entries, independent of buckets, insertion order and
+  treeification. Tree nodes project to their plain node class
+  (`HashMap$TreeNode` → `HashMap$Node`); CHM bin containers
+  (`TreeBin`/`ForwardingNode`/`ReservationNode`) are walked through and kept
+  only as liveness extras. The global VM bookkeeping chains
+  (`jdk.internal.ref.Cleaner.next/prev`, `java.lang.ref.Finalizer.next/prev` —
+  the `discovered` category) drop: the dump catches every cleaner/finalizer
+  linked in one list, and the chain position otherwise splits every
+  `DirectByteBuffer` and everything holding one. A shadowed name matches its
+  most-derived occurrence only (`WeakHashMap$Entry.next` is the bucket link;
+  `Reference.next` stays GC mechanics).
+- **Super-chain rules** for public containers (`HashMap`, `LinkedHashMap`,
+  `TreeMap`, `Hashtable`, `WeakHashMap`, `IdentityHashMap`, `LinkedList`,
+  `ConcurrentLinkedQueue`), applied to subclasses too: lazy view fields
+  (`keySet`/`values`/`entrySet`/...) drop — a map's identity must not depend
+  on whether a view was ever requested — and non-array backbones
+  (`TreeMap.root`, `LinkedList.first/last`, `CLQ.head/tail`) expand to the
+  element set at assembly.
+
+Key/value targets survive, including an alias also referenced through a
+removed technical field. No object, count, shallow bytes or root is dropped;
+the projection changes **reference semantics**, not the population. Ordering
+is intentionally absent in this projection.
 
 An optional `SMD1` length-prefixed JSON trailer in the same SHP1 file records
 extraction mode, pipeline version, object/root/shallow totals, the raw
@@ -136,6 +160,24 @@ backend default; every rule must state which merge it unblocks):
   members are real objects concealed from the artifact's `count` —
   accounted exactly in `--relax-stats` as `setChildrenConcealedObjects`
   and added back by the backend's publication check (like concealed edges).
+
+Class-only concealment **cascades**: an object whose every path from the
+scope roots crosses a concealing edge has unobservable identity — no
+surviving key distinguishes by it — so the analyzer relaxes it to its class
+row as well (one descending sweep over the condensation DAG; SCC-internal
+wiring never conceals, so observability is a per-component fact). Without
+the cascade every class-only rule strands its children as "ghost" rows:
+fully-split subtrees floating at the top of the DAG that nothing references.
+Cascaded objects and their concealed edges are accounted in `--relax-stats`
+like rule-driven class-only ones; population and byte totals remain exact.
+
+The class column is an exact name by default, or `regex:<pattern>` for a
+full-match regex over class names. Exact rules always win over regexes;
+when several regexes match, the first in file order wins; a regex that
+matches no class in the graph warns like an unknown exact class. Regexes
+are for namespace-wide policies over open-ended class sets (generated
+method-handle species, `$$Lambda` captures, JFR event machinery), not a
+shorthand for a few stable names. `conceal-field` requires an exact name.
 
 Rules apply inside SCC members as well (external edges of relaxed members
 are concealed / set-collapsed; internal SCC wiring stays exact for

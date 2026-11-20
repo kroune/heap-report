@@ -101,6 +101,9 @@ code, .numeric, kbd { font-family: "JetBrains Mono", ui-monospace, SFMono-Regula
 .editor-tabbar-spacer { flex: 1; }
 .editor-context { align-self: center; padding: 0 12px; color: #7f8289; font-size: 11px; }
 .editor-content { flex: 1; min-height: 0; min-width: 0; padding: 9px 10px; overflow: auto; background: var(--bg); }
+/* The shapes tool is a viewport, not a document: fill the editor height so
+   the canvas gets every available pixel (hidden tool hosts are display:none). */
+.editor-shapes { display: flex; flex-direction: column; }
 .tool-view-host { flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .tool-view-host > * { min-width: 0; }
 .editor-classes { display: flex; flex-direction: column; overflow: hidden; }

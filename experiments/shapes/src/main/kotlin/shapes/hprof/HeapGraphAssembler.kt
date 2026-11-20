@@ -43,7 +43,7 @@ internal class HeapGraphAssembler(
         progress("live: $liveCount objects in ${elapsed(phaseStart)} ms")
 
         phaseStart = System.nanoTime()
-        val scopeRoots = selectScope()
+        val scopeRoots = selectScope(rootTargets, staticTargets)
         val leafState = foldLeafStats()
         val graph = compact(leafState, scopeRoots)
         progress(
@@ -61,18 +61,20 @@ internal class HeapGraphAssembler(
 
     private fun expandNodeTables() {
         val entryGraphClass = BooleanArray(state.graphClassCount + 1)
+        val transparentGraphClass = BooleanArray(state.graphClassCount + 1)
         for (plan in state.plans) {
-            if (plan.isEntryNode && plan.graphClassIndex >= 0) {
-                entryGraphClass[plan.graphClassIndex] = true
+            if (plan.graphClassIndex >= 0) {
+                if (plan.isEntryNode) entryGraphClass[plan.graphClassIndex] = true
+                if (plan.isTransparentEntryNode) transparentGraphClass[plan.graphClassIndex] = true
             }
         }
 
         // Gather and sort the entry-node link table by node id.
         var linkCount = 0L
-        for (buffer in state.linkBuffers) linkCount += buffer.size / 4
+        for (buffer in state.linkBuffers) linkCount += buffer.size / (MAX_LINK_FIELDS + 1)
         require(linkCount <= Int.MAX_VALUE) { "too many entry nodes: $linkCount" }
         val linkNodes = IntArray(linkCount.toInt())
-        val linkData = IntArray(linkCount.toInt() * 3)
+        val linkData = IntArray(linkCount.toInt() * MAX_LINK_FIELDS)
         var linkFill = 0
         for (buffer in state.linkBuffers) {
             var slot = 0
@@ -80,10 +82,10 @@ internal class HeapGraphAssembler(
                 if (slot == 0) {
                     linkNodes[linkFill] = value
                 } else {
-                    linkData[linkFill * 3 + slot - 1] = value
+                    linkData[linkFill * MAX_LINK_FIELDS + slot - 1] = value
                 }
                 slot++
-                if (slot == 4) {
+                if (slot == MAX_LINK_FIELDS + 1) {
                     slot = 0
                     linkFill++
                 }
@@ -97,10 +99,10 @@ internal class HeapGraphAssembler(
                 val node = linkNodes[first]
                 linkNodes[first] = linkNodes[second]
                 linkNodes[second] = node
-                for (slot in 0..2) {
-                    val value = linkData[first * 3 + slot]
-                    linkData[first * 3 + slot] = linkData[second * 3 + slot]
-                    linkData[second * 3 + slot] = value
+                for (slot in 0 until MAX_LINK_FIELDS) {
+                    val value = linkData[first * MAX_LINK_FIELDS + slot]
+                    linkData[first * MAX_LINK_FIELDS + slot] = linkData[second * MAX_LINK_FIELDS + slot]
+                    linkData[second * MAX_LINK_FIELDS + slot] = value
                 }
             },
         )
@@ -111,14 +113,17 @@ internal class HeapGraphAssembler(
             val members = IntOpenHashSet(64)
             val queue = IntArrayList(64)
             val ordered = IntArrayList(64)
-            // Stream one record at a time: [arrayDense][elementCount][elements...]
-            var recordArray = -1
+            val concealed = IntArrayList(16)
+            // Stream one record at a time: [ownerDense][walkMains][elementCount][elements...]
+            var recordOwner = -1
+            var walkMains = -1
             var remainingElements = -1
             var elements = IntArray(256)
             var elementFill = 0
             expansion.forEach { value ->
                 when {
-                    recordArray == -1 -> recordArray = value
+                    recordOwner == -1 -> recordOwner = value
+                    walkMains == -1 -> walkMains = value
                     remainingElements == -1 -> {
                         remainingElements = value
                         if (elements.size < remainingElements) {
@@ -131,21 +136,25 @@ internal class HeapGraphAssembler(
                         remainingElements--
                     }
                 }
-                if (recordArray != -1 && remainingElements == 0) {
+                if (recordOwner != -1 && walkMains != -1 && remainingElements == 0) {
                     expandOneTable(
-                        recordArray,
+                        recordOwner,
+                        walkMains,
                         elements,
                         elementFill,
                         entryGraphClass,
+                        transparentGraphClass,
                         linkNodes,
                         linkData,
                         linkFill,
                         members,
                         queue,
                         ordered,
+                        concealed,
                         synthetic,
                     )
-                    recordArray = -1
+                    recordOwner = -1
+                    walkMains = -1
                     remainingElements = -1
                 }
             }
@@ -157,30 +166,40 @@ internal class HeapGraphAssembler(
     private lateinit var syntheticBuffers: Array<IntBlockBuffer>
 
     private fun expandOneTable(
-        arrayDense: Int,
+        ownerDense: Int,
+        walkMains: Int,
         elements: IntArray,
         elementCount: Int,
         entryGraphClass: BooleanArray,
+        transparentGraphClass: BooleanArray,
         linkNodes: IntArray,
         linkData: IntArray,
         linkFill: Int,
         members: IntOpenHashSet,
         queue: IntArrayList,
         ordered: IntArrayList,
+        concealed: IntArrayList,
         synthetic: IntBlockBuffer,
     ) {
         members.clear()
         queue.clear()
         ordered.clear()
+        concealed.clear()
         for (elementIndex in 0 until elementCount) {
             val element = elements[elementIndex]
+            if (!members.add(element)) continue
             val elementClass = state.classIndexOf(element)
             if (entryGraphClass.getOrElse(elementClass) { false }) {
-                if (members.add(element)) {
+                queue.add(element)
+                // Transparent bin nodes (TreeBin, ForwardingNode) are
+                // treeification/resize state: walked through, kept alive as a
+                // liveness-only extra, concealed from the member set.
+                if (transparentGraphClass.getOrElse(elementClass) { false }) {
+                    concealed.add(element)
+                } else {
                     ordered.add(element)
-                    queue.add(element)
                 }
-            } else if (members.add(element)) {
+            } else {
                 // Per-object references form a target set, so non-entry
                 // elements deduplicate as well.
                 ordered.add(element)
@@ -190,26 +209,33 @@ internal class HeapGraphAssembler(
             val member = queue.removeInt(queue.size - 1)
             val linkIndex = binarySearch(linkNodes, linkFill, member)
             if (linkIndex < 0) continue
-            for (slot in 0..2) {
-                val linked = linkData[linkIndex * 3 + slot]
-                if (linked >= 0 &&
-                    entryGraphClass.getOrElse(state.classIndexOf(linked)) { false } &&
-                    members.add(linked)
-                ) {
+            for (slot in 0 until MAX_LINK_FIELDS) {
+                val linked = linkData[linkIndex * MAX_LINK_FIELDS + slot]
+                if (linked < 0) continue
+                val linkedClass = state.classIndexOf(linked)
+                if (!entryGraphClass.getOrElse(linkedClass) { false } || !members.add(linked)) {
+                    continue
+                }
+                queue.add(linked)
+                if (transparentGraphClass.getOrElse(linkedClass) { false }) {
+                    concealed.add(linked)
+                } else {
                     ordered.add(linked)
-                    queue.add(linked)
                 }
             }
         }
 
         val mainCount = ordered.size
-        val extrasBase = state.countOf(arrayDense)
-        synthetic.add(arrayDense)
+        val extrasBase = state.countOf(ownerDense)
+        synthetic.add(ownerDense)
         synthetic.add(extrasBase)
-        synthetic.add(mainCount)
+        synthetic.add(mainCount + concealed.size)
         for (orderedIndex in 0 until mainCount) synthetic.add(ordered.getInt(orderedIndex))
-        state.setCount(arrayDense, extrasBase + mainCount)
-        if (mainCount == 0) state.setFlag(arrayDense, ObjectFlags.LEAF)
+        for (concealedIndex in 0 until concealed.size) {
+            synthetic.add(concealed.getInt(concealedIndex) or EXTRA_FLAG or PROJ_FLAG)
+        }
+        state.setCount(ownerDense, extrasBase + mainCount + concealed.size)
+        if (walkMains + mainCount == 0) state.setFlag(ownerDense, ObjectFlags.LEAF)
     }
 
     private fun binarySearch(values: IntArray, size: Int, key: Int): Int {
@@ -421,8 +447,8 @@ internal class HeapGraphAssembler(
 
     // ------------------------------------------------------------------ scope
 
-    /** Marks the SCOPE flag; returns scope roots (dense ids) for class scopes. */
-    private fun selectScope(): IntArray {
+    /** Marks the SCOPE flag; returns scope roots (dense ids). */
+    private fun selectScope(rootTargets: IntArray, staticTargets: Array<IntArray>): IntArray {
         if (scopeClassName == null) {
             for (denseId in 0 until objectCount) {
                 val flags = state.flagsOf(denseId)
@@ -430,7 +456,26 @@ internal class HeapGraphAssembler(
                     state.setFlag(denseId, ObjectFlags.SCOPE)
                 }
             }
-            return IntArray(0)
+            // Whole-heap scope roots: GC-root targets plus class statics —
+            // exactly the objects the liveness walk was seeded with. They
+            // seed the analyzer's observability cascade and the per-shape
+            // root counts.
+            val seen = LongArray((objectCount + 63) ushr 6)
+            val seeds = IntArrayList()
+            fun addSeed(denseId: Int) {
+                val flags = state.flagsOf(denseId)
+                if (flags and ObjectFlags.LIVE == 0 || flags and ObjectFlags.EXCLUDED != 0) return
+                val word = denseId ushr 6
+                val bit = 1L shl (denseId and 63)
+                if (seen[word] and bit != 0L) return
+                seen[word] = seen[word] or bit
+                seeds.add(denseId)
+            }
+            for (target in rootTargets) if (target < classBase) addSeed(target)
+            for (retained in staticTargets) {
+                for (target in retained) if (target < classBase) addSeed(target)
+            }
+            return seeds.toIntArray()
         }
 
         var scopeGraphClass = -1
@@ -618,10 +663,15 @@ internal class HeapGraphAssembler(
         val classNames = (0 until state.graphClassCount).map {
             ClassName(state.graphClassNamesSlots[it] ?: "unused-$it")
         }
-        val rootIds = IntArray(scopeRoots.size)
-        for (rootIndex in scopeRoots.indices) {
-            rootIds[rootIndex] = rankOf(keptBits, rankPrefix, scopeRoots[rootIndex])
+        // Leaf-folded root objects are not nodes; they drop out of the root
+        // id list (their fold aggregates keep rootCount separately).
+        val rootIdList = IntArrayList(scopeRoots.size)
+        for (root in scopeRoots) {
+            if (keptBits[root ushr 6] and (1L shl (root and 63)) != 0L) {
+                rootIdList.add(rankOf(keptBits, rankPrefix, root))
+            }
         }
+        val rootIds = rootIdList.toIntArray()
 
         return HeapGraph(
             arena = state.graphArena,

@@ -4,15 +4,13 @@
    rebuilds, hit-testing and detail views. Nothing here caps the graph. */
 
 export const CELL = 96;
-export const EDGE_BUCKETS = 64;
-
-export function edgeWidthBucket(w) {
-  return Math.max(0, Math.min(EDGE_BUCKETS - 1, Math.ceil(Math.log2(w / 0.1))));
-}
+const MAX_CELLS = 2000000;   // adaptive cell size keeps dense CSRs bounded
 
 /* Dense grid over allocated world cells. cellRange clamps every external
-   viewport query, including views panned wholly outside the world. */
-export function makeSpatialGrid(nodes, cell = CELL) {
+   viewport query, including views panned wholly outside the world. The cell
+   size adapts to the world extent: huge layouts (e.g. 700k px square) would
+   otherwise allocate hundreds of MB of Int32 offsets. */
+export function makeSpatialGrid(nodes, cell = 0) {
   let gxMin = Infinity, gyMin = Infinity, gxMax = -Infinity, gyMax = -Infinity;
   for (const nd of nodes) {
     const hw = nd.hw ?? nd.rad, hh = nd.hh ?? nd.rad;
@@ -22,6 +20,11 @@ export function makeSpatialGrid(nodes, cell = CELL) {
     if (nd.y + hh > gyMax) gyMax = nd.y + hh;
   }
   if (!nodes.length) { gxMin = 0; gyMin = 0; gxMax = 0; gyMax = 0; }
+  if (!cell) {
+    cell = CELL;
+    while ((Math.floor(gxMax / cell) + 2 - (Math.floor(gxMin / cell) - 1)) *
+           (Math.floor(gyMax / cell) + 2 - (Math.floor(gyMin / cell) - 1)) > MAX_CELLS) cell *= 2;
+  }
   const cbx = Math.floor(gxMin / cell) - 1;
   const cby = Math.floor(gyMin / cell) - 1;
   const ncx = Math.floor(gxMax / cell) + 2 - cbx;
@@ -66,17 +69,18 @@ function buildAdjacency(nodes, edges, keyOf) {
 export function buildScene(layout, fills) {
   const N = layout.nodes, E = layout.edges;
   const grid = makeSpatialGrid(N);
+  const cell = grid.cell;
 
-  // nodes -> cell CSR (viewport culling + hit-testing + bitmap rebuilds)
+  // nodes -> cell CSR (viewport culling + hit-testing)
   const nOff = new Int32Array(grid.cellCount + 1);
   for (let u = 0; u < N.length; u++)
-    nOff[grid.index(Math.floor(N[u].x / CELL), Math.floor(N[u].y / CELL)) + 1]++;
+    nOff[grid.index(Math.floor(N[u].x / cell), Math.floor(N[u].y / cell)) + 1]++;
   for (let c = 0; c < grid.cellCount; c++) nOff[c + 1] += nOff[c];
   const nIds = new Int32Array(N.length);
   {
     const cur = nOff.slice(0, grid.cellCount);
     for (let u = 0; u < N.length; u++)
-      nIds[cur[grid.index(Math.floor(N[u].x / CELL), Math.floor(N[u].y / CELL))]++] = u;
+      nIds[cur[grid.index(Math.floor(N[u].x / cell), Math.floor(N[u].y / cell))]++] = u;
   }
 
   // Radius-descending prefix for low zoom; grid culling for deep zoom.
@@ -135,15 +139,15 @@ export function buildScene(layout, fills) {
   // Kept as two inline passes: callbacks per edge are measurable at 3.5M edges.
   for (let i = 0; i < E.length; i++) {
     const a = N[E[i].s], t = N[E[i].t];
-    const cyA = Math.floor(ey0[i] / CELL), cyB = Math.floor(ey1[i] / CELL);
-    const cxA = Math.floor(ex0[i] / CELL), cxB = Math.floor(ex1[i] / CELL);
+    const cyA = Math.floor(ey0[i] / cell), cyB = Math.floor(ey1[i] / cell);
+    const cxA = Math.floor(ex0[i] / cell), cxB = Math.floor(ex1[i] / cell);
     if (cyB - cyA > 32 || cxB - cxA > 32) { nRoam++; continue; }
     const ya = a.y <= t.y ? a : t, yb = a.y <= t.y ? t : a;
     const dxdy = (yb.x - ya.x) / Math.max(1e-9, yb.y - ya.y);
     for (let cy = cyA; cy <= cyB; cy++) {
-      const xTop = ya.x + (Math.max(ya.y, cy * CELL) - ya.y) * dxdy;
-      const xBot = ya.x + (Math.min(yb.y, (cy + 1) * CELL) - ya.y) * dxdy;
-      const c0 = Math.floor(Math.min(xTop, xBot) / CELL), c1 = Math.floor(Math.max(xTop, xBot) / CELL);
+      const xTop = ya.x + (Math.max(ya.y, cy * cell) - ya.y) * dxdy;
+      const xBot = ya.x + (Math.min(yb.y, (cy + 1) * cell) - ya.y) * dxdy;
+      const c0 = Math.floor(Math.min(xTop, xBot) / cell), c1 = Math.floor(Math.max(xTop, xBot) / cell);
       for (let cx = c0; cx <= c1; cx++) eOff[grid.index(cx, cy) + 1]++;
     }
   }
@@ -155,32 +159,18 @@ export function buildScene(layout, fills) {
     let rp = 0;
     for (let i = 0; i < E.length; i++) {
       const a = N[E[i].s], t = N[E[i].t];
-      const cyA = Math.floor(ey0[i] / CELL), cyB = Math.floor(ey1[i] / CELL);
-      const cxA = Math.floor(ex0[i] / CELL), cxB = Math.floor(ex1[i] / CELL);
+      const cyA = Math.floor(ey0[i] / cell), cyB = Math.floor(ey1[i] / cell);
+      const cxA = Math.floor(ex0[i] / cell), cxB = Math.floor(ex1[i] / cell);
       if (cyB - cyA > 32 || cxB - cxA > 32) { roamers[rp++] = i; continue; }
       const ya = a.y <= t.y ? a : t, yb = a.y <= t.y ? t : a;
       const dxdy = (yb.x - ya.x) / Math.max(1e-9, yb.y - ya.y);
       for (let cy = cyA; cy <= cyB; cy++) {
-        const xTop = ya.x + (Math.max(ya.y, cy * CELL) - ya.y) * dxdy;
-        const xBot = ya.x + (Math.min(yb.y, (cy + 1) * CELL) - ya.y) * dxdy;
-        const c0 = Math.floor(Math.min(xTop, xBot) / CELL), c1 = Math.floor(Math.max(xTop, xBot) / CELL);
+        const xTop = ya.x + (Math.max(ya.y, cy * cell) - ya.y) * dxdy;
+        const xBot = ya.x + (Math.min(yb.y, (cy + 1) * cell) - ya.y) * dxdy;
+        const c0 = Math.floor(Math.min(xTop, xBot) / cell), c1 = Math.floor(Math.max(xTop, xBot) / cell);
         for (let cx = c0; cx <= c1; cx++) eIds[cur[grid.index(cx, cy)]++] = i;
       }
     }
-  }
-
-  const colorBuckets = new Map();
-  for (let u = 0; u < N.length; u++) {
-    let bucket = colorBuckets.get(fills[u]);
-    if (!bucket) colorBuckets.set(fills[u], bucket = []);
-    bucket.push(u);
-  }
-  const spans = [0, 0, 0, 0, 0, 0, 0];
-  for (let i = 0; i < E.length; i++) {
-    const sy = Math.floor(ey1[i] / CELL) - Math.floor(ey0[i] / CELL);
-    const sx = Math.floor(ex1[i] / CELL) - Math.floor(ex0[i] / CELL);
-    const span = Math.max(sx, sy);
-    spans[span <= 1 ? 0 : span <= 2 ? 1 : span <= 4 ? 2 : span <= 8 ? 3 : span <= 16 ? 4 : span <= 32 ? 5 : 6]++;
   }
 
   let stamp = 0, nodeStamp = 0;
@@ -198,7 +188,7 @@ export function buildScene(layout, fills) {
   };
   return { layout, fills, grid, nOff, nIds, boxOff, boxIds, byRad, radOf, outAdj, inAdj,
     ex0, ey0, ex1, ey1, ew, eOff, eIds, roamers, eStamp, nextEdgeStamp,
-    nStamp, nextNodeStamp, colorBuckets, spans };
+    nStamp, nextNodeStamp };
 }
 
 export function hitTest(scene, wx, wy) {

@@ -7,7 +7,6 @@ import shapes.analysis.ShapeDigest
 import shapes.analysis.SccMemberConnection
 import shapes.analysis.computeShapeDigest
 import shapes.graph.AnalysisGraph
-import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.ShapeRelaxationStats
 import shapes.relaxation.StructuralRelaxation
 
@@ -36,7 +35,7 @@ private const val COMPARE_MEMBER_CAP = 1 shl 21
  */
 internal class CyclicShapeCollapser(
     private val graph: AnalysisGraph,
-    private val relaxationPolicy: ShapeRelaxationPolicy,
+    private val relaxations: ObjectRelaxations,
     private val relaxationStats: ShapeRelaxationStats,
     private val shapes: ArrayList<CanonicalShape>,
     private val shapeOfComponent: IntArray,
@@ -107,7 +106,7 @@ internal class CyclicShapeCollapser(
         val localIndexByObjectId = localIndexOf(memberIds)
 
         val relaxations = Array(memberCount) { memberIndex ->
-            relaxationPolicy.relaxationOf(graph.classIndex(memberIds[memberIndex]))
+            relaxations.relaxationOf(memberIds[memberIndex])
         }
         val setChildren = relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
         val externalEdges = Array(memberCount) { mutableListOf<ChildShapeReference>() }
@@ -418,7 +417,7 @@ internal class CyclicShapeCollapser(
         components.members.forEachMember(componentId) { objectId ->
             val classIndex = graph.classIndex(objectId)
             classHistogram.addTo(classIndex, 1L)
-            val relaxation = relaxationPolicy.relaxationOf(classIndex)
+            val relaxation = relaxations.relaxationOf(objectId)
             if (relaxation != StructuralRelaxation.EXACT) relaxationStats.relaxedObjects++
             val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
             if (setChildren) memberChildScratch.clear()
@@ -521,7 +520,7 @@ internal class CyclicShapeCollapser(
         val localIndexByObjectId = localIndexOf(memberIds)
 
         return memberIds.map { objectId ->
-            val relaxation = relaxationPolicy.relaxationOf(graph.classIndex(objectId))
+            val relaxation = relaxations.relaxationOf(objectId)
             val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
             val internalTargets = ArrayList<Int>()
             val externalCounts = LinkedHashMap<Int, Int>()

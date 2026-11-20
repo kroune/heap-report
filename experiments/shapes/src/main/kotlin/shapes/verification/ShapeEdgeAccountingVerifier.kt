@@ -3,7 +3,6 @@ package shapes.verification
 import shapes.analysis.ShapeAnalysisDebugSnapshot
 import shapes.analysis.ShapeAnalysisResult
 import shapes.graph.AnalysisGraph
-import shapes.relaxation.ShapeRelaxationPolicy
 import shapes.relaxation.StructuralRelaxation
 
 /** Full per-reference audit against the internal object-to-shape assignment. */
@@ -11,9 +10,9 @@ internal object ShapeEdgeAccountingVerifier {
     internal fun verify(
         graph: AnalysisGraph,
         debug: ShapeAnalysisDebugSnapshot,
-        relaxationPolicy: ShapeRelaxationPolicy,
         progress: (String) -> Unit = {},
     ): List<String> {
+        val relaxations = debug.objectRelaxations
         val result = debug.result
         val publicIdByDigest = result.entries.associate { it.digest to it.id }
         val publicIdByInternalId = IntArray(debug.collapse.shapes.size) { internalId ->
@@ -31,14 +30,14 @@ internal object ShapeEdgeAccountingVerifier {
         val externalTruth = HashMap<ShapeEdgeKey, Long>()
         val internalTruth = HashMap<Int, Long>()
         val nonExemptShapes = HashSet<Int>()
-        val quotientExempt = findQuotientExemptObjects(graph, debug, relaxationPolicy)
+        val quotientExempt = findQuotientExemptObjects(graph, debug)
         var relaxedSourceCount = 0L
 
         for (objectId in 0 until graph.size) {
             val sourceShapeId = shapeOfObject[objectId]
             if (sourceShapeId < 0) continue
             if (quotientExempt[objectId] ||
-                relaxationPolicy.relaxationOf(graph.classIndex(objectId)) != StructuralRelaxation.EXACT
+                relaxations.relaxationOf(objectId) != StructuralRelaxation.EXACT
             ) {
                 relaxedSourceCount++
                 continue
@@ -66,21 +65,21 @@ internal object ShapeEdgeAccountingVerifier {
             )
         }
 
-        return compareAccounting(result, nonExemptShapes, relaxationPolicy.isEmpty, internalTruth, externalTruth)
+        return compareAccounting(result, nonExemptShapes, relaxations.isEmpty, internalTruth, externalTruth)
     }
 
     private fun findQuotientExemptObjects(
         graph: AnalysisGraph,
         debug: ShapeAnalysisDebugSnapshot,
-        relaxationPolicy: ShapeRelaxationPolicy,
     ): BooleanArray {
+        val relaxations = debug.objectRelaxations
         val exempt = BooleanArray(graph.size)
-        if (relaxationPolicy.isEmpty) return exempt
+        if (relaxations.isEmpty) return exempt
 
         for (componentId in 0 until debug.components.members.count) {
             var hasSetChildrenMember = false
             debug.components.members.forEachMember(componentId) { objectId ->
-                val relaxation = relaxationPolicy.relaxationOf(graph.classIndex(objectId))
+                val relaxation = relaxations.relaxationOf(objectId)
                 if (relaxation == StructuralRelaxation.SET_CHILDREN) hasSetChildrenMember = true
             }
             if (hasSetChildrenMember) {

@@ -254,8 +254,8 @@ endpoint, always JSON.
 - `web/src/viz/` — React popup and visualization components; React Flow hosts
   reference graphs, while pure layout/data-preparation functions remain shared.
 - `web/viz/` — tested pure graph/layout/scene algorithms and the high-volume
-  Canvas engine. These are not a second UI: controls, dialogs, details and
-  lifecycle ownership live in React.
+  renderer (WebGL2 bulk pass plus Canvas-2D overlay). These are not a second
+  UI: controls, dialogs, details and lifecycle ownership live in React.
 - `web/dist/index.html` — the only production frontend artifact. Python serves
   this file directly; Vite serves `web/src` only during development.
 - Snapshot export inserts `window.__INLINE__` into that same artifact. Inline

@@ -63,7 +63,7 @@ sources, store, query engine, jobs); the impls plug into it. See
 - `web/src/` — the React + TypeScript UI. TanStack Query owns server state,
   caching and polling; MUI provides application controls and dialogs; ECharts
   renders the treemap; React Flow renders class reference graphs. The Shapes
-  explorer keeps its tested, high-volume Canvas/spatial-index engine behind a
+  explorer keeps its tested, high-volume WebGL2+Canvas/spatial-index engine behind a
   React lifecycle. Vite produces one self-contained production HTML file.
 
 ## CLI

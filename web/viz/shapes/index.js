@@ -15,7 +15,9 @@
      controls.js  metric and exact-analysis controls
      details.js   summary, node detail and lazy reference lists
      scene.js     pure spatial/adjacency indexes and view transforms
-     canvas.js    Canvas-2D painting, bitmap LOD and interaction lifecycle
+     gl.js        WebGL2 bulk pass: every edge and plain node, every frame
+     canvas.js    Canvas-2D overlay (SCC internals, labels, selection) and
+                  interaction lifecycle; falls back to 2D when WebGL2 is missing
      render.js    renderer composition; returns cleanup
      index.js     this file: the Shapes tab renderer contract */
 

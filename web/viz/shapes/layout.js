@@ -15,7 +15,7 @@ const R_MIN = 7, R_MAX = 42;      // node radius clamp
 const X_GAP = 30;                 // horizontal clearance between node edges
 const Y_GAP = 76;                 // vertical clearance between layers
 const ROW_GAP = 56;               // vertical clearance between wrapped rows of one layer
-const DAG_EXTENT_LIMIT = 100000;  // auto-compact beyond this natural width/height
+const DAG_ASPECT_LIMIT = 8;       // auto-compact only when even a balanced DAG stays this skewed
 
 const METRIC = {
   shallow: s => s.st,
@@ -26,8 +26,11 @@ const METRIC = {
 /* nodes: [{id,label,kind,count,st,smin,smax,roots,sccSize,internalEdges,
             edgesPerMember,cat}], edges: [[s, t, multPerMember]].
    metric: "shallow" | "count" | "roots".
-   layoutMode: "auto" | "dag" | "compact". Auto uses the natural top-down
-   layout unless its unwrapped world exceeds DAG_EXTENT_LIMIT in either axis.
+   layoutMode: "auto" | "dag" | "compact". Auto (and forced DAG) wrap each
+   layer's rows at a width balanced toward a roughly square world while
+   keeping one strict top-down sequence (every edge points downward). Auto
+   falls back to the legacy column-folding compaction only when even the
+   balanced DAG stays extremely skewed (e.g. a 20k-layer chain).
    Returns {nodes: [...+{rad,x,y,layer}], edges: [{s,t,mult,total,mx,my}],
             width, height, layerCount, layoutMode}. Inputs are not mutated. */
 export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallow",
@@ -108,28 +111,52 @@ export function computeShapesLayout(nodesIn = [], edgesIn = [], metric = "shallo
   };
   sweep(true); sweep(false); sweep(true);
 
-  // ---- coordinates: prefer one global top-down DAG. Estimate the natural
-  // one-row-per-layer bounds without allocating a second row representation.
-  // Only extreme graphs use the legacy square-ish compaction: a single row
-  // per layer would be ~40M px wide on a 1M-shape payload, and a 30k-layer
-  // chain would be a multi-megapixel-tall strip. Forced DAG mode never folds
-  // columns, but wraps rows beyond the same extent limit. ----
-  let area = 0, naturalW = 0, naturalH = 0;
+  // ---- coordinates: prefer one global top-down DAG. Rows inside a layer
+  // wrap at a width balanced so the whole strictly-layered world comes out
+  // roughly square (the renderer draws everything at any zoom, so only the
+  // fit-view aspect matters). measure() is O(nodes); a couple of geometric-
+  // mean iterations converge on H(W) ~= W. The legacy column-folding
+  // compaction remains for the explicit "compact" toggle and for graphs a
+  // balanced DAG cannot help (a deep chain is a strip at any wrap width). ----
+  let area = 0;
   for (const l of byLayer) {
     if (!l || !l.length) continue;
-    let rowW = 0, rowH = 0;
     for (const u of l) {
-      const nd = N[u], w = 2 * nd.hw + X_GAP, h = 2 * nd.hh;
-      area += w * (h + ROW_GAP);
-      rowW += w;
-      if (h > rowH) rowH = h;
+      const nd = N[u];
+      area += (2 * nd.hw + X_GAP) * (2 * nd.hh + ROW_GAP);
     }
-    if (rowW - X_GAP > naturalW) naturalW = rowW - X_GAP;
-    naturalH += rowH + ROW_GAP + Y_GAP;
   }
-  const compact = requestedMode === "compact" || (requestedMode === "auto" &&
-    (naturalW > DAG_EXTENT_LIMIT || naturalH > DAG_EXTENT_LIMIT));
-  const targetW = compact ? Math.max(1200, Math.sqrt(area)) : DAG_EXTENT_LIMIT;
+  const measure = wrapW => {
+    let w = 0, h = 0;
+    for (const l of byLayer) {
+      if (!l || !l.length) continue;
+      let rowW = 0, rowH = 0, layerH = 0;
+      for (const u of l) {
+        const nd = N[u], uw = 2 * nd.hw + X_GAP, uh = 2 * nd.hh;
+        if (rowW && rowW + uw > wrapW) {
+          layerH += rowH + ROW_GAP;
+          if (rowW - X_GAP > w) w = rowW - X_GAP;
+          rowW = 0; rowH = 0;
+        }
+        rowW += uw;
+        if (uh > rowH) rowH = uh;
+      }
+      layerH += rowH + ROW_GAP;
+      if (rowW - X_GAP > w) w = rowW - X_GAP;
+      h += layerH + Y_GAP;
+    }
+    return { w, h };
+  };
+  let balancedW = Math.max(1200, Math.sqrt(area));
+  let bounds = measure(balancedW);
+  for (let i = 0; i < 3 && bounds.h > balancedW * 1.25; i++) {
+    balancedW = Math.max(1200, Math.sqrt(balancedW * bounds.h));
+    bounds = measure(balancedW);
+  }
+  const aspect = Math.max(bounds.w, bounds.h) / Math.max(1200, Math.min(bounds.w, bounds.h));
+  const compact = requestedMode === "compact" ||
+    (requestedMode === "auto" && aspect > DAG_ASPECT_LIMIT);
+  const targetW = compact ? Math.max(1200, Math.sqrt(area)) : balancedW;
   // pass 1: split each layer into rows
   const layerRows = byLayer.map(l => {
     if (!l || !l.length) return [];

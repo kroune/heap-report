@@ -48,8 +48,10 @@ to the Python server on port 8321.
    their built-in behavior locally.
 4. Pure algorithms are separated from rendering. The existing iterative Shapes
    layout/spatial indexes and class graph layout functions remain reusable and
-   node-testable. High-volume Shapes rendering stays on Canvas with viewport
-   culling/bitmap LOD; never convert millions of shapes to React/SVG elements.
+   node-testable. High-volume Shapes rendering stays on the dedicated canvas
+   engine (WebGL2 bulk pass for every edge/node + Canvas-2D overlay for SCC
+   internals, labels and selection, with the spatial indexes for hit-testing);
+   never convert millions of shapes to React/SVG elements.
    Its controls/details and effect cleanup are React-owned.
 5. Every async path ends in data, an explicit error, a not-analyzed/not-ready
    state, or a loading state with retry/terminal handling. Requests must not

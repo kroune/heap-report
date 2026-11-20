@@ -1,18 +1,22 @@
-/* Shapes viz — Canvas 2D scene renderer and interaction lifecycle.
-   Full-graph scale strategy: spatial culling, radius prefixes, width LOD,
-   overview bitmap, CSR adjacency and rAF-throttled painting. No data is
-   fetched or capped here. mountShapesCanvas returns an idempotent cleanup. */
+/* Shapes viz — interaction lifecycle plus a two-layer renderer. A WebGL2
+   canvas underneath (gl.js) draws every edge and plain node each frame, so
+   panning and zooming never wait for a debounced bitmap, edges stay visible
+   at every scale and nodes stay circles. The supplied canvas on top is the
+   Canvas-2D overlay: SCC containers with their full member graphs, labels,
+   multiplicity texts and the selection ring/arrowheads. No data is fetched
+   or capped here. mountShapesCanvas returns an idempotent cleanup. */
 
-import { adjSlice, buildScene, edgeWidthBucket, fitTransform, hitTest, resizeTransform, zoomTransform, EDGE_BUCKETS } from "./scene.js";
+import { adjSlice, buildScene, fitTransform, hitTest, resizeTransform, zoomTransform } from "./scene.js";
+import { createShapesGl } from "./gl.js";
 import { defaultSide, mountRefLists, nodeDetailHead } from "./details.js";
 
-const TINY_R = 0.7;
-const EDGE_MIN_PX = 0.35;
-const BMP_EDGE_MIN_PX = 1.25;
 const LABEL_R = 14;
+const LABEL_MAX = 400;
 const EDGE_LABEL_MAX = 120;
-const BMP_CAP = 4096;
-const BMP_MARGIN = 0.6;
+const EDGE_MIN_PX = 0.35;      // fallback renderer only
+const FALLBACK_EDGE_MAX = 30000;
+const CULL_CELL_MAX = 30000;   // wider viewports use the GL wide pass directly
+const CULL_EDGE_MAX = 60000;   // larger visible sets stay on the wide pass
 
 const C_EDGE = "rgba(74,85,104,0.5)";
 const C_EDGE_OUT = "rgba(121,184,255,0.95)";
@@ -30,19 +34,41 @@ const C_MEMBER_TEXT = "#e8edf5";
 export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
   let layout = vm.layout;
   let N = layout.nodes, E = layout.edges;
-  let scene = buildScene(layout, N.map(nd => ctx.catColor(nd.cat)));
+  let fills = N.map(nd => ctx.catColor(nd.cat));
+  let scene = buildScene(layout, fills);
   let disposed = false;
-  let shown = -1, selPaths = null, refsCleanup = null;
+  let shown = -1, selList = null, refsCleanup = null;
   let defaultHtml = null;
-  let bmp = null, bmpTimer = 0, labelTimer = 0, raf = 0;
+  let labelTimer = 0, raf = 0;
   let visLabels = { count: 0, ids: [] };
   let drag = null, moved = false;
   let ro = null;
+  const sccIds = [];
+  for (let u = 0; u < N.length; u++) if (N[u].scc) sccIds.push(u);
+  /* Both layers are absolutely positioned inside the (relative) wrap. An
+     in-flow canvas is a feedback loop: resize() writes clientSize×dpr into
+     the canvas attributes, the attribute size is the canvas's intrinsic
+     layout size, and an unbounded flex host grows the wrap to match — the
+     pane inflated to tens of thousands of px and the "center" zoom anchor
+     landed far below the visible viewport. */
+  const hostCanvasStyle = canvas.style.cssText;
+  canvas.style.position = "absolute";
+  canvas.style.inset = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  let glCanvas = document.createElement("canvas");
+  glCanvas.className = "shapes-canvas-gl";
+  glCanvas.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;";
+  canvas.parentElement.insertBefore(glCanvas, canvas);
+  let glr = null;
+  try {
+    glr = createShapesGl(glCanvas);
+    if (glr) glr.upload(N, E, scene.ew, fills);
+  } catch { glr = null; }
   const g = canvas.getContext("2d");
   const W = () => canvas.clientWidth || 760;
   const H = () => canvas.clientHeight || 620;
-  const dbg = { roamers: scene.roamers.length, drawnEdges: 0, labels: 0, k: 0,
-    zm: null, bmpInfo: null, spans: scene.spans };
+  const dbg = { gl: !!glr, drawnEdges: 0, labels: 0, k: 0, zm: null, frameMs: 0 };
   canvas.__dbg = dbg;
 
   function cleanup() {
@@ -50,9 +76,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     disposed = true;
     if (raf) cancelAnimationFrame(raf);
     raf = 0;
-    clearTimeout(bmpTimer);
     clearTimeout(labelTimer);
-    bmpTimer = 0;
     labelTimer = 0;
     if (ro) ro.disconnect();
     ro = null;
@@ -71,16 +95,20 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     canvas.__dbg = null;
     canvas.width = 1;
     canvas.height = 1;
-    if (bmp) { bmp.cv.width = 1; bmp.cv.height = 1; }
-    bmp = null;
+    canvas.style.cssText = hostCanvasStyle;
+    if (glr) glr.dispose();
+    glr = null;
+    if (glCanvas.parentElement) glCanvas.parentElement.removeChild(glCanvas);
+    glCanvas = null;
     visLabels = null;
-    selPaths = null;
+    selList = null;
     defaultHtml = null;
     drag = null;
     scene = null;
     layout = null;
     N = null;
     E = null;
+    fills = null;
     vm = null;
   }
 
@@ -103,17 +131,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     zm = zoomTransform(zm, mx, my, dk, W(), H(), layout.width, layout.height);
   };
 
-  const bmpValid = () => {
-    if (!bmp || !scene) return false;
-    const vw = W() / zm.k, vh = H() / zm.k;
-    const vx0 = -zm.x / zm.k, vy0 = -zm.y / zm.k;
-    const ratio = zm.k / (bmp.ps / (window.devicePixelRatio || 1));
-    return ratio >= 0.5 && ratio <= 2 &&
-      vx0 >= bmp.x0 && vy0 >= bmp.y0 &&
-      vx0 + vw <= bmp.x0 + bmp.cv.width / bmp.ps &&
-      vy0 + vh <= bmp.y0 + bmp.cv.height / bmp.ps;
-  };
-
   function schedule() {
     if (!active() || raf) return;
     raf = requestAnimationFrame(() => {
@@ -122,121 +139,63 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     });
   }
 
-  function rebuildBitmap() {
-    if (!active()) return;
-    const dpr = window.devicePixelRatio || 1;
-    const vw = W() / zm.k, vh = H() / zm.k;
-    const vx0 = -zm.x / zm.k, vy0 = -zm.y / zm.k;
-    const x0 = vx0 - vw * BMP_MARGIN, y0 = vy0 - vh * BMP_MARGIN;
-    const bw = vw * (1 + 2 * BMP_MARGIN), bh = vh * (1 + 2 * BMP_MARGIN);
-    const ps = Math.min(zm.k * dpr, BMP_CAP / bw, BMP_CAP / bh);
-    const c = document.createElement("canvas");
-    c.width = Math.max(1, Math.round(bw * ps));
-    c.height = Math.max(1, Math.round(bh * ps));
-    const bg = c.getContext("2d");
-    const range = scene.grid.range(x0, y0, x0 + bw, y0 + bh);
-    const full = !!range && (range.cx1 - range.cx0 + 1) * (range.cy1 - range.cy0 + 1) > 200000;
-
-    // Edges first, batched into one Path2D per width bucket.
-    const minWb = Math.max(EDGE_MIN_PX, BMP_EDGE_MIN_PX) / ps;
+  /* Viewport-culled edge ids for the GL zoom pass; null selects the wide
+     line pass. Recomputed only when the viewport actually changes. */
+  let lastCull = null;
+  function updateCull(vx0, vy0, vx1, vy1, range) {
+    if (!glr) return;
+    const key = `${zm.x}|${zm.y}|${zm.k}|${viewW}|${viewH}`;
+    if (lastCull === key) return;
+    lastCull = key;
+    if (!range) { glr.setCull([]); return; }
+    const rangeCells = (range.cx1 - range.cx0 + 1) * (range.cy1 - range.cy0 + 1);
+    if (rangeCells > CULL_CELL_MAX) { glr.setCull(null); return; }
+    const ids = [];
     const stamp = scene.nextEdgeStamp();
-    const bpaths = new Map();
-    let eN = 0;
-    const eadd = i => {
-      if (scene.ew[i] < minWb || scene.eStamp[i] === stamp) return;
+    const take = i => {
+      if (scene.eStamp[i] === stamp) return;
       scene.eStamp[i] = stamp;
-      if (scene.ex1[i] < x0 || scene.ex0[i] > x0 + bw ||
-          scene.ey1[i] < y0 || scene.ey0[i] > y0 + bh) return;
-      eN++;
-      const b = edgeWidthBucket(scene.ew[i]);
-      let p = bpaths.get(b);
-      if (!p) bpaths.set(b, p = new Path2D());
-      const a = N[E[i].s], t = N[E[i].t];
-      const ax = (a.x - x0) * ps, ay = (a.y + a.hh + 2 - y0) * ps;
-      const tx = (t.x - x0) * ps, ty = (t.y - t.hh - 4 - y0) * ps;
-      p.moveTo(ax, ay);
-      if (Math.abs(ty - ay) < 24) p.lineTo(tx, ty);
-      else { const my = (ay + ty) / 2; p.bezierCurveTo(ax, my, tx, my, tx, ty); }
+      if (scene.ex1[i] < vx0 || scene.ex0[i] > vx1 ||
+          scene.ey1[i] < vy0 || scene.ey0[i] > vy1) return;
+      ids.push(i);
     };
-    for (let p = 0; p < scene.roamers.length; p++) eadd(scene.roamers[p]);
-    if (range) {
-      for (let cx = range.cx0; cx <= range.cx1; cx++) {
-        for (let cy = range.cy0; cy <= range.cy1; cy++) {
-          const cell = scene.grid.index(cx, cy);
-          for (let p = scene.eOff[cell]; p < scene.eOff[cell + 1]; p++) eadd(scene.eIds[p]);
-        }
+    for (let p = 0; p < scene.roamers.length; p++) {
+      take(scene.roamers[p]);
+      if (ids.length > CULL_EDGE_MAX) { glr.setCull(null); return; }
+    }
+    for (let cx = range.cx0; cx <= range.cx1; cx++) {
+      for (let cy = range.cy0; cy <= range.cy1; cy++) {
+        const cell = scene.grid.index(cx, cy);
+        for (let p = scene.eOff[cell]; p < scene.eOff[cell + 1]; p++) take(scene.eIds[p]);
+        if (ids.length > CULL_EDGE_MAX) { glr.setCull(null); return; }
       }
     }
-    bg.strokeStyle = C_EDGE;
-    for (const [b, p] of bpaths) {
-      bg.lineWidth = Math.max(EDGE_MIN_PX, 0.1 * Math.pow(2, b - 0.5) * ps);
-      bg.stroke(p);
-    }
-    dbg.lastRebuild = { edges: eN, buckets: bpaths.size, ms: 0 };
-
-    const dot = u => {
-      const nd = N[u];
-      const w = Math.max(1, (nd.scc ? nd.hw : nd.rad) * 2 * ps);
-      const h = Math.max(1, (nd.scc ? nd.hh : nd.rad) * 2 * ps);
-      bg.fillRect((nd.x - x0) * ps - w / 2, (nd.y - y0) * ps - h / 2, w, h);
-    };
-    if (full) {
-      for (const [color, ids] of scene.colorBuckets) {
-        bg.fillStyle = color;
-        for (let i = 0; i < ids.length; i++) dot(ids[i]);
-      }
-    } else if (range) {
-      for (let cx = range.cx0; cx <= range.cx1; cx++) {
-        for (let cy = range.cy0; cy <= range.cy1; cy++) {
-          const cell = scene.grid.index(cx, cy);
-          for (let p = scene.nOff[cell]; p < scene.nOff[cell + 1]; p++) {
-            const u = scene.nIds[p], nd = N[u];
-            if (nd.x < x0 || nd.x > x0 + bw || nd.y < y0 || nd.y > y0 + bh) continue;
-            bg.fillStyle = scene.fills[u];
-            dot(u);
-          }
-        }
-      }
-    }
-    bmp = { cv: c, x0, y0, ps };
+    glr.setCull(ids);
   }
 
-  function scheduleBitmap() {
-    if (!active()) return;
-    clearTimeout(bmpTimer);
-    bmpTimer = setTimeout(() => {
-      bmpTimer = 0;
-      if (!active() || bmpValid()) return;
-      const t0 = performance.now();
-      try { rebuildBitmap(); }
-      catch (e) { dbg.lastRebuild = { err: String(e && e.stack || e) }; }
-      if (dbg.lastRebuild) dbg.lastRebuild.ms = Math.round(performance.now() - t0);
-      schedule();
-    }, 250);
-  }
-
+  /* Multiplicity texts appear once few enough edges are visible to read them.
+     Early exit: past the cap only the fact that there are too many matters. */
   function scanLabels() {
     if (!active()) return;
     if (zm.k <= 0.35) { visLabels = { count: 0, ids: [] }; return; }
     const vx0 = -zm.x / zm.k, vy0 = -zm.y / zm.k;
     const vx1 = vx0 + W() / zm.k, vy1 = vy0 + H() / zm.k;
-    const minW = EDGE_MIN_PX / zm.k;
     let count = 0;
     const ids = [];
     const stamp = scene.nextEdgeStamp();
     const probe = i => {
-      if (scene.ew[i] < minW || scene.eStamp[i] === stamp) return;
+      if (count > EDGE_LABEL_MAX || scene.eStamp[i] === stamp) return;
       scene.eStamp[i] = stamp;
       if (scene.ex1[i] < vx0 || scene.ex0[i] > vx1 ||
           scene.ey1[i] < vy0 || scene.ey0[i] > vy1) return;
       count++;
       if (ids.length <= EDGE_LABEL_MAX) ids.push(i);
     };
-    for (let p = 0; p < scene.roamers.length; p++) probe(scene.roamers[p]);
+    for (let p = 0; p < scene.roamers.length && count <= EDGE_LABEL_MAX; p++) probe(scene.roamers[p]);
     const range = scene.grid.range(vx0, vy0, vx1, vy1, 1);
     if (range) {
-      for (let cx = range.cx0; cx <= range.cx1; cx++) {
-        for (let cy = range.cy0; cy <= range.cy1; cy++) {
+      for (let cx = range.cx0; cx <= range.cx1 && count <= EDGE_LABEL_MAX; cx++) {
+        for (let cy = range.cy0; cy <= range.cy1 && count <= EDGE_LABEL_MAX; cy++) {
           const cell = scene.grid.index(cx, cy);
           for (let p = scene.eOff[cell]; p < scene.eOff[cell + 1]; p++) probe(scene.eIds[p]);
         }
@@ -256,25 +215,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     }, 120);
   }
 
-  function buildSelection(u) {
-    const paths = new Map();
-    const list = [];
-    const add = (ei, out) => {
-      const e = E[ei], a = N[e.s], t = N[e.t];
-      const key = (out ? 0 : 1) * EDGE_BUCKETS + edgeWidthBucket(scene.ew[ei]);
-      let p = paths.get(key);
-      if (!p) paths.set(key, p = new Path2D());
-      const y1 = a.y + a.hh + 2, y2 = t.y - t.hh - 4;
-      p.moveTo(a.x, y1);
-      if (y2 - y1 < 2000) p.lineTo(t.x, y2);
-      else { const my = (y1 + y2) / 2; p.bezierCurveTo(a.x, my, t.x, my, t.x, y2); }
-      list.push([ei, out]);
-    };
-    for (const ei of adjSlice(scene.outAdj, u)) add(ei, true);
-    for (const ei of adjSlice(scene.inAdj, u)) add(ei, false);
-    return { paths, list, degree: list.length };
-  }
-
   /* Paint one complete SCC in local coordinates. Internal geometry is never
      capped: LOD only decides when the boxes/edges are large enough to see. */
   function drawSccNode(u) {
@@ -287,9 +227,10 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     g.fill();
     g.strokeStyle = nd.roots ? C_ROOT_STROKE : scene.fills[u];
     g.lineWidth = (nd.roots ? 1.6 : 1.1) / zm.k;
-    g.setLineDash([4 / zm.k, 3 / zm.k]);
+    const dashed = nd.hw * 2 * zm.k >= 10;   // dash segments are invisible below this
+    if (dashed) g.setLineDash([4 / zm.k, 3 / zm.k]);
     g.stroke();
-    g.setLineDash([]);
+    if (dashed) g.setLineDash([]);
 
     let header = false;
     if (11 * zm.k >= 7) {
@@ -354,20 +295,90 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     return header;
   }
 
+  /* Canvas-2D stand-in when WebGL2 is unavailable: same culling indexes,
+     straight-line edges, bounded edge count. Quality degrades, data does not. */
+  function drawFallback(vx0, vy0, vx1, vy1, range) {
+    const stamp = scene.nextEdgeStamp();
+    let drawn = 0;
+    g.strokeStyle = C_EDGE;
+    g.lineWidth = Math.max(EDGE_MIN_PX / zm.k, 0.8);
+    g.beginPath();
+    const eadd = i => {
+      if (drawn > FALLBACK_EDGE_MAX || scene.eStamp[i] === stamp) return;
+      scene.eStamp[i] = stamp;
+      if (scene.ex1[i] < vx0 || scene.ex0[i] > vx1 ||
+          scene.ey1[i] < vy0 || scene.ey0[i] > vy1) return;
+      drawn++;
+      const a = N[E[i].s], t = N[E[i].t];
+      g.moveTo(a.x, a.y + a.hh + 2);
+      g.lineTo(t.x, t.y - t.hh - 4);
+    };
+    for (let p = 0; p < scene.roamers.length; p++) eadd(scene.roamers[p]);
+    if (range) {
+      for (let cx = range.cx0; cx <= range.cx1; cx++) {
+        for (let cy = range.cy0; cy <= range.cy1; cy++) {
+          const cell = scene.grid.index(cx, cy);
+          for (let p = scene.eOff[cell]; p < scene.eOff[cell + 1]; p++) eadd(scene.eIds[p]);
+        }
+      }
+    }
+    g.stroke();
+
+    for (let i = 0; i < scene.byRad.length; i++) {
+      const u = scene.byRad[i], nd = N[u];
+      if (nd.scc) continue;
+      if (nd.x + nd.rad < vx0 || nd.x - nd.rad > vx1 ||
+          nd.y + nd.rad < vy0 || nd.y - nd.rad > vy1) continue;
+      const rpx = nd.rad * zm.k;
+      g.fillStyle = scene.fills[u];
+      if (rpx < 3) {
+        const p = Math.max(1 / zm.k, nd.rad * 2);
+        g.fillRect(nd.x - p / 2, nd.y - p / 2, p, p);
+        continue;
+      }
+      g.globalAlpha = 0.85;
+      g.beginPath();
+      g.arc(nd.x, nd.y, nd.rad, 0, 6.2831853);
+      g.fill();
+      g.globalAlpha = 1;
+      if (rpx < 6) continue;
+      g.strokeStyle = nd.roots ? C_ROOT_STROKE : C_NODE_STROKE;
+      g.lineWidth = (nd.roots ? 1.6 : 0.8) / zm.k;
+      g.stroke();
+    }
+
+    if (selList) {
+      for (const [ei, out] of selList) {
+        const e = E[ei], a = N[e.s], t = N[e.t];
+        g.strokeStyle = out ? C_EDGE_OUT : C_EDGE_IN;
+        g.lineWidth = Math.max(1.25 / zm.k, scene.ew[ei] * 1.5);
+        g.beginPath();
+        g.moveTo(a.x, a.y + a.hh + 2);
+        g.lineTo(t.x, t.y - t.hh - 4);
+        g.stroke();
+      }
+    }
+  }
+
   function draw() {
     if (!active()) return;
+    const t0 = performance.now();
     const dpr = window.devicePixelRatio || 1;
     const w = W(), h = H();
+    const vx0 = -zm.x / zm.k, vy0 = -zm.y / zm.k;
+    const vx1 = vx0 + w / zm.k, vy1 = vy0 + h / zm.k;
+    const range = scene.grid.range(vx0, vy0, vx1, vy1);
+    if (glr) {
+      updateCull(vx0, vy0, vx1, vy1, range);
+      glr.draw(zm, w, h, dpr);
+    }
+
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     g.translate(zm.x, zm.y);
     g.scale(zm.k, zm.k);
-    const vx0 = -zm.x / zm.k, vy0 = -zm.y / zm.k;
-    const vx1 = vx0 + w / zm.k, vy1 = vy0 + h / zm.k;
-    const range = scene.grid.range(vx0, vy0, vx1, vy1);
 
-    if (bmp) g.drawImage(bmp.cv, bmp.x0, bmp.y0, bmp.cv.width / bmp.ps, bmp.cv.height / bmp.ps);
-    if (!bmpValid()) scheduleBitmap();
+    if (!glr) drawFallback(vx0, vy0, vx1, vy1, range);
 
     dbg.drawnEdges = visLabels.count;
     if (visLabels.ids.length) {
@@ -384,85 +395,50 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       }
     }
 
+    // SCC containers. Wide views scan the flat list (the bbox grid index
+    // would mean touching every allocated cell); narrow views use the index,
+    // which also de-duplicates boxes spanning several cells.
     const labeled = [];
-    const drawNode = u => {
-      const nd = N[u];
-      if (nd.scc) return;   // bbox-indexed containers are painted below
-      const rpx = nd.rad * zm.k;
-      if (rpx < TINY_R) {
-        g.fillStyle = scene.fills[u];
-        const p = Math.max(1 / zm.k, nd.rad * 2);
-        g.fillRect(nd.x - p / 2, nd.y - p / 2, p, p);
-        return;
-      }
-      if (rpx < 3) {
-        g.fillStyle = scene.fills[u];
-        const p = nd.rad * 2;
-        g.fillRect(nd.x - p / 2, nd.y - p / 2, p, p);
-        return;
-      }
-      g.globalAlpha = 0.85;
-      g.fillStyle = scene.fills[u];
-      g.beginPath();
-      g.arc(nd.x, nd.y, nd.rad, 0, 6.2831853);
-      g.fill();
-      g.globalAlpha = 1;
-      if (rpx < 6) return;
-      const isScc = nd.kind === "scc";
-      g.strokeStyle = nd.roots ? C_ROOT_STROKE : C_NODE_STROKE;
-      g.lineWidth = (nd.roots ? 1.6 : 0.8) / zm.k;
-      if (isScc) g.setLineDash([3 / zm.k, 2 / zm.k]);
-      g.stroke();
-      if (isScc) g.setLineDash([]);
-      if (rpx >= LABEL_R) labeled.push(u);
-    };
-
-    const need = TINY_R / zm.k;
-    let lo = 0, hi = scene.byRad.length;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (scene.radOf[scene.byRad[m]] >= need) lo = m + 1;
-      else hi = m;
-    }
-    if (lo < 50000) {
-      for (let i = 0; i < lo; i++) {
-        const u = scene.byRad[i], nd = N[u];
-        if (nd.x + nd.rad < vx0 || nd.x - nd.rad > vx1 ||
-            nd.y + nd.rad < vy0 || nd.y - nd.rad > vy1) continue;
-        drawNode(u);
-      }
-    } else if (range) {
-      for (let cx = range.cx0; cx <= range.cx1; cx++) {
-        for (let cy = range.cy0; cy <= range.cy1; cy++) {
-          const cell = scene.grid.index(cx, cy);
-          for (let p = scene.nOff[cell]; p < scene.nOff[cell + 1]; p++) {
-            const u = scene.nIds[p], nd = N[u];
-            if (nd.rad * zm.k < TINY_R) continue;
-            if (nd.x - nd.rad > vx1 || nd.x + nd.rad < vx0 ||
-                nd.y - nd.rad > vy1 || nd.y + nd.rad < vy0) continue;
-            drawNode(u);
-          }
-        }
-      }
-    }
-
-    // SCC boxes can cover cells that do not contain their center; their
-    // separate bbox index both finds and de-duplicates them for this frame.
     if (range) {
-      const stamp = scene.nextNodeStamp();
-      for (let cx = range.cx0; cx <= range.cx1; cx++) {
-        for (let cy = range.cy0; cy <= range.cy1; cy++) {
-          const cell = scene.grid.index(cx, cy);
-          for (let p = scene.boxOff[cell]; p < scene.boxOff[cell + 1]; p++) {
-            const u = scene.boxIds[p];
-            if (scene.nStamp[u] === stamp) continue;
-            scene.nStamp[u] = stamp;
-            if (!drawSccNode(u) && N[u].rad * zm.k >= LABEL_R) labeled.push(u);
+      const rangeCells = (range.cx1 - range.cx0 + 1) * (range.cy1 - range.cy0 + 1);
+      const paint = u => {
+        if (!drawSccNode(u) && N[u].rad * zm.k >= LABEL_R) labeled.push(u);
+      };
+      if (rangeCells > sccIds.length) {
+        for (const u of sccIds) {
+          const nd = N[u];
+          if (nd.x + nd.hw < vx0 || nd.x - nd.hw > vx1 ||
+              nd.y + nd.hh < vy0 || nd.y - nd.hh > vy1) continue;
+          paint(u);
+        }
+      } else {
+        const stamp = scene.nextNodeStamp();
+        for (let cx = range.cx0; cx <= range.cx1; cx++) {
+          for (let cy = range.cy0; cy <= range.cy1; cy++) {
+            const cell = scene.grid.index(cx, cy);
+            for (let p = scene.boxOff[cell]; p < scene.boxOff[cell + 1]; p++) {
+              const u = scene.boxIds[p];
+              if (scene.nStamp[u] === stamp) continue;
+              scene.nStamp[u] = stamp;
+              paint(u);
+            }
           }
         }
       }
     }
 
+    // Plain-node labels: radius-descending prefix of nodes big enough on
+    // screen, then viewport filter. The prefix is tiny except at deep zoom.
+    const needRad = LABEL_R / zm.k;
+    for (let i = 0; i < scene.byRad.length && labeled.length < LABEL_MAX; i++) {
+      const u = scene.byRad[i];
+      if (scene.radOf[u] < needRad) break;
+      const nd = N[u];
+      if (nd.scc) continue;
+      if (nd.x + nd.rad < vx0 || nd.x - nd.rad > vx1 ||
+          nd.y + nd.rad < vy0 || nd.y - nd.rad > vy1) continue;
+      labeled.push(u);
+    }
     if (labeled.length) {
       g.font = `${11 / zm.k}px sans-serif`;
       g.textAlign = "center";
@@ -479,30 +455,21 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     dbg.labels = labeled.length;
     dbg.k = zm.k;
     dbg.zm = { x: zm.x, y: zm.y, k: zm.k, w, h };
-    dbg.bmpInfo = bmp && { x0: bmp.x0, y0: bmp.y0, ps: bmp.ps,
-      cw: bmp.cv.width, ch: bmp.cv.height, valid: bmpValid() };
 
-    if (selPaths) {
-      for (const [key, p] of selPaths.paths) {
-        const cls = (key / EDGE_BUCKETS) | 0, b = key % EDGE_BUCKETS;
-        g.strokeStyle = cls === 0 ? C_EDGE_OUT : C_EDGE_IN;
-        g.lineWidth = 0.1 * Math.pow(2, b - 0.5) * 1.5;
-        g.stroke(p);
-      }
-      if (selPaths.degree <= 2000) {
-        for (const [ei, out] of selPaths.list) {
-          if (scene.ew[ei] * zm.k < 3) continue;
-          const e = E[ei], t = N[e.t];
-          const y2 = t.y - t.hh - 4;
-          const s = 2.2 * scene.ew[ei], dir = y2 >= N[e.s].y ? 1 : -1;
-          g.beginPath();
-          g.moveTo(t.x - s * 0.45, y2 - dir * s);
-          g.lineTo(t.x, y2);
-          g.lineTo(t.x + s * 0.45, y2 - dir * s);
-          g.closePath();
-          g.fillStyle = out ? C_EDGE_OUT : C_EDGE_IN;
-          g.fill();
-        }
+    // Selection arrowheads for edges wide enough to carry them.
+    if (selList && selList.length <= 2000) {
+      for (const [ei, out] of selList) {
+        if (scene.ew[ei] * zm.k < 3) continue;
+        const e = E[ei], t = N[e.t];
+        const y2 = t.y - t.hh - 4;
+        const s = 2.2 * scene.ew[ei], dir = y2 >= N[e.s].y ? 1 : -1;
+        g.beginPath();
+        g.moveTo(t.x - s * 0.45, y2 - dir * s);
+        g.lineTo(t.x, y2);
+        g.lineTo(t.x + s * 0.45, y2 - dir * s);
+        g.closePath();
+        g.fillStyle = out ? C_EDGE_OUT : C_EDGE_IN;
+        g.fill();
       }
     }
     if (shown >= 0) {
@@ -517,6 +484,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       g.stroke();
       g.setLineDash([]);
     }
+    dbg.frameMs = Math.round((performance.now() - t0) * 10) / 10;
   }
 
   function resize() {
@@ -529,22 +497,19 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(nextW * dpr));
     canvas.height = Math.max(1, Math.round(nextH * dpr));
-    if (changed) {
-      scheduleBitmap();
-      scheduleLabels();
-    }
+    if (changed) scheduleLabels();
     schedule();
   }
 
   function showNode(u) {
     if (!active()) return;
     shown = u;
-    selPaths = buildSelection(u);
+    const outIds = adjSlice(scene.outAdj, u);
+    const inIds = adjSlice(scene.inAdj, u);
+    selList = [...outIds.map(ei => [ei, true]), ...inIds.map(ei => [ei, false])];
+    if (glr) glr.setSelection(outIds, inIds);
     if (hooks.onSelect) {
-      hooks.onSelect(u, {
-        outbound: [...adjSlice(scene.outAdj, u)],
-        inbound: [...adjSlice(scene.inAdj, u)],
-      });
+      hooks.onSelect(u, { outbound: outIds, inbound: inIds });
     } else {
       if (refsCleanup) refsCleanup();
       side.innerHTML = nodeDetailHead(u, vm, ctx);
@@ -558,7 +523,8 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
   function reset() {
     if (!active()) return;
     shown = -1;
-    selPaths = null;
+    selList = null;
+    if (glr) glr.setSelection(null, null);
     if (refsCleanup) refsCleanup();
     refsCleanup = null;
     if (hooks.onReset) hooks.onReset();
@@ -578,7 +544,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       zm.y -= e.deltaY;
     }
     schedule();
-    scheduleBitmap();
     scheduleLabels();
   }
 
@@ -600,7 +565,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
       zm.x = drag.zx + dx;
       zm.y = drag.zy + dy;
       schedule();
-      scheduleBitmap();
       scheduleLabels();
     }
   }
@@ -621,7 +585,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     else if (e.key === "0") fit();
     else return;
     schedule();
-    scheduleBitmap();
     scheduleLabels();
   }
 
@@ -648,7 +611,6 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     if (!active()) return;
     fn();
     schedule();
-    scheduleBitmap();
     scheduleLabels();
   }
 
@@ -682,7 +644,7 @@ export function mountShapesCanvas(canvas, tools, side, vm, ctx, hooks = {}) {
     ro = new ResizeObserver(resize);
     ro.observe(canvas);
     resize();
-    rebuildBitmap();
+    scheduleLabels();
   } catch (e) {
     cleanup();
     throw e;
