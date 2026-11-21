@@ -25,9 +25,21 @@ data class PatternRelaxation(
 
 data class FieldConcealmentRules(
     val fieldsByClass: Map<ClassName, Set<String>> = emptyMap(),
+    /** Full-match class patterns; fields concealed on every matching class and its subclasses. */
+    val fieldsByPattern: List<PatternFieldConcealment> = emptyList(),
 ) {
-    fun isEmpty(): Boolean = fieldsByClass.isEmpty()
+    fun isEmpty(): Boolean = fieldsByClass.isEmpty() && fieldsByPattern.isEmpty()
+
+    companion object {
+        /** Field name meaning "every reference field": the object becomes an opaque leaf. */
+        const val ALL_FIELDS = "*"
+    }
 }
+
+data class PatternFieldConcealment(
+    val pattern: Regex,
+    val fields: Set<String>,
+)
 
 data class RelaxationRules(
     val shapeRules: ShapeRelaxationRules = ShapeRelaxationRules(),
@@ -94,6 +106,7 @@ object RelaxationRulesTsvParser {
         val shapeRules = LinkedHashMap<ClassName, StructuralRelaxation>()
         val patternRules = LinkedHashMap<String, StructuralRelaxation>()
         val concealedFields = LinkedHashMap<ClassName, MutableSet<String>>()
+        val concealedPatternFields = LinkedHashMap<String, MutableSet<String>>()
 
         for ((lineIndex, rawLine) in text.lines().withIndex()) {
             val lineNumber = lineIndex + 1
@@ -110,10 +123,16 @@ object RelaxationRulesTsvParser {
 
             val classColumn = columns[0].trim()
             val ruleName = columns[1].trim()
-            if (classColumn.startsWith(REGEX_PREFIX)) {
+            if (ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
+                parseFieldConcealment(
+                    ruleName,
+                    classColumn,
+                    concealedFields,
+                    concealedPatternFields,
+                    lineNumber,
+                )
+            } else if (classColumn.startsWith(REGEX_PREFIX)) {
                 parsePatternRelaxation(ruleName, classColumn, patternRules, lineNumber)
-            } else if (ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
-                parseFieldConcealment(ruleName, ClassName(classColumn), concealedFields, lineNumber)
             } else {
                 parseShapeRelaxation(ruleName, ClassName(classColumn), shapeRules, lineNumber)
             }
@@ -126,7 +145,12 @@ object RelaxationRulesTsvParser {
                     PatternRelaxation(Regex(pattern), relaxation)
                 },
             ),
-            fieldConcealmentRules = FieldConcealmentRules(concealedFields),
+            fieldConcealmentRules = FieldConcealmentRules(
+                concealedFields,
+                concealedPatternFields.map { (pattern, fields) ->
+                    PatternFieldConcealment(Regex(pattern), fields)
+                },
+            ),
         )
     }
 
@@ -136,14 +160,7 @@ object RelaxationRulesTsvParser {
         patternRules: MutableMap<String, StructuralRelaxation>,
         lineNumber: Int,
     ) {
-        require(!ruleName.startsWith(CONCEAL_FIELD_PREFIX)) {
-            errorMessage(lineNumber, "conceal-field rules require an exact class name, not a regex")
-        }
-        val pattern = classColumn.removePrefix(REGEX_PREFIX).trim()
-        require(pattern.isNotEmpty()) { errorMessage(lineNumber, "empty regex pattern") }
-        runCatching { Regex(pattern) }.getOrElse { failure ->
-            error(errorMessage(lineNumber, "invalid regex '$pattern': ${failure.message}"))
-        }
+        val pattern = validPattern(classColumn, lineNumber)
         val relaxation = parseRelaxationLevel(ruleName, lineNumber)
         val previous = patternRules.put(pattern, relaxation)
         require(previous == null || previous == relaxation) {
@@ -151,17 +168,31 @@ object RelaxationRulesTsvParser {
         }
     }
 
+    private fun validPattern(classColumn: String, lineNumber: Int): String {
+        val pattern = classColumn.removePrefix(REGEX_PREFIX).trim()
+        require(pattern.isNotEmpty()) { errorMessage(lineNumber, "empty regex pattern") }
+        runCatching { Regex(pattern) }.getOrElse { failure ->
+            error(errorMessage(lineNumber, "invalid regex '$pattern': ${failure.message}"))
+        }
+        return pattern
+    }
+
     private fun parseFieldConcealment(
         ruleName: String,
-        className: ClassName,
+        classColumn: String,
         concealedFields: MutableMap<ClassName, MutableSet<String>>,
+        concealedPatternFields: MutableMap<String, MutableSet<String>>,
         lineNumber: Int,
     ) {
         val fieldName = ruleName.removePrefix(CONCEAL_FIELD_PREFIX).trim()
         require(fieldName.isNotEmpty()) { errorMessage(lineNumber, "empty field name in $ruleName") }
-        val fieldsForClass = concealedFields.getOrPut(className) { sortedSetOf() }
+        val fieldsForClass = if (classColumn.startsWith(REGEX_PREFIX)) {
+            concealedPatternFields.getOrPut(validPattern(classColumn, lineNumber)) { sortedSetOf() }
+        } else {
+            concealedFields.getOrPut(ClassName(classColumn)) { sortedSetOf() }
+        }
         require(fieldsForClass.add(fieldName)) {
-            errorMessage(lineNumber, "duplicate rule $className.$fieldName")
+            errorMessage(lineNumber, "duplicate rule $classColumn.$fieldName")
         }
     }
 
@@ -172,7 +203,7 @@ object RelaxationRulesTsvParser {
             else -> error(
                 errorMessage(
                     lineNumber,
-                    "unknown rule '$ruleName' (class-only|set-children|conceal-field:<name>)",
+                    "unknown rule '$ruleName' (class-only|set-children|conceal-field:<name>|conceal-field:*)",
                 )
             )
         }

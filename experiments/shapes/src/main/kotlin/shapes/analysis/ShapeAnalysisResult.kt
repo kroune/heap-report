@@ -13,8 +13,14 @@ data class SccMemberConnection(
     val multiplicity: Int,
 )
 
+/**
+ * One rendered SCC member group: [memberCount] structurally indistinguishable
+ * members (same class, same connections). [internalConnections] target other
+ * group indices and hold per-member multiplicities.
+ */
 data class SccMemberEntry(
     val className: ClassName,
+    val memberCount: Int,
     val internalConnections: List<SccMemberConnection>,
 )
 

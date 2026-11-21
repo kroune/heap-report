@@ -31,6 +31,18 @@ test("two-way SCC keeps both directions and parallel-ref multiplicity", () => {
   finiteGeometry(layout);
 });
 
+test("quotient group boxes carry ×n labels and the count", () => {
+  const layout = computeSccLayout([
+    { ...member(0, [[0, 1], [1, 1]]), count: 1500 },
+    member(1, [[0, 1]]),
+  ]);
+  assert.equal(layout.members[0].short, "C0 ×1,500");
+  assert.equal(layout.members[0].count, 1500);
+  assert.equal(layout.members[1].short, "C1");
+  assert.equal(layout.members[1].count, 1);
+  finiteGeometry(layout);
+});
+
 test("self-loop is rendered as an explicit cyclic connection", () => {
   const layout = computeSccLayout([member(0, [[0, 3]])]);
   assert.equal(layout.edges.length, 1);

@@ -374,6 +374,34 @@ internal object ClassExtractionPlans {
             }
             progress("plans: conceal ${ruleClassName.name}+subclasses=$matchCount drop $fields")
         }
+        for (patternRule in concealmentRules.fieldsByPattern) {
+            val patternRoots = ArrayList<Int>()
+            for (classIndex in 0 until classStore.size) {
+                if (patternRule.pattern.matches(classStore[classIndex].name)) {
+                    patternRoots.add(classIndex)
+                }
+            }
+            if (patternRoots.isEmpty()) {
+                progress(
+                    "plans: WARNING conceal rule regex:${patternRule.pattern.pattern} " +
+                        "matches no class"
+                )
+                continue
+            }
+            val matches = classStore.subtypesOf(patternRoots)
+            var matchCount = 0
+            for (classIndex in 0 until classStore.size) {
+                if (matches[classIndex]) {
+                    concealedNamesByClass.getOrPut(classIndex) { HashSet() }
+                        .addAll(patternRule.fields)
+                    matchCount++
+                }
+            }
+            progress(
+                "plans: conceal regex:${patternRule.pattern.pattern}+subclasses=$matchCount " +
+                    "drop ${patternRule.fields}"
+            )
+        }
 
         return Array(classStore.size) { classIndex ->
             buildPlan(
@@ -408,6 +436,7 @@ internal object ClassExtractionPlans {
     ): ClassExtractionPlan {
         val name = hprofClass.name
         if (name.endsWith("[]")) return buildArrayPlan(hprofClass)
+        val concealAll = FieldConcealmentRules.ALL_FIELDS in concealedNames
 
         val kind = normalization?.kind ?: PlanKind.PLAIN
         val droppedNames = normalization?.dropped.orEmpty()
@@ -432,7 +461,7 @@ internal object ClassExtractionPlans {
             val fieldName = fieldNames[fieldIndex]
             val fieldOffset = fieldOffsets[fieldIndex]
             when {
-                fieldName in concealedNames -> concealedOffsets.add(fieldOffset)
+                concealAll || fieldName in concealedNames -> concealedOffsets.add(fieldOffset)
                 fieldName in droppedNames && consumedBuiltinNames.add(fieldName) -> {
                     dropOffsets.add(fieldOffset)
                     if (fieldName in linkNames) linkOffsets.add(fieldOffset)

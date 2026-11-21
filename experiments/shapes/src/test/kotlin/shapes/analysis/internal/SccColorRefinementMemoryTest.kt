@@ -43,6 +43,62 @@ class SccColorRefinementMemoryTest {
         measure("deep color propagation") { refine(input) }
     }
 
+    /**
+     * Real SCC member graphs exported from a heap (`-Dwl.fixtures=/dir` holding
+     * `atn.txt` / `zip.txt`: first line member count, then one line per member
+     * `classIndex target:mult ...`). Skipped when the directory is absent.
+     */
+    @Test
+    fun `jfr38 exported sccs`() {
+        val directory = System.getProperty("wl.fixtures") ?: return
+        for (name in listOf("atn", "zip")) {
+            val file = java.io.File(directory, "$name.txt")
+            if (!file.exists()) continue
+            val input = loadFixture(file)
+            repeat(3) {
+                val startedAt = System.nanoTime()
+                val result = SccColorRefinement(
+                    input.classNames,
+                    input.externalEdges,
+                    input.internalNeighbors,
+                    input.setChildren,
+                    edgeComparator,
+                    maxRounds = Integer.getInteger("wl.maxRounds", 256),
+                ).refine()
+                val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000.0
+                println(
+                    "$name: ${input.classNames.size} members -> " +
+                        "${result.colorRanks.max() + 1} colors, rounds=${result.rounds}, " +
+                        "converged=${result.converged}, time=$elapsedMs ms"
+                )
+            }
+        }
+    }
+
+    private fun loadFixture(file: java.io.File): Input {
+        val lines = file.readLines()
+        val size = lines[0].trim().toInt()
+        val classNames = arrayOfNulls<ClassName>(size)
+        val internal = arrayOfNulls<List<Int>>(size)
+        val classCache = HashMap<Int, ClassName>()
+        for (index in 0 until size) {
+            val parts = lines[index + 1].trim().split(' ').filter { it.isNotEmpty() }
+            classNames[index] = classCache.getOrPut(parts[0].toInt()) { ClassName("fixture.Class${parts[0]}") }
+            val targets = ArrayList<Int>()
+            for (part in parts.drop(1)) {
+                val (target, multiplicity) = part.split(':')
+                repeat(multiplicity.toInt()) { targets += target.toInt() }
+            }
+            internal[index] = targets
+        }
+        @Suppress("UNCHECKED_CAST")
+        return Input(
+            classNames as Array<ClassName>,
+            Array(size) { emptyList() },
+            internal as Array<List<Int>>,
+        )
+    }
+
     private fun refine(input: Input): Long {
         val result = SccColorRefinement(
             input.classNames,

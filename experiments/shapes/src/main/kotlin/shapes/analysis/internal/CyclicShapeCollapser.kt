@@ -82,25 +82,36 @@ internal class CyclicShapeCollapser(
 
     fun collapse(memberIds: IntArray): CyclicShape {
         val form = buildCanonicalForm(memberIds, relaxationStats)
-        return internedShapes.getOrPut(SccStructuralKey(form.canonicalKeys)) {
-            createCanonicalShape(memberIds.size, form)
+        return internedShapes.getOrPut(SccStructuralKey(form.groups)) {
+            createCanonicalShape(form)
         }
     }
 
     private class CanonicalForm(
-        val canonicalKeys: List<SccMemberStructuralKey>,
-        val orderedMemberIndices: IntArray,
-        val sourceIndexByCanonicalIndex: IntArray,
-        val keptKeyByPreQuotientIndex: IntArray,
-        val internalEdges: Array<MutableList<Int>>,
+        /** Color classes in canonical order; group index == WL color rank. */
+        val groups: List<SccMemberGroup>,
         val setChildren: Boolean,
         val uniformExternalEdges: Boolean,
     )
 
-    /** WL refinement + canonical member keys; [stats] receives relaxation counters. */
+    /**
+     * WL refinement to the fixpoint quotient: one [SccMemberGroup] per stable
+     * color. The fixpoint partition is equitable, so each group's key carries
+     * the exact per-member connection profile. [stats] receives relaxation
+     * counters.
+     *
+     * [identity] selects the semantics. The identity path applies set
+     * relaxation component-wide: internal multiplicities and external edges
+     * are deduplicated, duplicate members collapse to count 1 and are
+     * accounted as concealed. The payload path (lazy shapes, whose identity is
+     * the signature) keeps real internal multiplicities and real group counts;
+     * only each set-children member's own external edges are deduplicated,
+     * exactly as [summarizeComponent] counts them.
+     */
     private fun buildCanonicalForm(
         memberIds: IntArray,
         stats: ShapeRelaxationStats,
+        identity: Boolean = true,
     ): CanonicalForm {
         val memberCount = memberIds.size
         val localIndexByObjectId = localIndexOf(memberIds)
@@ -108,7 +119,8 @@ internal class CyclicShapeCollapser(
         val relaxations = Array(memberCount) { memberIndex ->
             relaxations.relaxationOf(memberIds[memberIndex])
         }
-        val setChildren = relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
+        val setChildren = identity &&
+            relaxations.any { it == StructuralRelaxation.SET_CHILDREN }
         val externalEdges = Array(memberCount) { mutableListOf<ChildShapeReference>() }
         val internalEdges = Array(memberCount) { mutableListOf<Int>() }
 
@@ -117,7 +129,8 @@ internal class CyclicShapeCollapser(
                 objectId = memberIds[memberIndex],
                 memberIndex = memberIndex,
                 relaxation = relaxations[memberIndex],
-                setChildren = setChildren,
+                setChildren = setChildren ||
+                    relaxations[memberIndex] == StructuralRelaxation.SET_CHILDREN,
                 localIndexByObjectId = localIndexByObjectId,
                 externalEdges = externalEdges,
                 internalNeighbors = internalEdges,
@@ -136,45 +149,46 @@ internal class CyclicShapeCollapser(
         val colorRanks = refinementResult.colorRanks
         val orderedMemberIndices = refinementResult.orderedMemberIndices
 
-        val keysBeforeQuotient = orderedMemberIndices.map { memberIndex ->
-            val internalColorRanks = internalEdges[memberIndex]
+        val groups = ArrayList<SccMemberGroup>()
+        var groupStart = 0
+        while (groupStart < memberCount) {
+            val representative = orderedMemberIndices[groupStart]
+            var groupEnd = groupStart + 1
+            while (groupEnd < memberCount &&
+                colorRanks[orderedMemberIndices[groupEnd]] == colorRanks[representative]
+            ) {
+                groupEnd++
+            }
+            val internalColorRanks = internalEdges[representative]
                 .map { colorRanks[it] }
                 .let { if (setChildren) it.distinct() else it }
                 .sorted()
-            SccMemberStructuralKey(
-                classNames[memberIndex],
+            val key = SccMemberStructuralKey(
+                classNames[representative],
                 internalColorRanks,
-                externalEdges[memberIndex],
+                externalEdges[representative],
             )
+            if (setChildren) {
+                stats.setChildrenConcealedObjects += (groupEnd - groupStart - 1).toLong()
+                stats.setChildrenHiddenEdges +=
+                    internalEdges[representative].size - internalColorRanks.size
+                for (position in groupStart + 1 until groupEnd) {
+                    stats.setChildrenHiddenEdges +=
+                        internalEdges[orderedMemberIndices[position]].size +
+                            key.externalEdges.size
+                }
+                groups += SccMemberGroup(key, 1)
+            } else {
+                groups += SccMemberGroup(key, groupEnd - groupStart)
+            }
+            groupStart = groupEnd
         }
 
-        val keptKeyByPreQuotientIndex = IntArray(keysBeforeQuotient.size) { it }
-        var sourceIndexByCanonicalIndex = IntArray(keysBeforeQuotient.size) { it }
-        val canonicalKeys = if (!setChildren) {
-            keysBeforeQuotient
-        } else {
-            applySetQuotient(
-                keysBeforeQuotient,
-                orderedMemberIndices,
-                internalEdges,
-                keptKeyByPreQuotientIndex,
-                stats,
-            ).also { quotient ->
-                sourceIndexByCanonicalIndex = quotient.sourceIndices
-                stats.setChildrenConcealedObjects +=
-                    (keysBeforeQuotient.size - quotient.keys.size).toLong()
-            }.keys
-        }
-
-        val uniformExternalEdges = canonicalKeys.all {
-            it.externalEdges == canonicalKeys[0].externalEdges
+        val uniformExternalEdges = groups.all {
+            it.key.externalEdges == groups[0].key.externalEdges
         }
         return CanonicalForm(
-            canonicalKeys,
-            orderedMemberIndices,
-            sourceIndexByCanonicalIndex,
-            keptKeyByPreQuotientIndex,
-            internalEdges,
+            groups,
             setChildren,
             uniformExternalEdges,
         )
@@ -224,68 +238,28 @@ internal class CyclicShapeCollapser(
         }.sortedWith(edgeComparator).toMutableList()
     }
 
-    private class QuotientResult(
-        val keys: List<SccMemberStructuralKey>,
-        val sourceIndices: IntArray,
-    )
-
-    private fun applySetQuotient(
-        keys: List<SccMemberStructuralKey>,
-        orderedMemberIndices: IntArray,
-        internalNeighbors: Array<MutableList<Int>>,
-        keptKeyByPreQuotientIndex: IntArray,
-        stats: ShapeRelaxationStats,
-    ): QuotientResult {
-        val quotientIndexByKey = HashMap<SccMemberStructuralKey, Int>()
-        val quotientKeys = ArrayList<SccMemberStructuralKey>(keys.size)
-        val sourceIndices = ArrayList<Int>(keys.size)
-
-        for (keyIndex in keys.indices) {
-            val key = keys[keyIndex]
-            val existingQuotientIndex = quotientIndexByKey[key]
-            if (existingQuotientIndex == null) {
-                quotientIndexByKey[key] = quotientKeys.size
-                keptKeyByPreQuotientIndex[keyIndex] = quotientKeys.size
-                sourceIndices += keyIndex
-                quotientKeys += key
-                stats.setChildrenHiddenEdges +=
-                    internalNeighbors[orderedMemberIndices[keyIndex]].size -
-                        key.internalColorRanks.size
-            } else {
-                keptKeyByPreQuotientIndex[keyIndex] = existingQuotientIndex
-                stats.setChildrenHiddenEdges +=
-                    internalNeighbors[orderedMemberIndices[keyIndex]].size + key.externalEdges.size
-            }
-        }
-        return QuotientResult(quotientKeys, sourceIndices.toIntArray())
-    }
-
-    private fun createCanonicalShape(
-        originalMemberCount: Int,
-        form: CanonicalForm,
-    ): CyclicShape {
-        val preQuotientIndexByOriginalIndex = IntArray(originalMemberCount)
-        for (preQuotientIndex in form.orderedMemberIndices.indices) {
-            preQuotientIndexByOriginalIndex[form.orderedMemberIndices[preQuotientIndex]] =
-                preQuotientIndex
-        }
-
-        val memberPayload = form.canonicalKeys.mapIndexed { canonicalIndex, key ->
-            val sourceIndex =
-                form.orderedMemberIndices[form.sourceIndexByCanonicalIndex[canonicalIndex]]
-            val targets = form.internalEdges[sourceIndex]
-                .map { form.keptKeyByPreQuotientIndex[preQuotientIndexByOriginalIndex[it]] }
-                .sorted()
+    /**
+     * Group payload straight from the canonical keys: a group's connections
+     * target other groups by WL color rank, which equals the group index.
+     */
+    private fun memberPayloadOf(form: CanonicalForm): List<CanonicalSccMember> =
+        form.groups.map { group ->
             CanonicalSccMember(
-                key.className,
-                key.internalColorRanks.size,
-                foldConnections(targets, form.setChildren),
-                key.externalEdges.map { edge ->
+                className = group.key.className,
+                memberCount = group.memberCount,
+                internalReferenceCount = group.key.internalColorRanks.size,
+                internalConnections = foldConnections(
+                    group.key.internalColorRanks,
+                    form.setChildren,
+                ),
+                externalEdges = group.key.externalEdges.map { edge ->
                     CanonicalShapeEdge(shapes[edge.childShapeId], edge.multiplicity)
                 },
             )
         }
 
+    private fun createCanonicalShape(form: CanonicalForm): CyclicShape {
+        val memberPayload = memberPayloadOf(form)
         val totalExternalEdges = if (form.uniformExternalEdges) {
             emptyList()
         } else {
@@ -300,21 +274,24 @@ internal class CyclicShapeCollapser(
         }
         return CyclicShape(
             internalId = shapes.size,
-            digest = computeSccDigest(form.canonicalKeys),
+            digest = computeSccDigest(form.groups),
             packedChildEdges = packedChildEdges,
             totalExternalEdges = totalExternalEdges,
             members = memberPayload,
+            memberCount = form.groups.sumOf { it.memberCount },
             quotient = form.setChildren,
         ).also(shapes::add)
     }
 
     private fun computeSccDigest(
-        canonicalKeys: List<SccMemberStructuralKey>,
+        groups: List<SccMemberGroup>,
     ): ShapeDigest = computeShapeDigest {
         writeByte(3)
-        writeInt(canonicalKeys.size)
-        for (member in canonicalKeys) {
+        writeInt(groups.size)
+        for (group in groups) {
+            val member = group.key
             writeUtf8(member.className.name)
+            writeInt(group.memberCount)
             writeInt(member.internalColorRanks.size)
             for (rank in member.internalColorRanks) writeInt(rank)
             writeInt(member.externalEdges.size)
@@ -402,7 +379,7 @@ internal class CyclicShapeCollapser(
             }
         }
 
-        val shape = createLazyShape(componentId, summary, bucketOrdinal = bucket.size)
+        val shape = createLazyShape(componentId, summary, bucketOrdinal = bucket.size, progress)
         bucket.add(LazyEntry(shape, componentId, canonicalDigest))
         return shape
     }
@@ -449,13 +426,32 @@ internal class CyclicShapeCollapser(
         val memberIds = memberIdsOf(componentId, memberCount)
         // Throwaway stats: the streaming signature pass already accounted them.
         val form = buildCanonicalForm(memberIds, ShapeRelaxationStats())
-        return computeSccDigest(form.canonicalKeys)
+        return computeSccDigest(form.groups)
+    }
+
+    /**
+     * WL quotient payload for a lazy shape. The refinement runs to the
+     * fixpoint — incremental refinement makes the cost independent of the
+     * round count — so the partition is always equitable and the group
+     * profiles exact. Counts stay real even under set semantics: the lazy
+     * identity is the signature, which conceals nothing, so the payload must
+     * not either.
+     */
+    private fun quotientMemberPayload(
+        componentId: Int,
+        memberCount: Int,
+    ): List<CanonicalSccMember> {
+        val memberIds = memberIdsOf(componentId, memberCount)
+        // Throwaway stats: the streaming signature pass already accounted them.
+        val form = buildCanonicalForm(memberIds, ShapeRelaxationStats(), identity = false)
+        return memberPayloadOf(form)
     }
 
     private fun createLazyShape(
         componentId: Int,
         summary: ComponentSummary,
         bucketOrdinal: Int,
+        progress: (String) -> Unit,
     ): CyclicShape {
         val totalEdges = summary.externalTotals.int2LongEntrySet()
             .map { entry ->
@@ -485,14 +481,22 @@ internal class CyclicShapeCollapser(
         }
 
         val memberPayload = if (summary.memberCount <= FULL_PAYLOAD_MEMBER_CAP) {
-            buildMemberPayload(componentId, summary.memberCount)
+            val startedAt = System.nanoTime()
+            val quotient = quotientMemberPayload(componentId, summary.memberCount)
+            progress(
+                "scc-quotient: ${summary.memberCount} members collapsed to " +
+                    "${quotient.size} groups in ${(System.nanoTime() - startedAt) / 1_000_000} ms"
+            )
+            quotient
         } else {
             sortedClassIndices
                 .sortedByDescending { summary.classHistogram.get(it) }
                 .take(SUMMARY_CLASS_LIMIT)
                 .map { classIndex ->
+                    val instanceCount = summary.classHistogram.get(classIndex)
                     CanonicalSccMember(
                         graph.classNames[classIndex],
+                        memberCount = instanceCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
                         internalReferenceCount = 0,
                         internalConnections = emptyList(),
                         externalEdges = emptyList(),
@@ -509,40 +513,6 @@ internal class CyclicShapeCollapser(
             totalInternalEdges = summary.internalEdges.toInt(),
             distinctClassCount = sortedClassIndices.size,
         ).also(shapes::add)
-    }
-
-    /**
-     * Per-member payload for the nested-shapes view, in member order (not WL
-     * canonical order — the order is presentational, not part of the key).
-     */
-    private fun buildMemberPayload(componentId: Int, memberCount: Int): List<CanonicalSccMember> {
-        val memberIds = memberIdsOf(componentId, memberCount)
-        val localIndexByObjectId = localIndexOf(memberIds)
-
-        return memberIds.map { objectId ->
-            val relaxation = relaxations.relaxationOf(objectId)
-            val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
-            val internalTargets = ArrayList<Int>()
-            val externalCounts = LinkedHashMap<Int, Int>()
-            for (referenceIndex in 0 until graph.referenceCount(objectId)) {
-                val targetId = graph.referenceAt(objectId, referenceIndex)
-                val localTargetIndex = if (targetId < 0) -1 else localIndexByObjectId.get(targetId)
-                if (localTargetIndex >= 0) {
-                    internalTargets.add(localTargetIndex)
-                } else if (relaxation != StructuralRelaxation.CLASS_ONLY) {
-                    externalCounts.merge(childShapeIdOf(targetId), 1, Int::plus)
-                }
-            }
-            internalTargets.sort()
-            CanonicalSccMember(
-                graph.className(objectId),
-                internalReferenceCount = internalTargets.size,
-                internalConnections = foldConnections(internalTargets, setChildren),
-                externalEdges = externalCounts.map { (childShapeId, multiplicity) ->
-                    CanonicalShapeEdge(shapes[childShapeId], if (setChildren) 1 else multiplicity)
-                }.sortedWith(childEdgeByDigest),
-            )
-        }
     }
 
     // ------------------------------------------------------------------
@@ -585,7 +555,7 @@ internal class CyclicShapeCollapser(
         val totals = LinkedHashMap<CanonicalShape, Int>()
         for (member in members) {
             for (edge in member.externalEdges) {
-                totals.merge(edge.child, edge.multiplicity, Int::plus)
+                totals.merge(edge.child, edge.multiplicity * member.memberCount, Int::plus)
             }
         }
         return totals.map { (child, multiplicity) ->

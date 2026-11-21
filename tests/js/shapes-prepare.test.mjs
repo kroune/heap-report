@@ -98,3 +98,25 @@ test("SCC member graphs retain labels, colors and exact internal connections", (
   assert.equal(vm.layout.nodes[0].scc.edges.length, 2);
   assert.equal(vm.layout.nodes[0].scc.edges[0].mult, 2);
 });
+
+test("quotient groups: counts flow through and completeness covers members", () => {
+  const data = payload();
+  data.shapes[0] = { ...data.shapes[0], kind: "scc",
+    label: "scc[org.example.N\u00d73,org.example.B]", sccSize: 4, internalEdges: 4,
+    membersComplete: true,
+    members: [
+      { label: "org.example.N", count: 3, internal: [[0, 1]] },
+      { label: "org.example.B", internal: [[0, 1]] },
+    ] };
+  const vm = shapesViewModel(data, "d");
+  assert.deepEqual(vm.nodes[0].members.map(m => m.count), [3, 1]);
+  assert.equal(vm.nodes[0].memberTotal, 4);
+  assert.equal(vm.nodes[0].sccComplete, true);
+
+  // A payload whose groups cover fewer members than sccSize is not complete,
+  // whatever the flag claims.
+  data.shapes[0].members[0].count = 2;
+  const partial = shapesViewModel(data, "d");
+  assert.equal(partial.nodes[0].memberTotal, 3);
+  assert.equal(partial.nodes[0].sccComplete, false);
+});

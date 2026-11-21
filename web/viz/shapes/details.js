@@ -12,8 +12,8 @@ export function defaultSide(vm, ctx) {
     `<div class="fnote">Exact: every non-class heap object collapsed by structure — no sampling. ` +
     `Plain node size = ${vm.metric === "count" ? "collapsed object count" : "shallow total"}; ` +
     `SCC boxes fit their member graph; edge width = projected reference count. ` +
-    `Zoom into an SCC to see every stored member ` +
-    `and internal connection. Click a shape for details, double-click a plain class to open its flow. ` +
+    `Zoom into an SCC to see its member groups (×n = structurally identical members) ` +
+    `and internal connections. Click a shape for details, double-click a plain class to open its flow. ` +
     `Sub-pixel detail is shown as dots until you zoom in — nothing is removed.</div>` +
     (analysis ? `<div class="gdim">Source refs in heap: ${ctx.esc(ctx.fmtN(analysis.sourceEdges))}; ` +
       `projected refs: ${ctx.esc(ctx.fmtN(analysis.projectedEdges))}.</div>` : "") +
@@ -32,12 +32,14 @@ export function nodeDetailHead(u, vm, ctx) {
                scc: "merged SCC — collapsed cycle" }[nd.kind] || nd.kind;
   const mrow = (k, v) => `<div class="gmrow"><span>${k}</span><span class="v">${v}</span></div>`;
   const sccNote = nd.kind !== "scc" ? "" :
-    nd.sccComplete ? `<div class="gdim gmeta">${nd.members.length} canonical members and ` +
-      `${nd.internalEdges} internal references are rendered inside the SCC box.</div>` :
+    nd.sccComplete ? `<div class="gdim gmeta">${ctx.fmtN(nd.members.length)} member groups ` +
+      `covering ${ctx.fmtN(nd.sccSize)} members and ${ctx.fmtN(nd.internalEdges)} internal ` +
+      `references are rendered inside the SCC box.</div>` :
     nd.members ? `<div class="gdim gmeta">This oversized SCC has an incomplete member graph ` +
-      `(${nd.members.length} of ${nd.sccSize} member labels stored), so it cannot be rendered safely.</div>` :
-    `<div class="gdim gmeta">This legacy artifact has no SCC member graph. Re-analyze to render ` +
-      `members and internal connections.</div>`;
+      `(${ctx.fmtN(nd.members.length)} groups covering ${ctx.fmtN(nd.memberTotal)} of ` +
+      `${ctx.fmtN(nd.sccSize)} members), so it cannot be rendered safely.</div>` :
+    `<div class="gdim gmeta">This artifact has no SCC member graph. Re-analyze to render ` +
+      `member groups and internal connections.</div>`;
   return `<h5 title="${ctx.esc(nd.label)}">${ctx.esc(nd.short)} <span class="gdim">#${u}</span></h5>` +
     `<div class="gfull">${ctx.esc(nd.label)}</div>` +
     `<div class="gdim gmeta">${ctx.esc(kb)}</div>` +

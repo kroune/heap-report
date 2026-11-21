@@ -52,14 +52,29 @@ class RelaxationRulesTest {
         assertFailsWith<IllegalStateException> {
             RelaxationRulesTsvParser.parse("regex:a[\tclass-only\tbroken pattern")
         }
+        // conceal-field accepts regex classes (codegen field families).
+        val concealByPattern = RelaxationRulesTsvParser.parse(
+            "regex:.*_Generated\tconceal-field:_svc_\tcodegen service field\n" +
+                "regex:.*_Generated\tconceal-field:_owner_\tcodegen owner field"
+        ).fieldConcealmentRules.fieldsByPattern.single()
+        assertTrue(concealByPattern.pattern.matches("com.example.Foo_Generated"))
+        assertEquals(setOf("_owner_", "_svc_"), concealByPattern.fields)
         assertFailsWith<IllegalArgumentException> {
-            RelaxationRulesTsvParser.parse("regex:a.*\tconceal-field:x\tnot allowed")
+            RelaxationRulesTsvParser.parse(
+                "regex:a.*\tconceal-field:x\tone\nregex:a.*\tconceal-field:x\tduplicate"
+            )
         }
         assertFailsWith<IllegalArgumentException> {
             RelaxationRulesTsvParser.parse(
                 "regex:a.*\tclass-only\tone\nregex:a.*\tset-children\tconflict"
             )
         }
+        // conceal-field:* means every reference field.
+        val concealAll = RelaxationRulesTsvParser.parse(
+            "regex:com\\.example\\.internal\\..*\tconceal-field:*\tservice package"
+        ).fieldConcealmentRules.fieldsByPattern.single()
+        assertTrue(concealAll.pattern.matches("com.example.internal.X"))
+        assertEquals(setOf(FieldConcealmentRules.ALL_FIELDS), concealAll.fields)
     }
 
     @Test

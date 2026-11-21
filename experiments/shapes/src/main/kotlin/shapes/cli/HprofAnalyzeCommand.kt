@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
 import com.github.ajalt.clikt.parameters.groups.required
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.path
@@ -76,6 +77,31 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
         help = "Write per-class instance/out-edge counts as TSV",
     ).path()
 
+    private val sccReport by option(
+        "--scc-report",
+        help = "Write a class-matrix report for the largest SCCs and exit (investigation mode)",
+    ).path()
+
+    private val printFields by option(
+        "--print-fields",
+        help = "Print reference-field layouts for these comma-separated classes and exit",
+    )
+
+    private val sccProbes by option(
+        "--scc-probe",
+        help = "Recompute SCCs with class->class edges dropped (srcRegex->dstRegex, comma list); repeatable",
+    ).multiple()
+
+    private val sccProbeSplit by option(
+        "--scc-probe-split",
+        help = "Extra drop rules that shatter the giant probe component; reports the crossing edges",
+    )
+
+    private val sccProbeAnchor by option(
+        "--scc-probe-anchor",
+        help = "Class regex of anchor instances; attributes the giant probe component per anchor",
+    )
+
     override fun run() {
         val rules = loadRelaxationRules(analysisOptions.relaxationRules)
         val scopeClass = (rootChoice as? HprofRootChoice.RootClass)?.className
@@ -88,6 +114,19 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
                 "hprof: ${heapIndex.counts.objects} objects, " +
                         "${heapIndex.classStore.size} classes, ${heapIndex.chunks.size} chunks"
             )
+            printFields?.let { classList ->
+                val wanted = classList.split(',').map(String::trim).toSet()
+                for (classIndex in 0 until heapIndex.classStore.size) {
+                    val hprofClass = heapIndex.classStore[classIndex]
+                    if (hprofClass.name in wanted) {
+                        println(
+                            "fields ${hprofClass.name}: " +
+                                hprofClass.referenceFieldNames.joinToString(",")
+                        )
+                    }
+                }
+                return
+            }
             HprofGraphExtractor(
                 file = file,
                 index = heapIndex,
@@ -140,6 +179,24 @@ internal class HprofAnalyzeCommand : AnalysisCommand(
         }
 
         output.graph.use { graph ->
+            if (sccProbes.isNotEmpty()) {
+                for ((probeIndex, spec) in sccProbes.withIndex()) {
+                    val probeReport = sccReport?.let { base ->
+                        base.resolveSibling("${base.fileName}.probe$probeIndex.tsv")
+                    }
+                    SccEdgeDropProbe.run(graph, spec, ::println, probeReport, sccProbeSplit, sccProbeAnchor)
+                }
+                return
+            }
+            sccReport?.let { reportPath ->
+                val objects = shapes.analysis.internal.AnalysisScopeResolver(graph)
+                    .resolve(AnalysisScope.EntireGraph(graph.roots))
+                val components = shapes.analysis.internal.StronglyConnectedComponentsFinder(graph)
+                    .find(objects)
+                println("scc: ${components.members.count} components")
+                SccClassMatrixReport.write(reportPath, graph, components, ::println)
+                return
+            }
             GraphAnalysisCliWorkflow().run(
                 GraphAnalysisRequest(
                     graph,

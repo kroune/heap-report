@@ -65,9 +65,9 @@ function ShapeSidePanel({ vm, selection, onOpen }: { vm: ViewModel; selection: S
     <Metric label="shallow min … max" value={`${formatBytes(node.smin)} … ${formatBytes(node.smax)}`} />
     {node.internalEdges > 0 && <Metric label="internal edges / instance" value={formatNumber(node.internalEdges)} />}
     {node.kind === 'scc' && <Typography variant="caption" display="block" color="text.secondary" mt={1}>
-      {node.sccComplete ? `${node.members.length} canonical members and all internal references are rendered.`
-        : node.members ? `Incomplete member graph: ${node.members.length} of ${node.sccSize} labels stored.`
-          : 'Legacy artifact has no SCC member graph; re-analyze to render it.'}
+      {node.sccComplete ? `${formatNumber(node.members.length)} member groups covering ${formatNumber(node.sccSize)} members; all internal references are rendered.`
+        : node.members ? `Incomplete member graph: ${formatNumber(node.members.length)} groups covering ${formatNumber(node.memberTotal)} of ${formatNumber(node.sccSize)} members.`
+          : 'This artifact has no SCC member graph; re-analyze to render it.'}
     </Typography>}
     {node.plain && <Button size="small" variant="contained" sx={{ mt: 1 }} onClick={() => onOpen(node.label)}>Open flow</Button>}
     <Typography variant="overline" display="block" color="text.secondary" mt={2}>References — {formatNumber(totalReferences)}</Typography>

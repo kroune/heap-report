@@ -125,8 +125,8 @@ class ShapesAnalyzerTest {
         assertTrue(cyclicShape.membersComplete)
         assertEquals(
             listOf(
-                SccMemberEntry(ClassName("Child"), listOf(SccMemberConnection(1, 1))),
-                SccMemberEntry(ClassName("Parent"), listOf(SccMemberConnection(0, 1))),
+                SccMemberEntry(ClassName("Child"), 1, listOf(SccMemberConnection(1, 1))),
+                SccMemberEntry(ClassName("Parent"), 1, listOf(SccMemberConnection(0, 1))),
             ),
             cyclicShape.members,
         )
@@ -146,7 +146,7 @@ class ShapesAnalyzerTest {
         assertEquals(2, shape.instanceCount)
         assertEquals(1, shape.internalEdgesPerInstance)
         assertEquals(
-            listOf(SccMemberEntry(ClassName("N"), listOf(SccMemberConnection(0, 1)))),
+            listOf(SccMemberEntry(ClassName("N"), 1, listOf(SccMemberConnection(0, 1)))),
             shape.members,
         )
     }
@@ -164,8 +164,8 @@ class ShapesAnalyzerTest {
         assertEquals(3, shape.internalEdgesPerInstance)
         assertEquals(
             listOf(
-                SccMemberEntry(ClassName("A"), listOf(SccMemberConnection(1, 2))),
-                SccMemberEntry(ClassName("B"), listOf(SccMemberConnection(0, 1))),
+                SccMemberEntry(ClassName("A"), 1, listOf(SccMemberConnection(1, 2))),
+                SccMemberEntry(ClassName("B"), 1, listOf(SccMemberConnection(0, 1))),
             ),
             shape.members,
         )
@@ -187,6 +187,13 @@ class ShapesAnalyzerTest {
         assertEquals(6, shape.instanceCount)
         assertEquals(3, shape.sccInstanceSize)
         assertEquals(3, shape.internalEdgesPerInstance)
+        // The three indistinguishable members collapse into one ×3 group.
+        assertEquals("scc[N×3]", shape.label)
+        assertEquals(
+            listOf(SccMemberEntry(ClassName("N"), 3, listOf(SccMemberConnection(0, 1)))),
+            shape.members,
+        )
+        assertTrue(shape.membersComplete)
     }
 
     @Test
@@ -287,9 +294,14 @@ class ShapesAnalyzerTest {
 
         val sccEntries = result.entries.filter { it.sccInstanceSize > 1 }
         assertEquals(1, sccEntries.size)
-        assertEquals(4096, sccEntries.single().instanceCount)
-        assertEquals(2048, sccEntries.single().sccInstanceSize)
-        assertEquals(2, sccEntries.single().rootCount)
+        val entry = sccEntries.single()
+        assertEquals(4096, entry.instanceCount)
+        assertEquals(2048, entry.sccInstanceSize)
+        assertEquals(2, entry.rootCount)
+        // Lazy-path payload is the WL quotient: X×1024 and Y×1024 groups.
+        assertTrue(entry.membersComplete)
+        assertEquals(listOf(1024, 1024), entry.members?.map { it.memberCount })
+        assertEquals(2048, entry.internalEdgesPerInstance)
     }
 
     @Test

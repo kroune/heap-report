@@ -1,7 +1,9 @@
-/* Pure layout for the object graph inside one SCC. Member boxes use canonical
-   artifact order initially, then barycenter sweeps over a deterministic DFS
-   cycle break. Every unique member-to-member connection is retained; parallel
-   references are represented by the edge's multiplicity. No DOM or recursion. */
+/* Pure layout for the object graph inside one SCC. Each box is a WL quotient
+   group (count structurally identical members, labelled ×n); boxes use
+   canonical artifact order initially, then barycenter sweeps over a
+   deterministic DFS cycle break. Every unique group-to-group connection is
+   retained; the edge multiplicity is per member of the source group. No DOM
+   or recursion. */
 
 const MEMBER_H = 20;
 const MEMBER_MIN_W = 44;
@@ -14,7 +16,9 @@ const HEADER_H = 24;
 
 function displayName(member) {
   const name = member.short || member.label || "?";
-  return name.length > 26 ? name.slice(0, 25) + "…" : name;
+  const base = name.length > 26 ? name.slice(0, 25) + "…" : name;
+  const count = member.count || 1;
+  return count > 1 ? `${base} ×${count.toLocaleString("en-US")}` : base;
 }
 
 export function computeSccLayout(membersIn) {
@@ -23,7 +27,7 @@ export function computeSccLayout(membersIn) {
   const members = membersIn.map((m, id) => {
     const short = displayName(m);
     return {
-      id, label: m.label, short, cat: m.cat,
+      id, label: m.label, short, cat: m.cat, count: m.count || 1,
       w: Math.max(MEMBER_MIN_W, Math.min(MEMBER_MAX_W, 12 + short.length * 6.4)),
       h: MEMBER_H, x: 0, y: 0,
     };

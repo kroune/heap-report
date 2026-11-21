@@ -43,6 +43,12 @@ internal open class CyclicShape(
     val packedChildEdges: LongArray,
     val totalExternalEdges: List<CanonicalShapeEdge>,
     val members: List<CanonicalSccMember>,
+    /**
+     * Members per component instance as accounted: the real member count for
+     * exact shapes, the quotient group count for set-children shapes (their
+     * duplicates are concealed, not counted).
+     */
+    val memberCount: Int,
     val quotient: Boolean,
 ) : CanonicalShape() {
     override val kind: ShapeKind = ShapeKind.SCC
@@ -59,7 +65,7 @@ internal class LazySccShape(
     digest: ShapeDigest,
     totalExternalEdges: List<CanonicalShapeEdge>,
     members: List<CanonicalSccMember>,
-    val memberCount: Int,
+    memberCount: Int,
     val totalInternalEdges: Int,
     val distinctClassCount: Int,
 ) : CyclicShape(
@@ -68,6 +74,7 @@ internal class LazySccShape(
     packedChildEdges = LongArray(0),
     totalExternalEdges = totalExternalEdges,
     members = members,
+    memberCount = memberCount,
     quotient = false,
 )
 
@@ -76,8 +83,15 @@ internal data class CanonicalShapeEdge(
     val multiplicity: Int,
 )
 
+/**
+ * One WL color class of an SCC: [memberCount] structurally indistinguishable
+ * members sharing one class, one internal connection profile and one external
+ * edge list. The refinement fixpoint is equitable, so every member of the
+ * group has exactly [internalConnections] (per member, not per group).
+ */
 internal data class CanonicalSccMember(
     val className: ClassName,
+    val memberCount: Int,
     val internalReferenceCount: Int,
     val internalConnections: List<SccMemberConnection>,
     val externalEdges: List<CanonicalShapeEdge>,
@@ -113,6 +127,12 @@ internal data class SccMemberStructuralKey(
     val externalEdges: List<ChildShapeReference>,
 )
 
+/** One color class with its member count; counts are 1 under set semantics. */
+internal data class SccMemberGroup(
+    val key: SccMemberStructuralKey,
+    val memberCount: Int,
+)
+
 internal data class SccStructuralKey(
-    val members: List<SccMemberStructuralKey>,
+    val groups: List<SccMemberGroup>,
 )

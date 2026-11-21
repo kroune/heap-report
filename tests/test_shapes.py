@@ -7,8 +7,8 @@ import unittest
 
 from unittest import mock
 
-from backend.mat.shapes import (artifact_path, parse_shp1, analyze,
-                                _validate_projection)
+from backend.mat.shapes import (PIPELINE_VERSION, artifact_path, parse_shp1,
+                                analyze, _validate_projection)
 
 
 def build_shp1(labels, shapes, edges, roots, scc_details=None):
@@ -33,14 +33,15 @@ def build_shp1(labels, shapes, edges, roots, scc_details=None):
     for r in roots:
         out.append(struct.pack(">iq", *r))
     if scc_details is not None:
-        out.append(b"SCC1")
+        out.append(b"SCC2")
         out.append(struct.pack(">i", len(scc_details)))
         for detail in scc_details:
             shape_id, members = detail[:2]
             complete = detail[2] if len(detail) > 2 else True
             out.append(struct.pack(">iiB", shape_id, len(members), 1 if complete else 0))
             for member in members:
-                out.append(struct.pack(">ii", member["labelIdx"], len(member["internal"])))
+                out.append(struct.pack(">iii", member["labelIdx"],
+                                       member.get("count", 1), len(member["internal"])))
                 for target, mult in member["internal"]:
                     out.append(struct.pack(">ii", target, mult))
     return b"".join(out)
@@ -102,10 +103,72 @@ class TestShp1(unittest.TestCase):
         finally:
             os.remove(path)
         self.assertEqual(shape["members"], [
-            {"label": "A", "internal": [[1, 2]]},
-            {"label": "B", "internal": [[0, 1]]},
+            {"label": "A", "count": 1, "internal": [[1, 2]]},
+            {"label": "B", "count": 1, "internal": [[0, 1]]},
         ])
         self.assertTrue(shape["membersComplete"])
+
+    def test_parse_scc_quotient_groups(self):
+        # One ×3 group: 3 members, each with one edge back into the group.
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 6,
+               "shallowTotal": 60, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 3, "internalEdges": 3,
+               "edgesPerMember": False}
+        details = [(0, [{"labelIdx": 1, "count": 3, "internal": [[0, 1]]}])]
+        fixture = build_shp1(["scc[N\u00d73]", "N"], [row], [], [], details)
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            shape = parse_shp1(path)["shapes"][0]
+        finally:
+            os.remove(path)
+        self.assertEqual(shape["members"],
+                         [{"label": "N", "count": 3, "internal": [[0, 1]]}])
+        self.assertTrue(shape["membersComplete"])
+
+    def test_rejects_quotient_cover_mismatch(self):
+        # complete=1 but groups cover 2 of 3 members / expanded edges mismatch.
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 3,
+               "shallowTotal": 30, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 3, "internalEdges": 3,
+               "edgesPerMember": False}
+        under_cover = [(0, [{"labelIdx": 1, "count": 2, "internal": [[0, 1]]}])]
+        over_cover = [(0, [{"labelIdx": 1, "count": 4, "internal": [[0, 1]]}])]
+        bad_expansion = [(0, [{"labelIdx": 1, "count": 3, "internal": [[0, 2]]}])]
+        for details in (under_cover, over_cover, bad_expansion):
+            fixture = build_shp1(["scc[N\u00d73]", "N"], [row], [], [], details)
+            with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+                f.write(fixture)
+                path = f.name
+            try:
+                with self.assertRaisesRegex(RuntimeError, "SCC"):
+                    parse_shp1(path)
+            finally:
+                os.remove(path)
+
+    def test_legacy_scc1_section_is_skipped(self):
+        import json
+        row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 2,
+               "shallowTotal": 10, "shallowMin": 5, "shallowMax": 5,
+               "roots": 0, "sccSize": 2, "internalEdges": 2,
+               "edgesPerMember": False}
+        legacy = [b"SCC1", struct.pack(">i", 1), struct.pack(">iiB", 0, 2, 1),
+                  struct.pack(">ii", 1, 1), struct.pack(">ii", 1, 1),
+                  struct.pack(">ii", 2, 1), struct.pack(">ii", 0, 1)]
+        encoded = json.dumps({"objects": 2}).encode()
+        fixture = (build_shp1(["scc[A,B]", "A", "B"], [row], [], [])
+                   + b"".join(legacy)
+                   + b"SMD1" + struct.pack(">i", len(encoded)) + encoded)
+        with tempfile.NamedTemporaryFile(suffix=".shp1", delete=False) as f:
+            f.write(fixture)
+            path = f.name
+        try:
+            payload = parse_shp1(path)
+        finally:
+            os.remove(path)
+        self.assertNotIn("members", payload["shapes"][0])
+        self.assertEqual(payload["analysis"], {"objects": 2})
 
     def test_rejects_invalid_scc_member_graph(self):
         row = {"hi": 0, "lo": 1, "kind": 2, "labelIdx": 0, "count": 2,
@@ -200,7 +263,7 @@ class TestShp1(unittest.TestCase):
             self.assertEqual(p["analysis"]["extractionMode"],
                              {"type": "reachable", "className": "C"})
             self.assertEqual(p["analysis"]["extraction"]["rawNonNullRefs"], 1)
-            self.assertEqual(p["analysis"]["pipelineVersion"], 7)
+            self.assertEqual(p["analysis"]["pipelineVersion"], PIPELINE_VERSION)
             self.assertEqual(len(calls), 1)
             self.assertEqual(calls[0][0][0], "hprof-analyze")
             self.assertIn("--class", calls[0][0])

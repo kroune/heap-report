@@ -19,10 +19,14 @@ export function shapesViewModel(p, dumpId, params = {}) {
 
   const nodes = p.shapes.map(s => {
     const plain = s.kind === "leaf" || s.kind === "node";   // label is a real class name
+    // Members are WL quotient groups: count structurally identical members
+    // share one box; internal connections carry per-member multiplicities.
     const members = Array.isArray(s.members) ? s.members.map(m => ({
       label: m.label, short: shortClass(m.label), cat: catOf(m.label),
+      count: m.count || 1,
       internal: m.internal || [],
     })) : null;
+    const memberTotal = members ? members.reduce((a, m) => a + m.count, 0) : 0;
     // SCC labels are the full member list; the full list stays in the detail.
     let short = plain ? shortClass(s.label) : s.label;
     if (!plain) {
@@ -40,7 +44,8 @@ export function shapesViewModel(p, dumpId, params = {}) {
       roots: s.roots,
       sccSize: s.sccSize,
       members,
-      sccComplete: s.membersComplete === true && !!members && members.length === s.sccSize,
+      memberTotal,
+      sccComplete: s.membersComplete === true && !!members && memberTotal === s.sccSize,
       internalEdges: s.internalEdges,
       edgesPerMember: s.edgesPerMember,
       cat: catOf(s.label),

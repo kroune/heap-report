@@ -34,7 +34,7 @@ _DEFAULT_RELAX_FILE = os.path.join(_REPO, "experiments", "shapes", "relax.tsv")
 # for multi-hundred-million-object dumps.
 SHAPES_XMX_ANALYZE = os.environ.get("SHAPES_XMX_ANALYZE", "2g")
 SHAPES_RELAX_FILE = os.environ.get("SHAPES_RELAX_FILE", _DEFAULT_RELAX_FILE)
-PIPELINE_VERSION = 9
+PIPELINE_VERSION = 11
 _METADATA_MAGIC = b"SMD1"
 
 

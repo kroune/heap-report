@@ -49,21 +49,23 @@ class Shp1ArtifactWriterTest {
                 assertEquals(0, input.readInt())
                 assertEquals(1, input.readLong())
 
-                assertEquals("SCC1", input.readMagic())
+                assertEquals("SCC2", input.readMagic())
                 assertEquals(1, input.readInt())
                 assertEquals(0, input.readInt())
                 assertEquals(2, input.readInt())
                 assertEquals(1, input.readUnsignedByte())
 
-                assertEquals(1, input.readInt())
-                assertEquals(1, input.readInt())
-                assertEquals(1, input.readInt())
-                assertEquals(1, input.readInt())
+                assertEquals(1, input.readInt())  // label "A"
+                assertEquals(1, input.readInt())  // group member count
+                assertEquals(1, input.readInt())  // connections
+                assertEquals(1, input.readInt())  // target group
+                assertEquals(1, input.readInt())  // multiplicity
 
-                assertEquals(2, input.readInt())
-                assertEquals(1, input.readInt())
-                assertEquals(0, input.readInt())
-                assertEquals(1, input.readInt())
+                assertEquals(2, input.readInt())  // label "B"
+                assertEquals(1, input.readInt())  // group member count
+                assertEquals(1, input.readInt())  // connections
+                assertEquals(0, input.readInt())  // target group
+                assertEquals(1, input.readInt())  // multiplicity
                 assertEquals(-1, input.read())
             }
         } finally {

@@ -1,6 +1,7 @@
 package shapes.hprof
 
 import shapes.relaxation.FieldConcealmentRules
+import shapes.relaxation.PatternFieldConcealment
 import shapes.graph.ClassName
 import java.nio.file.Files
 import kotlin.test.Test
@@ -253,6 +254,37 @@ class HprofGraphExtractorTest {
         assertEquals(emptyList(), graph.targetsOf(holder))
         // the class instance is excluded, but its edge keeps the name alive
         assertEquals(2L, graph.totalObjectCount)
+    }
+
+    @Test
+    fun `conceal-field star makes instances opaque leaves but keeps their targets alive`() {
+        val dump = HprofTestDump()
+        dump.clazz(100, "java/lang/Object")
+        dump.clazz(101, "demo/Service", 100, fields = listOf("dep" to HprofType.OBJECT))
+        dump.clazz(102, "demo/SubService", 101)
+        dump.clazz(103, "demo/Holder", 100, fields = listOf("svc" to HprofType.OBJECT, "value" to HprofType.OBJECT))
+        dump.clazz(104, "demo/Value", 100)
+        dump.instance(1000, 103, 2000, 4000) // holder -> service, value
+        dump.instance(2000, 102, 3000) // sub-service -> dependency (only reachable through it)
+        dump.instance(3000, 104)
+        dump.instance(4000, 104)
+        dump.root(1000)
+
+        val output = extract(
+            dump,
+            concealmentRules = FieldConcealmentRules(
+                fieldsByPattern = listOf(
+                    PatternFieldConcealment(Regex("demo\\.Service"), setOf(FieldConcealmentRules.ALL_FIELDS)),
+                ),
+            ),
+        )
+        val graph = output.graph
+        val holder = graph.nodesOf("demo.Holder").single()
+        // the subclass instance is a leaf now: the holder still points at it
+        assertEquals(listOf("leaf:demo.SubService", "leaf:demo.Value"), graph.targetsOf(holder))
+        // holder + service + 2 values: the dependency stays live (liveness-only extra)
+        assertEquals(4L, graph.totalObjectCount)
+        assertEquals(1L, output.counters.concealedDropped)
     }
 
     @Test

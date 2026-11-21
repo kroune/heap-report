@@ -177,7 +177,9 @@ when several regexes match, the first in file order wins; a regex that
 matches no class in the graph warns like an unknown exact class. Regexes
 are for namespace-wide policies over open-ended class sets (generated
 method-handle species, `$$Lambda` captures, JFR event machinery), not a
-shorthand for a few stable names. `conceal-field` requires an exact name.
+shorthand for a few stable names. `conceal-field` accepts a regex class
+too (for codegen field families such as Gradle's `_gr_*` fields and for
+service packages).
 
 Rules apply inside SCC members as well (external edges of relaxed members
 are concealed / set-collapsed; internal SCC wiring stays exact for
@@ -211,6 +213,23 @@ restriction: objects reachable only through concealed edges are dropped
 (counted in the extraction stats). Rules are resolved through the dump's
 class hierarchy — a rule on `DefaultConfiguration` covers the runtime
 `_Decorated` subclasses.
+
+`conceal-field:*` drops **every** reference field: the instance stays in the
+graph as an opaque leaf whose identity is its class, and its targets stay
+alive (liveness-only). This is for service/infrastructure objects whose
+fields are dependency-injection wiring, not data. The motivating case is
+Gradle's project service scope: every model object (property, file
+collection, task, configuration) holds an injected service, every service
+holds the registry, and the registry holds the project's factories and the
+project itself — which made 138M objects (53% of run-jfr-38) one SCC. The
+rules in `relax.tsv` name the packages (`org.gradle.internal.service`,
+operations, work, event, execution, cc, …, project-scope factories, AGP
+`DslServices`, JDK proxies) plus the handful of model-object back-pointers
+that close the loop (`AbstractTask.project`, `TaskContainer.project`,
+`TaskCreatingProvider.this$0`, `ProjectDependency.projectState`,
+`DefaultProjectState.*`). Each rule's reason cites the measured inbound
+edge count or the witness cycle it cuts; `hprof-analyze --scc-probe`,
+`--scc-probe-anchor` and `--scc-report` are the tools that produced them.
 
 ## Equality rules
 

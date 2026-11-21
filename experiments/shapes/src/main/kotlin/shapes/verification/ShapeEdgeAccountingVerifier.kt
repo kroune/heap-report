@@ -19,10 +19,11 @@ internal object ShapeEdgeAccountingVerifier {
             publicIdByDigest.getValue(debug.collapse.shapes[internalId].digest)
         }
         val shapeOfObject = IntArray(graph.size) { -1 }
-        for (componentId in 0 until debug.components.members.count) {
+        val components = debug.components
+        for (componentId in 0 until components.members.count) {
             val internalShapeId = debug.collapse.shapeOfComponent[componentId]
             val publicShapeId = publicIdByInternalId[internalShapeId]
-            debug.components.members.forEachMember(componentId) { objectId ->
+            components.members.forEachMember(componentId) { objectId ->
                 shapeOfObject[objectId] = publicShapeId
             }
         }
@@ -31,40 +32,55 @@ internal object ShapeEdgeAccountingVerifier {
         val internalTruth = HashMap<Int, Long>()
         val nonExemptShapes = HashSet<Int>()
         val quotientExempt = findQuotientExemptObjects(graph, debug)
+        // A set-children component conceals duplicates, so its shape cannot be
+        // audited exactly — even where other, non-relaxed components intern
+        // into the same shape (identical structure with nothing to conceal).
+        val exemptShapes = HashSet<Int>()
         var relaxedSourceCount = 0L
 
         for (objectId in 0 until graph.size) {
             val sourceShapeId = shapeOfObject[objectId]
             if (sourceShapeId < 0) continue
-            if (quotientExempt[objectId] ||
-                relaxations.relaxationOf(objectId) != StructuralRelaxation.EXACT
-            ) {
+            if (quotientExempt[objectId]) {
                 relaxedSourceCount++
+                exemptShapes.add(sourceShapeId)
                 continue
             }
+            // Class-only conceals external edges only; internal SCC wiring stays in
+            // the key and the payload, so it is still accounted exactly.
+            val classOnly = relaxations.relaxationOf(objectId) == StructuralRelaxation.CLASS_ONLY
+            if (classOnly) relaxedSourceCount++
 
             nonExemptShapes.add(sourceShapeId)
+            val sourceComponentId = components.assignment.componentOf(objectId)
             for (referenceIndex in 0 until graph.referenceCount(objectId)) {
                 val targetId = graph.referenceAt(objectId, referenceIndex)
+                // "Internal" is the analyzer's definition: same strongly connected
+                // component. Same shape is weaker — every class-only object of a
+                // class folds into one LEAF shape across unrelated components.
+                if (targetId >= 0 &&
+                    components.assignment.componentOf(targetId) == sourceComponentId
+                ) {
+                    internalTruth.merge(sourceShapeId, 1L, Long::plus)
+                    continue
+                }
+                if (classOnly) continue
                 val targetShapeId = if (targetId < 0) {
                     publicIdByInternalId[debug.collapse.leafShapeInternalIds[-targetId - 1]]
                 } else {
                     shapeOfObject[targetId]
                 }
-                if (targetShapeId == sourceShapeId) {
-                    internalTruth.merge(sourceShapeId, 1L, Long::plus)
-                } else {
-                    externalTruth.merge(ShapeEdgeKey(sourceShapeId, targetShapeId), 1L, Long::plus)
-                }
+                externalTruth.merge(ShapeEdgeKey(sourceShapeId, targetShapeId), 1L, Long::plus)
             }
         }
         if (relaxedSourceCount > 0) {
             progress(
-                "verify-edges: $relaxedSourceCount objects of relaxed classes exempted " +
-                    "(their concealed edges are accounted by ShapeRelaxationStats)"
+                "verify-edges: $relaxedSourceCount objects of relaxed classes have their " +
+                    "concealed edges accounted by ShapeRelaxationStats instead"
             )
         }
 
+        nonExemptShapes.removeAll(exemptShapes)
         return compareAccounting(result, nonExemptShapes, relaxations.isEmpty, internalTruth, externalTruth)
     }
 
@@ -135,12 +151,17 @@ internal object ShapeEdgeAccountingVerifier {
             }
         }
         for ((edgeKey, actual) in externalTruth) {
+            if (edgeKey.sourceShapeId !in nonExemptShapes && !noRelaxationRules) continue
             if (edgeKey !in externalEmitted) {
                 violations += "edge #${edgeKey.sourceShapeId} -> #${edgeKey.targetShapeId}: " +
                     "true $actual missing from artifact"
             }
         }
-        return violations.take(20)
+        return violations.take(20) + if (violations.size > 20) {
+            listOf("... and ${violations.size - 20} more")
+        } else {
+            emptyList()
+        }
     }
 }
 

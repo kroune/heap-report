@@ -42,7 +42,7 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
             val shapeId = collapse.shapeOfComponent[componentId]
             val shape = shapes[shapeId]
             val quotientSize = if (shape is CyclicShape && shape.quotient) {
-                shape.members.size
+                shape.memberCount
             } else {
                 0
             }
@@ -128,14 +128,17 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
                 internalEdgesPerInstance = shape.totalInternalEdges,
                 edgesPerMember = false,
                 members = shape.members.map { member ->
-                    SccMemberEntry(member.className, member.internalConnections)
+                    SccMemberEntry(member.className, member.memberCount, member.internalConnections)
                 },
-                membersComplete = shape.members.size == shape.memberCount,
+                membersComplete = isCompleteQuotient(shape, shape.totalInternalEdges.toLong()),
             )
         }
 
         shape as CyclicShape
-        val label = "scc[${shape.members.joinToString(",") { it.className.name }}]"
+        val label = "scc[${shape.members.joinToString(",") { member ->
+            if (member.memberCount > 1) "${member.className.name}×${member.memberCount}"
+            else member.className.name
+        }}]"
         return ShapeEntry(
             publicId,
             shape.digest,
@@ -146,14 +149,32 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
             shallowMin,
             shallowMax,
             rootCount,
-            sccInstanceSize = shape.members.size,
-            internalEdgesPerInstance = shape.members.sumOf { it.internalReferenceCount },
+            sccInstanceSize = shape.memberCount,
+            internalEdgesPerInstance = shape.members.sumOf {
+                it.memberCount * it.internalReferenceCount
+            },
             edgesPerMember = shape.packedChildEdges.isNotEmpty(),
             members = shape.members.map { member ->
-                SccMemberEntry(member.className, member.internalConnections)
+                SccMemberEntry(member.className, member.memberCount, member.internalConnections)
             },
             membersComplete = true,
         )
+    }
+
+    /**
+     * A payload is a complete quotient when its groups cover every member and
+     * the expanded connection multiplicities cover every internal edge; set
+     * relaxation inside a lazy component or a summary payload makes it fail
+     * (deliberately — the viewer must not render a partial graph as exact).
+     */
+    private fun isCompleteQuotient(shape: CyclicShape, totalInternalEdges: Long): Boolean {
+        val coveredMembers = shape.members.sumOf { it.memberCount.toLong() }
+        if (coveredMembers != shape.memberCount.toLong()) return false
+        val coveredEdges = shape.members.sumOf { member ->
+            member.memberCount.toLong() *
+                member.internalConnections.sumOf { it.multiplicity.toLong() }
+        }
+        return coveredEdges == totalInternalEdges
     }
 
     private fun createEdges(

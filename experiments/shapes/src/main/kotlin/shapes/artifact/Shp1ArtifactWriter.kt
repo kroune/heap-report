@@ -6,8 +6,11 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Writes the SHP1 shape table and its SCC1 member-graph section in big-endian
+ * Writes the SHP1 shape table and its SCC2 member-graph section in big-endian
  * binary form. Unsigned shallow-size values are written as their raw 64 bits.
+ *
+ * SCC2 member rows are WL quotient groups: label, member count, and the
+ * group's internal connections (target group index, per-member multiplicity).
  */
 class Shp1ArtifactWriter(private val path: Path) {
     fun write(result: ShapeAnalysisResult) {
@@ -84,7 +87,7 @@ class Shp1ArtifactWriter(private val path: Path) {
         result: ShapeAnalysisResult,
         labelIndices: Map<String, Int>,
     ) {
-        output.writeBytes(SCC1_MAGIC)
+        output.writeBytes(SCC2_MAGIC)
         val describedShapes = result.entries.filter { it.members != null }
         output.writeInt(describedShapes.size)
         for (shape in describedShapes) {
@@ -94,6 +97,7 @@ class Shp1ArtifactWriter(private val path: Path) {
             output.writeByte(if (shape.membersComplete) 1 else 0)
             for (member in members) {
                 output.writeInt(labelIndices.getValue(member.className.name))
+                output.writeInt(member.memberCount)
                 output.writeInt(member.internalConnections.size)
                 for (connection in member.internalConnections) {
                     output.writeInt(connection.targetMemberIndex)
@@ -105,6 +109,6 @@ class Shp1ArtifactWriter(private val path: Path) {
 
     private companion object {
         const val SHP1_MAGIC = "SHP1"
-        const val SCC1_MAGIC = "SCC1"
+        const val SCC2_MAGIC = "SCC2"
     }
 }

@@ -13,7 +13,8 @@ import struct
 
 
 _METADATA_MAGIC = b"SMD1"
-_SCC_MAGIC = b"SCC1"
+_SCC_MAGIC = b"SCC2"
+_LEGACY_SCC_MAGIC = b"SCC1"
 _KINDS = ("leaf", "node", "scc")
 _SHAPE_ROW_SIZE = 70
 _EDGE_ROW_SIZE = 16
@@ -67,11 +68,13 @@ def parse_shp1(path):
     """Parse a SHP1 artifact into the JSON payload served by the engine.
 
     Parsing is streaming and validates every count, index, enum, and trailer
-    boundary. New artifacts carry an optional SCC1 section with canonical
-    member labels and exact internal connections; old SHP1 files simply omit
-    it. ``reachableCount`` is the real scope population: quotient SCCs
-    conceal members from the visible shape counts, but their exact counter is
-    stored in the SMD1 relaxation metadata and must be added back here.
+    boundary. New artifacts carry an optional SCC2 section whose member rows
+    are WL quotient groups (label, member count, internal connections with
+    per-member multiplicities); legacy SCC1 sections are skipped so old
+    artifacts degrade to "no member graph" instead of failing. ``reachableCount``
+    is the real scope population: quotient SCCs conceal members from the
+    visible shape counts, but their exact counter is stored in the SMD1
+    relaxation metadata and must be added back here.
     """
     with _Reader(path) as reader:
         if reader.read(4, "SHP1 magic") != b"SHP1":
@@ -141,10 +144,15 @@ def parse_shp1(path):
         marker = None
         if reader.offset < reader.size:
             marker = reader.read(4, "SHP1 section magic")
-        if marker == _SCC_MAGIC:
+        if marker == _LEGACY_SCC_MAGIC:
+            _skip_legacy_scc_section(reader, len(shapes), len(labels), path)
+            marker = None
+            if reader.offset < reader.size:
+                marker = reader.read(4, "metadata magic")
+        elif marker == _SCC_MAGIC:
             described = set()
             for _ in range(reader.count("SCC shape", 9)):
-                shape_id, member_count, flags = reader.unpack(">iiB", "SCC shape header")
+                shape_id, group_count, flags = reader.unpack(">iiB", "SCC shape header")
                 if (not 0 <= shape_id < len(shapes) or shape_id in described
                         or shapes[shape_id]["kind"] != "scc"):
                     raise ShapesArtifactError(f"invalid SCC shape id {shape_id} in {path}")
@@ -153,32 +161,45 @@ def parse_shp1(path):
                 described.add(shape_id)
                 shape = shapes[shape_id]
                 complete = bool(flags)
-                if (not 0 < member_count <= shape["sccSize"]
-                        or (complete and member_count != shape["sccSize"])):
+                if not 0 < group_count <= shape["sccSize"]:
                     raise ShapesArtifactError(
-                        f"invalid SCC member count {member_count} for shape #{shape_id} in {path}")
+                        f"invalid SCC group count {group_count} for shape #{shape_id} in {path}")
                 members = []
+                covered_members = 0
                 internal_total = 0
-                for _member_index in range(member_count):
-                    label_idx = reader.unpack(">i", "SCC member label index")
+                for _group_index in range(group_count):
+                    label_idx, member_count = reader.unpack(">ii", "SCC group header")
                     if not 0 <= label_idx < len(labels):
                         raise ShapesArtifactError(
                             f"invalid SCC member label index {label_idx} in {path}")
+                    if member_count <= 0:
+                        raise ShapesArtifactError(
+                            f"invalid SCC group member count {member_count} in {path}")
+                    covered_members += member_count
                     internal = []
                     previous_target = -1
                     for _ in range(reader.count("SCC internal connection", 8)):
                         target, mult = reader.unpack(">ii", "SCC internal connection")
-                        if (not 0 <= target < member_count or target <= previous_target
+                        if (not 0 <= target < group_count or target <= previous_target
                                 or mult <= 0):
                             raise ShapesArtifactError(
                                 f"invalid SCC internal connection {target} ({mult}) in {path}")
                         previous_target = target
                         internal.append([target, mult])
-                        internal_total += mult
-                    members.append({"label": labels[label_idx], "internal": internal})
+                        internal_total += member_count * mult
+                    members.append({"label": labels[label_idx], "count": member_count,
+                                    "internal": internal})
+                if covered_members > shape["sccSize"]:
+                    raise ShapesArtifactError(
+                        f"SCC shape #{shape_id} groups cover {covered_members} members, "
+                        f"more than sccSize {shape['sccSize']} in {path}")
+                if complete and covered_members != shape["sccSize"]:
+                    raise ShapesArtifactError(
+                        f"SCC shape #{shape_id} marked complete but groups cover "
+                        f"{covered_members} of {shape['sccSize']} members in {path}")
                 if complete and internal_total != shape["internalEdges"]:
                     raise ShapesArtifactError(
-                        f"SCC shape #{shape_id} has {internal_total} detailed internal edges, "
+                        f"SCC shape #{shape_id} has {internal_total} expanded internal edges, "
                         f"expected {shape['internalEdges']} in {path}")
                 shape["members"] = members
                 shape["membersComplete"] = complete
@@ -210,6 +231,25 @@ def parse_shp1(path):
         "reachableCount": collapsed_count + concealed_count,
         "analysis": metadata,
     }
+
+
+def _skip_legacy_scc_section(reader, shape_count, label_count, path):
+    """Parse and discard a pre-quotient SCC1 member section.
+
+    Legacy artifacts degrade to "no member graph" (the UI offers re-analysis)
+    instead of failing the whole payload. Bounds are still validated so a
+    corrupt file cannot drive huge reads.
+    """
+    for _ in range(reader.count("legacy SCC shape", 9)):
+        shape_id, member_count, flags = reader.unpack(">iiB", "legacy SCC shape header")
+        if not 0 <= shape_id < shape_count or flags not in (0, 1) or member_count <= 0:
+            raise ShapesArtifactError(f"invalid legacy SCC shape header in {path}")
+        for _member in range(member_count):
+            label_idx = reader.unpack(">i", "legacy SCC member label")
+            if not 0 <= label_idx < label_count:
+                raise ShapesArtifactError(f"invalid legacy SCC member label in {path}")
+            connections = reader.count("legacy SCC connection", 8)
+            reader.skip(connections * 8, "legacy SCC connections")
 
 
 def _relaxation_counter(relaxation, name):

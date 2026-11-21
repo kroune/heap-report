@@ -32,6 +32,10 @@ tasks.test {
 
 tasks.withType<Test>().configureEach {
     maxHeapSize = "8g"
+    // Local benchmark knobs for SccColorRefinementMemoryTest.
+    for (name in listOf("wl.scale", "wl.fixtures", "wl.maxRounds")) {
+        System.getProperty(name)?.let { systemProperty(name, it) }
+    }
 }
 
 application {
@@ -51,4 +55,11 @@ tasks.register<Jar>("fatJar") {
     from(sourceSets.main.get().output)
     exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
     exclude("META-INF/versions/**/module-info.class", "module-info.class")
+}
+
+// `-Dwl.jfr=/path.jfr` records the test JVM with JFR (profile settings).
+System.getProperty("wl.jfr")?.let { recording ->
+    tasks.withType<Test>().configureEach {
+        jvmArgs("-XX:StartFlightRecording=filename=$recording,settings=profile")
+    }
 }
