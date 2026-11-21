@@ -2,6 +2,7 @@ package shapes.graph
 
 import shapes.graph.storage.CompactULongArray
 import shapes.graph.storage.ReferencesList
+import java.util.BitSet
 import java.util.Collections
 
 /**
@@ -18,6 +19,7 @@ class ObjectGraph internal constructor(
     @PublishedApi internal val classIndices: CharArray,
     @PublishedApi internal val shallowSizes: CompactULongArray,
     @PublishedApi internal val references: ReferencesList,
+    override val roots: IntArray = IntArray(0),
 ) : AnalysisGraph {
     override val size: Int
         get() = shallowSizes.size
@@ -56,6 +58,50 @@ class ObjectGraph internal constructor(
 
     override fun referenceAt(objectId: Int, referenceIndex: Int): Int =
         references.getReference(references[objectId], referenceIndex)
+
+    /**
+     * The reachable closure of [roots] as a graph of its own: objects keep
+     * their relative order and class indices, references are renumbered, and
+     * [roots] become the analysis roots (duplicates count twice, as given).
+     */
+    fun select(roots: IntArray): ObjectGraph {
+        val reachable = BitSet(size)
+        val pending = IntArray(size)
+        var head = 0
+        var tail = 0
+        for (rootId in roots) {
+            if (!reachable.get(rootId)) {
+                reachable.set(rootId)
+                pending[tail++] = rootId
+            }
+        }
+        while (head < tail) {
+            val sourceId = pending[head++]
+            for (referenceIndex in 0 until referenceCount(sourceId)) {
+                val targetId = referenceAt(sourceId, referenceIndex)
+                if (targetId >= 0 && !reachable.get(targetId)) {
+                    reachable.set(targetId)
+                    pending[tail++] = targetId
+                }
+            }
+        }
+
+        val newIdOf = IntArray(size) { -1 }
+        var nextId = 0
+        for (objectId in 0 until size) {
+            if (reachable.get(objectId)) newIdOf[objectId] = nextId++
+        }
+        val builder = Builder(expectedObjectCount = nextId)
+        for (className in classNames) builder.classIndex(className)
+        for (objectId in 0 until size) {
+            if (newIdOf[objectId] < 0) continue
+            val renumbered = IntArray(referenceCount(objectId)) { referenceIndex ->
+                newIdOf[referenceAt(objectId, referenceIndex)]
+            }
+            builder.addObject(classIndex(objectId), shallowSize(objectId), renumbered)
+        }
+        return builder.build(roots = IntArray(roots.size) { newIdOf[roots[it]] })
+    }
 
     class Builder(expectedObjectCount: Int = 0) {
         init {
@@ -105,7 +151,7 @@ class ObjectGraph internal constructor(
             objectClasses = objectClasses.copyOf(grownCapacity)
         }
 
-        fun build(): ObjectGraph {
+        fun build(roots: IntArray = IntArray(0)): ObjectGraph {
             references.markImmutable()
             shallowSizes.markImmutable()
             return ObjectGraph(
@@ -117,6 +163,7 @@ class ObjectGraph internal constructor(
                 },
                 shallowSizes = shallowSizes,
                 references = references,
+                roots = roots,
             )
         }
     }
@@ -129,12 +176,13 @@ class ObjectGraph internal constructor(
             classes: Array<ClassName>,
             shallow: ULongArray,
             refs: Array<IntArray>,
+            roots: IntArray = IntArray(0),
         ): ObjectGraph {
             val builder = Builder(expectedObjectCount = classes.size)
             for (objectId in classes.indices) {
                 builder.addObject(classes[objectId], shallow[objectId], refs[objectId])
             }
-            return builder.build()
+            return builder.build(roots)
         }
     }
 }

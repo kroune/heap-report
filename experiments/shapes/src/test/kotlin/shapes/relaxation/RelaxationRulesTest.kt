@@ -1,8 +1,7 @@
 package shapes.relaxation
 
-import shapes.analysis.AnalysisScope
 import shapes.analysis.ShapeKind
-import shapes.analysis.ShapesAnalyzer
+import shapes.analysis.analyzeShapes
 import shapes.graph.ClassName
 import shapes.graph.ObjectGraph
 import kotlin.test.Test
@@ -138,12 +137,11 @@ class RelaxationRulesTest {
             24U,
             intArrayOf(cache1, cache2, observedMap),
         )
-        val analyzer = ShapesAnalyzer(
-            builder.build(),
+        val analysis = builder.build().select(intArrayOf(root)).analyzeShapes(
             rules(ClassName("Cache") to StructuralRelaxation.CLASS_ONLY),
         )
 
-        val result = analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(root)))
+        val result = analysis.result
 
         val mapRows = result.entries.filter { it.label == "Map" }
         assertEquals(2, mapRows.size)
@@ -161,41 +159,22 @@ class RelaxationRulesTest {
         val secondRelaxed = builder.addObject(ClassName("Relaxed"), 20U, intArrayOf(secondState))
         val firstRoot = builder.addObject(ClassName("Root"), 30U, intArrayOf(firstRelaxed))
         val secondRoot = builder.addObject(ClassName("Root"), 30U, intArrayOf(secondRelaxed))
-        val analyzer = ShapesAnalyzer(
-            builder.build(),
+        val analysis = builder.build().select(intArrayOf(firstRoot, secondRoot)).analyzeShapes(
             rules(ClassName("Relaxed") to StructuralRelaxation.CLASS_ONLY),
         )
 
-        val result = analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(firstRoot, secondRoot)))
+        val result = analysis.result
+        val stats = analysis.shapes.relaxationStats
 
         assertEquals(1, result.entries.count { it.label == "Relaxed" })
         assertEquals(1, result.entries.count { it.label == "Root" })
         assertEquals(2, result.entries.single { it.label == "Relaxed" }.instanceCount)
         assertEquals(2, result.entries.single { it.label == "State" }.instanceCount)
-        assertEquals(2, analyzer.relaxationStats.classOnlyHiddenEdges)
-        assertEquals(0, analyzer.relaxationStats.setChildrenHiddenEdges)
+        assertEquals(2, stats.classOnlyHiddenEdges)
+        assertEquals(0, stats.setChildrenHiddenEdges)
         // 2 rule-relaxed Relaxed objects + 2 States cascade-relaxed below them
-        assertEquals(4, analyzer.relaxationStats.relaxedObjects)
+        assertEquals(4, stats.relaxedObjects)
         assertTrue(result.edges.none { result.entries[it.shapeId].label == "Relaxed" })
-    }
-
-    @Test
-    fun `analyzer reuse resets relaxation accounting`() {
-        val builder = ObjectGraph.Builder()
-        val state = builder.addObject(ClassName("State"), 10U)
-        val relaxed = builder.addObject(ClassName("Relaxed"), 20U, intArrayOf(state))
-        val root = builder.addObject(ClassName("Root"), 30U, intArrayOf(relaxed))
-        val analyzer = ShapesAnalyzer(
-            builder.build(),
-            rules(ClassName("Relaxed") to StructuralRelaxation.CLASS_ONLY),
-        )
-
-        repeat(2) {
-            analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(root)))
-            // the rule-relaxed Relaxed object + the State cascade-relaxed below it
-            assertEquals(2, analyzer.relaxationStats.relaxedObjects)
-            assertEquals(1, analyzer.relaxationStats.classOnlyHiddenEdges)
-        }
     }
 
     @Test
@@ -205,17 +184,14 @@ class RelaxationRulesTest {
         val first = builder.addObject(ClassName("RelaxedA"), 20U, intArrayOf(state))
         val second = builder.addObject(ClassName("RelaxedB"), 20U)
         val root = builder.addObject(ClassName("Root"), 30U, intArrayOf(first, second))
-        val analyzer = ShapesAnalyzer(
-            builder.build(),
+        val result = builder.build().select(intArrayOf(root)).analyzeShapes(
             ShapeRelaxationRules(
                 mapOf(
                     ClassName("RelaxedA") to StructuralRelaxation.CLASS_ONLY,
                     ClassName("RelaxedB") to StructuralRelaxation.CLASS_ONLY,
                 )
             ),
-        )
-
-        val result = analyzer.analyze(AnalysisScope.ReachableFrom(intArrayOf(root)))
+        ).result
         assertEquals(2, result.entries.count { it.label.startsWith("Relaxed") })
     }
 
@@ -226,20 +202,18 @@ class RelaxationRulesTest {
         val first = builder.addObject(ClassName("M"), 10U, intArrayOf(x, x))
         val second = builder.addObject(ClassName("M"), 10U, intArrayOf(x))
         val root = builder.addObject(ClassName("R"), 10U, intArrayOf(first, second))
-        val graph = builder.build()
-        val scope = AnalysisScope.ReachableFrom(intArrayOf(root))
+        val graph = builder.build().select(intArrayOf(root))
 
-        val exact = ShapesAnalyzer(graph).analyze(scope)
+        val exact = graph.analyzeShapes().result
         assertEquals(2, exact.entries.count { it.label == "M" })
 
-        val relaxedAnalyzer = ShapesAnalyzer(
-            graph,
+        val relaxedAnalysis = graph.analyzeShapes(
             rules(ClassName("M") to StructuralRelaxation.SET_CHILDREN),
         )
-        val relaxed = relaxedAnalyzer.analyze(scope)
+        val relaxed = relaxedAnalysis.result
         assertEquals(1, relaxed.entries.count { it.label == "M" })
         assertEquals(2, relaxed.entries.single { it.label == "M" }.instanceCount)
-        assertEquals(1, relaxedAnalyzer.relaxationStats.setChildrenHiddenEdges)
+        assertEquals(1, relaxedAnalysis.shapes.relaxationStats.setChildrenHiddenEdges)
 
         val otherBuilder = ObjectGraph.Builder()
         val otherX = otherBuilder.addObject(ClassName("X"), 5U)
@@ -247,10 +221,9 @@ class RelaxationRulesTest {
         val xParent = otherBuilder.addObject(ClassName("M"), 10U, intArrayOf(otherX, otherX))
         val yParent = otherBuilder.addObject(ClassName("M"), 10U, intArrayOf(y))
         val otherRoot = otherBuilder.addObject(ClassName("R"), 10U, intArrayOf(xParent, yParent))
-        val differentChildren = ShapesAnalyzer(
-            otherBuilder.build(),
+        val differentChildren = otherBuilder.build().select(intArrayOf(otherRoot)).analyzeShapes(
             rules(ClassName("M") to StructuralRelaxation.SET_CHILDREN),
-        ).analyze(AnalysisScope.ReachableFrom(intArrayOf(otherRoot)))
+        ).result
         assertEquals(2, differentChildren.entries.count { it.label == "M" })
     }
 
@@ -272,16 +245,14 @@ class RelaxationRulesTest {
                 intArrayOf(5),
                 intArrayOf(5),
             ),
-        )
-        val scope = AnalysisScope.ReachableFrom(intArrayOf(0, 4))
-        val exact = ShapesAnalyzer(graph).analyze(scope)
+        ).select(intArrayOf(0, 4))
+        val exact = graph.analyzeShapes().result
         assertEquals(2, exact.entries.count { it.kind == ShapeKind.SCC })
 
-        val analyzer = ShapesAnalyzer(
-            graph,
+        val analysis = graph.analyzeShapes(
             rules(ClassName("C") to StructuralRelaxation.SET_CHILDREN),
         )
-        val relaxed = analyzer.analyze(scope)
+        val relaxed = analysis.result
         val scc = relaxed.entries.single { it.kind == ShapeKind.SCC }
         assertEquals(3, scc.sccInstanceSize)
         assertEquals(2, scc.instanceCount / scc.sccInstanceSize)
@@ -289,7 +260,7 @@ class RelaxationRulesTest {
         assertEquals(4, scc.members.orEmpty().sumOf { member ->
             member.internalConnections.sumOf { it.multiplicity }
         })
-        assertTrue(analyzer.relaxationStats.setChildrenHiddenEdges > 0)
+        assertTrue(analysis.shapes.relaxationStats.setChildrenHiddenEdges > 0)
     }
 
     @Test
@@ -308,16 +279,14 @@ class RelaxationRulesTest {
                 intArrayOf(4),
                 intArrayOf(),
             ),
-        )
-        val scope = AnalysisScope.ReachableFrom(intArrayOf(0, 4))
-        val exact = ShapesAnalyzer(graph).analyze(scope)
+        ).select(intArrayOf(0, 4))
+        val exact = graph.analyzeShapes().result
         assertEquals(2, exact.entries.count { it.kind == ShapeKind.SCC })
 
-        val analyzer = ShapesAnalyzer(
-            graph,
+        val analysis = graph.analyzeShapes(
             rules(ClassName("A") to StructuralRelaxation.CLASS_ONLY),
         )
-        val relaxed = analyzer.analyze(scope)
+        val relaxed = analysis.result
         val scc = relaxed.entries.single { it.kind == ShapeKind.SCC }
         assertEquals(4, scc.instanceCount)
         assertEquals(2, scc.internalEdgesPerInstance)
@@ -325,9 +294,9 @@ class RelaxationRulesTest {
             member.internalConnections.sumOf { it.multiplicity }
         })
         // A's two concealed S edges + the cascade-relaxed S's edge to X
-        assertEquals(3, analyzer.relaxationStats.classOnlyHiddenEdges)
+        assertEquals(3, analysis.shapes.relaxationStats.classOnlyHiddenEdges)
         // 2 rule-relaxed A members + S, S, X cascade-relaxed below them
-        assertEquals(5, analyzer.relaxationStats.relaxedObjects)
+        assertEquals(5, analysis.shapes.relaxationStats.relaxedObjects)
     }
 
     private fun rules(

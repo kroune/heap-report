@@ -1,25 +1,40 @@
 package shapes.analysis.internal
 
+import shapes.Log
 import shapes.analysis.ShapeKind
 import shapes.graph.AnalysisGraph
 import shapes.relaxation.ShapeRelaxationStats
 import shapes.relaxation.StructuralRelaxation
 
-internal class ShapeCollapseResult(
+/**
+ * The interned canonical shapes of one analysis: the shape table, the shape
+ * of every component, the internal ids of folded leaf classes, and the
+ * exact accounting of what relaxation concealed while interning.
+ */
+internal class CanonicalShapes(
     val shapes: List<CanonicalShape>,
     val shapeOfComponent: IntArray,
     /** Internal shape ids of folded leaf classes, by leaf ordinal. */
     val leafShapeInternalIds: IntArray,
+    val relaxationStats: ShapeRelaxationStats,
 )
 
-/** Bottom-up structural collapse over the condensation DAG. */
-internal class ShapeCollapsePhase(
+/**
+ * Bottom-up structural collapse over the condensation DAG: one sweep in
+ * component order (reverse topological), where every component is interned
+ * once all of its children are. Singletons go through the acyclic interner,
+ * small cycles through WL refinement and full-key interning, large cycles
+ * through the lazy signature path.
+ */
+internal class ShapeCollapser(
     private val graph: AnalysisGraph,
+    private val components: StronglyConnectedComponents,
     private val relaxations: ObjectRelaxations,
-    private val relaxationStats: ShapeRelaxationStats,
-    private val progress: (String) -> Unit,
+    private val log: Log,
 ) {
-    fun collapse(components: StronglyConnectedComponents): ShapeCollapseResult {
+    operator fun invoke(): CanonicalShapes {
+        val relaxationStats = ShapeRelaxationStats()
+        val progress = log
         val shapes = ArrayList<CanonicalShape>()
         val shapeOfComponent = IntArray(components.members.count) { -1 }
         val acyclicInterner = ShapeInterner(progress)
@@ -156,7 +171,7 @@ internal class ShapeCollapsePhase(
                 )
             }
         }
-        return ShapeCollapseResult(shapes, shapeOfComponent, leafShapeInternalIds)
+        return CanonicalShapes(shapes, shapeOfComponent, leafShapeInternalIds, relaxationStats)
     }
 
     private fun compareChildShapeIds(

@@ -17,21 +17,21 @@ class HprofGraphExtractorTest {
     ): HprofExtractionOutput {
         val path = dump.write()
         try {
-            HprofFile.open(path).use { file ->
-                val directory = HprofDirectory.scan(file)
-                val index = HprofHeapIndex.build(file, directory)
-                return HprofGraphExtractor(
-                    file = file,
-                    index = index,
-                    concealmentRules = concealmentRules,
-                    foldLeaves = foldLeaves,
-                    scopeClassName = scopeClassName,
-                ).extract()
+            indexHprof(path) {}.use { indexed ->
+                val references = indexed.extractReferences(ProjectionRules(concealmentRules)) {}
+                val selection = scopeClassName?.let(Selection::ClassClosure)
+                    ?: Selection.WholeHeap(foldLeaves)
+                return HprofExtractionOutput(references.counters, references.select(selection) {})
             }
         } finally {
             Files.deleteIfExists(path)
         }
     }
+
+    private class HprofExtractionOutput(
+        val counters: ExtractionCounters,
+        val graph: HeapGraph,
+    )
 
     /** Edges of [nodeId] as (className, leaf) pairs, leaf targets resolved. */
     private fun HeapGraph.targetsOf(nodeId: Int): List<String> {

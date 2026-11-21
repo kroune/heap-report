@@ -2,10 +2,12 @@ package shapes.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.subcommands
-import com.github.ajalt.clikt.parameters.options.flag
-import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.types.path
+import shapes.VerificationFailed
+import shapes.relaxation.RelaxationRules
+import shapes.relaxation.RelaxationRulesTsvParser
+import java.nio.file.Files
 import java.nio.file.Path
 
 internal abstract class ShapesCommand(
@@ -13,40 +15,15 @@ internal abstract class ShapesCommand(
     private val helpText: String,
 ) : CliktCommand(name) {
     override fun help(context: Context): String = helpText
-}
 
-internal data class AnalysisCliOptions(
-    val outputArtifact: Path? = null,
-    val verifyInvariants: Boolean = false,
-    val verifyEdgeAccounting: Boolean = false,
-    val relaxationRules: Path? = null,
-    val relaxationStats: Path? = null,
-)
-
-internal abstract class AnalysisCommand(name: String, help: String) : ShapesCommand(name, help) {
-    private val outputArtifact by option("--out", help = "Write the SHP1 artifact to this file").path()
-    private val verifyInvariants by option("--verify", help = "Verify analyzer invariants").flag()
-    private val verifyEdgeAccounting by option(
-        "--verify-edges",
-        help = "Verify exact edge accounting",
-    ).flag()
-    private val relaxationRules by option(
-        "--relax",
-        help = "Class relaxation rules (class-only|set-children)",
-    ).path(mustExist = true, canBeDir = false)
-    private val relaxationStats by option(
-        "--relax-stats",
-        help = "Write relaxation statistics as JSON",
-    ).path()
-
-    protected val analysisOptions: AnalysisCliOptions
-        get() = AnalysisCliOptions(
-            outputArtifact,
-            verifyInvariants,
-            verifyEdgeAccounting,
-            relaxationRules,
-            relaxationStats,
-        )
+    /** Runs a driver; verification violations become exit code 1. */
+    protected fun drive(driver: () -> Unit) {
+        try {
+            driver()
+        } catch (failure: VerificationFailed) {
+            throw ProgramResult(1)
+        }
+    }
 }
 
 internal class ShapesCli : ShapesCommand(
@@ -64,4 +41,16 @@ internal class ShapesCli : ShapesCommand(
     }
 
     override fun run() = Unit
+}
+
+/** Loads a relaxation TSV; no file means no rules. */
+internal fun loadRelaxationRules(path: Path?, log: (String) -> Unit): RelaxationRules {
+    if (path == null) return RelaxationRules()
+    val rules = RelaxationRulesTsvParser.parse(Files.readString(path))
+    log(
+        "relax: ${rules.shapeRules.byClass.size} analyzer rules, " +
+            "${rules.shapeRules.byPattern.size} regex rules, " +
+            "${rules.fieldConcealmentRules.fieldsByClass.size} field rules from $path"
+    )
+    return rules
 }

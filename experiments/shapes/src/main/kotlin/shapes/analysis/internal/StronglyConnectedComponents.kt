@@ -65,9 +65,13 @@ internal class StronglyConnectedComponents(
     val members: ComponentMembers,
 )
 
-/** Iterative Tarjan over the selected analysis objects. */
-internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGraph) {
-    fun find(scope: AnalysisObjectSet): StronglyConnectedComponents {
+/**
+ * Iterative Tarjan over every node of the graph. Components are numbered in
+ * completion order, which is reverse topological: every component's
+ * references point at lower-numbered components.
+ */
+internal class ComponentFinder(private val graph: AnalysisGraph) {
+    operator fun invoke(): StronglyConnectedComponents {
         val dfsIndexAndComponent = ComponentAssignment(
             Arena.ofAuto().allocate(graph.size.toLong() shl 2),
         )
@@ -83,8 +87,7 @@ internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGrap
         var nextDfsIndex = 0
         var componentCount = 0
 
-        for (scopeIndex in 0 until scope.objectCount) {
-            val startObjectId = scope.objectIdAt(scopeIndex)
+        for (startObjectId in 0 until graph.size) {
             if (dfsIndexAndComponent.get(startObjectId) != UNVISITED) continue
 
             dfsIndexAndComponent.set(startObjectId, nextDfsIndex++)
@@ -108,7 +111,7 @@ internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGrap
                 if (referenceIndex < graph.referenceCount(objectId)) {
                     nextReferenceStack[frameIndex] = referenceIndex + 1
                     val targetId = graph.referenceAt(objectId, referenceIndex)
-                    if (targetId < 0 || !scope.membership.get(targetId)) continue
+                    if (targetId < 0) continue
 
                     if (dfsIndexAndComponent.get(targetId) == UNVISITED) {
                         dfsIndexAndComponent.set(targetId, nextDfsIndex++)
@@ -149,18 +152,16 @@ internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGrap
             }
         }
 
-        val members = groupMembers(scope, dfsIndexAndComponent, componentCount)
+        val members = groupMembers(dfsIndexAndComponent, componentCount)
         return StronglyConnectedComponents(dfsIndexAndComponent, members)
     }
 
     private fun groupMembers(
-        scope: AnalysisObjectSet,
         assignment: ComponentAssignment,
         componentCount: Int,
     ): ComponentMembers {
         val componentSizes = IntArray(componentCount)
-        for (scopeIndex in 0 until scope.objectCount) {
-            val objectId = scope.objectIdAt(scopeIndex)
+        for (objectId in 0 until graph.size) {
             componentSizes[assignment.componentOf(objectId)]++
         }
 
@@ -182,8 +183,7 @@ internal class StronglyConnectedComponentsFinder(private val graph: AnalysisGrap
 
         val multiMemberIds = IntArray(multiMemberOffsets[multiMemberComponentCount])
         val fillCursors = multiMemberOffsets.copyOf()
-        for (scopeIndex in 0 until scope.objectCount) {
-            val objectId = scope.objectIdAt(scopeIndex)
+        for (objectId in 0 until graph.size) {
             val componentId = assignment.componentOf(objectId)
             if (componentSizes[componentId] == 1) {
                 firstMembers[componentId] = objectId

@@ -1,4 +1,4 @@
-package shapes.cli
+package shapes.report
 
 import kotlinx.serialization.json.Json
 

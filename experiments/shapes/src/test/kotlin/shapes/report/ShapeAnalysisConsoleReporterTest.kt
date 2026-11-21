@@ -1,7 +1,6 @@
-package shapes.cli
+package shapes.report
 
-import shapes.analysis.AnalysisScope
-import shapes.analysis.ShapesAnalyzer
+import shapes.analysis.analyzeShapes
 import shapes.graph.ClassName
 import shapes.graph.ObjectGraph
 import java.io.ByteArrayOutputStream
@@ -17,7 +16,7 @@ class ShapeAnalysisConsoleReporterTest {
             shallow = ulongArrayOf(10U, 5U),
             refs = arrayOf(intArrayOf(1), intArrayOf()),
         )
-        val result = ShapesAnalyzer(graph).analyze(AnalysisScope.ReachableFrom(intArrayOf(0)))
+        val result = graph.select(intArrayOf(0)).analyzeShapes().result
         val output = ByteArrayOutputStream()
         val originalOut = System.out
 

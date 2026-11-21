@@ -1,5 +1,12 @@
 package shapes.cli
 
+// Investigation tooling, parked during the pipeline refactoring. Both reports
+// read a graph plus its components, so they come back as drivers over the
+// cached outputs of `graph.findComponents()` once per-stage persistence
+// exists; until then nothing wires them in. The code below is kept verbatim
+// (minus the first package line) and compiles as a nested block comment.
+/*
+
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap
 import shapes.analysis.internal.StronglyConnectedComponents
 import shapes.analysis.internal.StronglyConnectedComponentsFinder
@@ -391,3 +398,4 @@ internal object SccEdgeDropProbe {
         }
     }
 }
+*/

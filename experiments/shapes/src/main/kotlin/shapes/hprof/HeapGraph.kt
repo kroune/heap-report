@@ -47,8 +47,8 @@ class HeapGraph internal constructor(
     /** Array-node shallow overrides: packed (nodeId << 32 | shallow), sorted. */
     private val shallowOverrides: LongArray,
     override val leafShapes: List<LeafShapeAggregate>,
-    /** Node ids of analysis roots (class scope); empty for whole heap. */
-    val roots: IntArray,
+    /** Node ids of analysis roots: class-closure roots, or the liveness seeds of a whole heap. */
+    override val roots: IntArray,
     /** All selected objects including folded leaves. */
     override val totalObjectCount: Long,
     override val totalEdgeCount: Long,

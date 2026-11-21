@@ -54,19 +54,53 @@ Spec section references below are to SHAPES.md.
 
 ## Layout
 
-- `graph/` — `AnalysisGraph` (the analyzer's input contract),
-  `ObjectGraph` (compact in-memory implementation for tests and synthetic
-  demos; `graph/storage/` hides its CSR references and packed values).
-- `hprof/` — the production extractor: HPROF reader, heap index, address
-  table, per-class extraction plans, graph assembly and the off-heap
-  `HeapGraph`. See "HPROF pipeline" below.
-- `analysis/` — `ShapesAnalyzer`, typed `AnalysisScope` and the public result.
-  `analysis/internal/` contains SCC finding, canonical shapes, WL refinement,
-  structural interning and aggregation.
+The program is one driver per command (`Drivers.kt`), reading top to bottom.
+Extraction is a pipeline — the dump changes representation at every stage —
+and analysis is a dataflow over one graph, where every stage takes the graph
+plus the facts it needs and returns one new fact:
+
+```kotlin
+val references = indexHprof(path, log).use { dump -> dump.extractReferences(projection, log) }
+references.select(selection, log).use { graph ->
+    val components  = graph.findComponents(log)
+    val relaxations = graph.relax(components, shapeRules, log)
+    val shapes      = graph.collapse(components, relaxations, log)
+    val result      = graph.aggregate(components, shapes, log)
+    // sinks: artifact, stats, verifiers, console
+}
+```
+
+Each stage is an extension function on its primary input that builds a stage
+class and invokes it; a value gets a name and a type only when more than one
+later consumer needs it, and types are named for what they contain.
+
+- `Drivers.kt`, `Configs.kt`, `Log.kt` — the drivers, their resolved
+  configurations, and the progress sink with the `phase` timer.
+- `graph/` — `AnalysisGraph` (the analysis input contract: every node is in
+  scope, `roots` are the analysis roots), `ObjectGraph` (compact in-memory
+  implementation for tests and demos, with `select(roots)` for the reachable
+  closure; `graph/storage/` hides its CSR references and packed values).
+- `hprof/` — the extraction pipeline: `indexHprof` → `HprofDump` (classes,
+  dense ids, roots), `extractReferences` → `ObjectReferences` (projected
+  CSR over every object, dead included), `select` → `HeapGraph` (live,
+  in-scope, leaves folded). `ReferenceExtractor` owns the parallel record
+  walk, chain expansion and scatter; `ObjectSelector` owns liveness, scope,
+  folding and compaction. See "HPROF pipeline" below.
+- `analysis/` — the four analysis stages (`AnalysisStages.kt`) and the public
+  result. `analysis/internal/` holds the stage classes and their facts:
+  `ComponentFinder` → `StronglyConnectedComponents`, `RelaxationResolver` →
+  `ObjectRelaxations`, `ShapeCollapser` → `CanonicalShapes` (with the
+  acyclic interner, WL refinement and the cyclic collapser behind it),
+  `ShapeAggregator` → `ShapeAnalysisResult`.
 - `relaxation/` — typed structural/field rules, TSV parser and exact counters.
 - `artifact/` — SHP1/SCC1 writer.
-- `verification/` — invariant and full edge-accounting verifiers.
-- `cli/` — Clikt commands, reports and the shared analysis workflow.
+- `verification/` — invariant and full edge-accounting verifiers; both take
+  the facts they audit as plain arguments.
+- `report/` — sinks: console summary, JSON reports, extraction stats, edge
+  histogram.
+- `cli/` — Clikt commands that parse flags into configs and call a driver.
+  `SccClassMatrixReport.kt` (SCC investigation probes) is parked in a block
+  comment until per-stage persistence lets it run over cached components.
 - `synthetic/` — synthetic graphs used by demos and tests.
 
 ## Run

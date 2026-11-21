@@ -8,11 +8,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class ShapesAnalyzerTest {
+class ShapeAnalysisTest {
     private fun analyze(graph: ObjectGraph, roots: IntArray): ShapeAnalysisResult {
-        val scope = AnalysisScope.ReachableFrom(roots)
-        val result = ShapesAnalyzer(graph).analyze(scope)
-        val violations = ShapeInvariantVerifier.verify(graph, scope, result)
+        val selected = graph.select(roots)
+        val result = selected.analyzeShapes().result
+        val violations = ShapeInvariantVerifier.verify(selected, result)
         assertTrue(violations.isEmpty(), "invariant violations:\n" + violations.joinToString("\n"))
         return result
     }
@@ -212,8 +212,8 @@ class ShapesAnalyzerTest {
     @Test
     fun `two runs produce identical digests and edges`() {
         val (graph, roots) = SyntheticObjectGraphs.modules(100)
-        val first = ShapesAnalyzer(graph).analyze(AnalysisScope.ReachableFrom(roots))
-        val second = ShapesAnalyzer(graph).analyze(AnalysisScope.ReachableFrom(roots))
+        val first = graph.select(roots).analyzeShapes().result
+        val second = graph.select(roots).analyzeShapes().result
 
         assertEquals(first.entries.map { it.digest }, second.entries.map { it.digest })
         assertEquals(first.edges, second.edges)
@@ -226,10 +226,9 @@ class ShapesAnalyzerTest {
             classes = arrayOf(ClassName("Root"), ClassName("Detached")),
             shallow = ulongArrayOf(8U, 24U),
             refs = arrayOf(intArrayOf(), intArrayOf()),
+            roots = intArrayOf(0),
         )
-        val result = ShapesAnalyzer(graph).analyze(
-            AnalysisScope.EntireGraph(rootsForHistogram = intArrayOf(0))
-        )
+        val result = graph.analyzeShapes().result
 
         assertEquals(2, result.reachableObjectCount)
         assertEquals(32U, result.entries.sumOf { it.shallowTotal })
@@ -244,7 +243,7 @@ class ShapesAnalyzerTest {
             shallow = ulongArrayOf(8U, 24U),
             refs = arrayOf(intArrayOf(1), intArrayOf()),
         )
-        val result = ShapesAnalyzer(graph).analyze(AnalysisScope.EntireGraph())
+        val result = graph.analyzeShapes().result
 
         assertEquals(2, result.reachableObjectCount)
         assertEquals(32U, result.entries.sumOf { it.shallowTotal })

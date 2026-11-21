@@ -1,82 +1,53 @@
 package shapes.hprof
 
-import shapes.relaxation.FieldConcealmentRules
+import it.unimi.dsi.fastutil.ints.IntArrayList
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet
+import shapes.Log
+import shapes.graph.ClassName
+import shapes.hprof.ObjectReferences.Companion.EXTRA_FLAG
+import shapes.hprof.ObjectReferences.Companion.PROJ_FLAG
+import shapes.phase
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Cross-chunk extraction counters; merged, not contended. */
-class ExtractionCounters {
-    var rawNonNullRefs = 0L
-    var classTargetRefs = 0L
-    var danglingRefs = 0L
-    var mechanicsDropped = 0L
-    var concealedDropped = 0L
-    var projectionDropped = 0L
-    var dedupDropped = 0L
-    var mainEmitted = 0L
-    var excludedInstanceRefs = 0L
-    var truncatedShallow = 0L
-    var layoutMismatches = 0L
-
-    fun add(other: ExtractionCounters) {
-        rawNonNullRefs += other.rawNonNullRefs
-        classTargetRefs += other.classTargetRefs
-        danglingRefs += other.danglingRefs
-        mechanicsDropped += other.mechanicsDropped
-        concealedDropped += other.concealedDropped
-        projectionDropped += other.projectionDropped
-        dedupDropped += other.dedupDropped
-        mainEmitted += other.mainEmitted
-        excludedInstanceRefs += other.excludedInstanceRefs
-        truncatedShallow += other.truncatedShallow
-        layoutMismatches += other.layoutMismatches
-    }
-
-    override fun toString(): String =
-        "raw=$rawNonNullRefs class=$classTargetRefs dangling=$danglingRefs " +
-            "mechanics=$mechanicsDropped concealed=$concealedDropped " +
-            "projDropped=$projectionDropped dedup=$dedupDropped main=$mainEmitted " +
-            "excludedRefs=$excludedInstanceRefs layoutMismatch=$layoutMismatches"
-}
-
-/** Flag bits in the per-object flags byte. */
-internal object ObjectFlags {
-    const val LEAF = 1
-    const val EXCLUDED = 2
-    const val LIVE = 4
-    const val SCOPE = 8
-}
-
 /**
- * Shared state of one extraction between the record walk and graph assembly.
- * All segments are indexed by dense object id.
+ * Stage 2 of extraction: one parallel record walk applies the reference
+ * filter, concealment and structural projections and spills every object's
+ * references per chunk; hash-table chains are expanded against the global
+ * link table; the rows are then scattered into one CSR over all objects.
  */
+fun HprofDump.extractReferences(rules: ProjectionRules, log: Log): ObjectReferences =
+    log.phase("extract", { "${it.counters}" }) { ReferenceExtractor(this, rules, log)() }
+
+/** Working set of one extraction, indexed by dense object id. */
 internal class ExtractionState(
-    val file: HprofFile,
-    val index: HprofHeapIndex,
+    val dump: HprofDump,
     val plans: Array<ClassExtractionPlan>,
-    val table: ObjectAddressTable,
-    val objectCount: Int,
-    val metaArena: Arena,
-    val graphArena: Arena,
-    /** Entry-node links and node-table elements; freed after chain expansion. */
-    val expansionArena: Arena,
-    /** Synthetic expansion rows; freed after scatter. */
-    val syntheticArena: Arena,
-    /** Array shallow pairs; freed after compaction. */
-    val shallowArena: Arena,
-    val classIdx: MemorySegment,
-    val flags: MemorySegment,
-    /** Per-object target counts; prefix-summed into row offsets by assembly. */
-    val counts: MemorySegment,
-    val spillDirectory: SpillDirectory,
-    val chunkCount: Int,
 ) {
-    /** Encoded class-object target base: targets >= objectCount are store class indices. */
-    val classTargetBase: Int = objectCount
+    val file: HprofFile = dump.file
+    val table: ObjectAddressTable = dump.objects
+    val classStore: HprofClassStore = dump.classes
+    val objectCount: Int = dump.objectCount
+    val classTargetBase: Int = dump.classTargetBase
+    val chunkCount: Int = dump.chunks.size
+
+    val metaArena: Arena = Arena.ofShared()
+    val graphArena: Arena = Arena.ofShared()
+    /** Entry-node links and node-table elements; freed after chain expansion. */
+    val expansionArena: Arena = Arena.ofShared()
+    /** Synthetic expansion rows; freed after scatter. */
+    val syntheticArena: Arena = Arena.ofShared()
+    /** Array shallow pairs; handed to selection. */
+    val shallowArena: Arena = Arena.ofShared()
+
+    val classIdx: MemorySegment = metaArena.allocate(objectCount.toLong() shl 1)
+    val flags: MemorySegment = metaArena.allocate(objectCount.toLong())
+    /** Per-object target counts; prefix-summed into row offsets in place. */
+    val counts: MemorySegment = mapScratchSegment(graphArena, (objectCount.toLong() + 1) shl 2)
+    val spillDirectory = SpillDirectory()
 
     val linkBuffers = Array(chunkCount) { IntBlockBuffer(expansionArena) }
     val expansionBuffers = Array(chunkCount) { IntBlockBuffer(expansionArena) }
@@ -105,10 +76,22 @@ internal class ExtractionState(
         return assigned
     }
 
+    fun graphClassTable(): GraphClassTable {
+        val count = graphClassCount
+        val storeClasses = Array(count) { IntArrayList(2) }
+        for (classIndex in plans.indices) {
+            val graphIndex = plans[classIndex].graphClassIndex
+            if (graphIndex >= 0) storeClasses[graphIndex].add(classIndex)
+        }
+        return GraphClassTable(
+            names = (0 until count).map { ClassName(graphClassNamesSlots[it] ?: "unused-$it") },
+            shallowSizes = graphClassShallow.copyOf(maxOf(count, 1)),
+            storeClassesByGraphClass = Array(count) { storeClasses[it].toIntArray() },
+        )
+    }
+
     fun flagsOf(denseId: Int): Int =
         flags.get(ValueLayout.JAVA_BYTE, denseId.toLong()).toInt()
-
-    fun hasFlag(denseId: Int, bit: Int): Boolean = flagsOf(denseId) and bit != 0
 
     fun setFlag(denseId: Int, bit: Int) {
         val current = flags.get(ValueLayout.JAVA_BYTE, denseId.toLong()).toInt()
@@ -126,78 +109,54 @@ internal class ExtractionState(
     }
 }
 
-class HprofExtractionOutput(
-    val graph: HeapGraph,
-    val counters: ExtractionCounters,
-)
-
-/**
- * Builds the structural object graph straight from an HPROF dump: one parallel
- * record walk spills filtered and projected edges, then [HeapGraphAssembler]
- * folds liveness, leaves and hash-table chains into the final [HeapGraph].
- */
-class HprofGraphExtractor(
-    private val file: HprofFile,
-    private val index: HprofHeapIndex,
-    private val concealmentRules: FieldConcealmentRules = FieldConcealmentRules(),
-    private val filterReferenceMechanics: Boolean = true,
-    private val foldLeaves: Boolean = true,
-    private val scopeClassName: String? = null,
-    private val progress: (String) -> Unit = {},
+internal class ReferenceExtractor(
+    private val dump: HprofDump,
+    private val rules: ProjectionRules,
+    private val log: Log,
 ) {
-    init {
-        require(scopeClassName == null || !foldLeaves) {
-            "class scopes require foldLeaves=false (roots may be leaves)"
-        }
-    }
-
-    fun extract(): HprofExtractionOutput {
-        var phaseStart = System.nanoTime()
+    operator fun invoke(): ObjectReferences {
         val plans = ClassExtractionPlans.build(
-            index.classStore,
-            concealmentRules,
-            filterReferenceMechanics,
-            progress,
+            dump.classes,
+            rules.concealment,
+            rules.filterReferenceMechanics,
+            log,
         )
-        val table = ObjectAddressTable.build(index.addressBuffers)
-        index.addressArena.close()
-        require(table.objectCount.toLong() == index.counts.objects) {
-            "address table ${table.objectCount} != object count ${index.counts.objects}"
-        }
-        progress("address table: ${table.objectCount} objects in ${elapsed(phaseStart)} ms")
+        val state = ExtractionState(dump, plans)
 
-        val objectCount = table.objectCount
-        val metaArena = Arena.ofShared()
-        val graphArena = Arena.ofShared()
-        val state = ExtractionState(
-            file = file,
-            index = index,
-            plans = plans,
-            table = table,
-            objectCount = objectCount,
-            metaArena = metaArena,
-            graphArena = graphArena,
-            expansionArena = Arena.ofShared(),
-            syntheticArena = Arena.ofShared(),
-            shallowArena = Arena.ofShared(),
-            classIdx = metaArena.allocate(objectCount.toLong() shl 1),
-            flags = metaArena.allocate(objectCount.toLong()),
-            counts = mapScratchSegment(graphArena, (objectCount.toLong() + 1) shl 2),
-            spillDirectory = SpillDirectory(),
-            chunkCount = index.chunks.size,
+        log.phase("walk", { "spilled edges; ${state.counters}" }) { walkRecords(state) }
+        val syntheticBuffers = log.phase("expand", { "hash-table chains" }) { expandNodeTables(state) }
+        state.expansionArena.close()
+
+        val totalTargets = prefixSums(state)
+        val targets = mapScratchSegment(state.graphArena, totalTargets.toLong() shl 2)
+        log.phase("scatter", { "$totalTargets targets" }) { scatter(state, syntheticBuffers, targets) }
+        state.syntheticArena.close()
+        state.spillDirectory.close()
+
+        return ObjectReferences(
+            objectCount = state.objectCount,
+            classTargetBase = state.classTargetBase,
+            metaArena = state.metaArena,
+            graphArena = state.graphArena,
+            offsets = state.counts,
+            targets = targets,
+            classIdx = state.classIdx,
+            flags = state.flags,
+            shallowOverrides = ShallowOverrideBuffers(state.shallowArena, state.shallowPairBuffers),
+            graphClasses = state.graphClassTable(),
+            classes = dump.classes,
+            roots = dump.roots,
+            classStatics = dump.classStatics,
+            counters = state.counters,
         )
-
-        phaseStart = System.nanoTime()
-        walkRecords(state)
-        progress("walk: spilled edges in ${elapsed(phaseStart)} ms; ${state.counters}")
-
-        val graph = HeapGraphAssembler(state, foldLeaves, scopeClassName, progress).assemble()
-        return HprofExtractionOutput(graph, state.counters)
     }
+
+    // ------------------------------------------------------------------ walk
 
     private fun walkRecords(state: ExtractionState) {
+        val file = state.file
         val identifierSize = file.identifierSize
-        val chunkCounters = mapChunksParallel(index.chunks) { chunkIndex, chunk ->
+        val chunkCounters = mapChunksParallel(dump.chunks) { chunkIndex, chunk ->
             val worker = ChunkWorker(state, chunkIndex, identifierSize)
             chunk.forEachRange { start, end ->
                 var offset = start
@@ -218,7 +177,292 @@ class HprofGraphExtractor(
         for (counters in chunkCounters) state.counters.add(counters)
     }
 
-    private fun elapsed(startedAt: Long): Long = (System.nanoTime() - startedAt) / 1_000_000
+    // ------------------------------------------------------------------ expansion
+
+    private fun expandNodeTables(state: ExtractionState): Array<IntBlockBuffer> {
+        val entryGraphClass = BooleanArray(state.graphClassCount + 1)
+        val transparentGraphClass = BooleanArray(state.graphClassCount + 1)
+        for (plan in state.plans) {
+            if (plan.graphClassIndex >= 0) {
+                if (plan.isEntryNode) entryGraphClass[plan.graphClassIndex] = true
+                if (plan.isTransparentEntryNode) transparentGraphClass[plan.graphClassIndex] = true
+            }
+        }
+
+        // Gather and sort the entry-node link table by node id.
+        var linkCount = 0L
+        for (buffer in state.linkBuffers) linkCount += buffer.size / (MAX_LINK_FIELDS + 1)
+        require(linkCount <= Int.MAX_VALUE) { "too many entry nodes: $linkCount" }
+        val linkNodes = IntArray(linkCount.toInt())
+        val linkData = IntArray(linkCount.toInt() * MAX_LINK_FIELDS)
+        var linkFill = 0
+        for (buffer in state.linkBuffers) {
+            var slot = 0
+            buffer.forEach { value ->
+                if (slot == 0) {
+                    linkNodes[linkFill] = value
+                } else {
+                    linkData[linkFill * MAX_LINK_FIELDS + slot - 1] = value
+                }
+                slot++
+                if (slot == MAX_LINK_FIELDS + 1) {
+                    slot = 0
+                    linkFill++
+                }
+            }
+        }
+        it.unimi.dsi.fastutil.Arrays.parallelQuickSort(
+            0,
+            linkFill,
+            { first, second -> linkNodes[first].compareTo(linkNodes[second]) },
+            { first, second ->
+                val node = linkNodes[first]
+                linkNodes[first] = linkNodes[second]
+                linkNodes[second] = node
+                for (slot in 0 until MAX_LINK_FIELDS) {
+                    val value = linkData[first * MAX_LINK_FIELDS + slot]
+                    linkData[first * MAX_LINK_FIELDS + slot] = linkData[second * MAX_LINK_FIELDS + slot]
+                    linkData[second * MAX_LINK_FIELDS + slot] = value
+                }
+            },
+        )
+
+        return mapChunksParallel(dump.chunks) { chunkIndex, _ ->
+            val expansion = state.expansionBuffers[chunkIndex]
+            val synthetic = IntBlockBuffer(state.syntheticArena)
+            val members = IntOpenHashSet(64)
+            val queue = IntArrayList(64)
+            val ordered = IntArrayList(64)
+            val concealed = IntArrayList(16)
+            // Stream one record at a time: [ownerDense][walkMains][elementCount][elements...]
+            var recordOwner = -1
+            var walkMains = -1
+            var remainingElements = -1
+            var elements = IntArray(256)
+            var elementFill = 0
+            expansion.forEach { value ->
+                when {
+                    recordOwner == -1 -> recordOwner = value
+                    walkMains == -1 -> walkMains = value
+                    remainingElements == -1 -> {
+                        remainingElements = value
+                        if (elements.size < remainingElements) {
+                            elements = IntArray(maxOf(remainingElements, elements.size * 2))
+                        }
+                        elementFill = 0
+                    }
+                    else -> {
+                        elements[elementFill++] = value
+                        remainingElements--
+                    }
+                }
+                if (recordOwner != -1 && walkMains != -1 && remainingElements == 0) {
+                    expandOneTable(
+                        state,
+                        recordOwner,
+                        walkMains,
+                        elements,
+                        elementFill,
+                        entryGraphClass,
+                        transparentGraphClass,
+                        linkNodes,
+                        linkData,
+                        linkFill,
+                        members,
+                        queue,
+                        ordered,
+                        concealed,
+                        synthetic,
+                    )
+                    recordOwner = -1
+                    walkMains = -1
+                    remainingElements = -1
+                }
+            }
+            synthetic
+        }
+    }
+
+    private fun expandOneTable(
+        state: ExtractionState,
+        ownerDense: Int,
+        walkMains: Int,
+        elements: IntArray,
+        elementCount: Int,
+        entryGraphClass: BooleanArray,
+        transparentGraphClass: BooleanArray,
+        linkNodes: IntArray,
+        linkData: IntArray,
+        linkFill: Int,
+        members: IntOpenHashSet,
+        queue: IntArrayList,
+        ordered: IntArrayList,
+        concealed: IntArrayList,
+        synthetic: IntBlockBuffer,
+    ) {
+        members.clear()
+        queue.clear()
+        ordered.clear()
+        concealed.clear()
+        for (elementIndex in 0 until elementCount) {
+            val element = elements[elementIndex]
+            if (!members.add(element)) continue
+            val elementClass = state.classIndexOf(element)
+            if (entryGraphClass.getOrElse(elementClass) { false }) {
+                queue.add(element)
+                // Transparent bin nodes (TreeBin, ForwardingNode) are
+                // treeification/resize state: walked through, kept alive as a
+                // liveness-only extra, concealed from the member set.
+                if (transparentGraphClass.getOrElse(elementClass) { false }) {
+                    concealed.add(element)
+                } else {
+                    ordered.add(element)
+                }
+            } else {
+                // Per-object references form a target set, so non-entry
+                // elements deduplicate as well.
+                ordered.add(element)
+            }
+        }
+        while (!queue.isEmpty) {
+            val member = queue.removeInt(queue.size - 1)
+            val linkIndex = binarySearch(linkNodes, linkFill, member)
+            if (linkIndex < 0) continue
+            for (slot in 0 until MAX_LINK_FIELDS) {
+                val linked = linkData[linkIndex * MAX_LINK_FIELDS + slot]
+                if (linked < 0) continue
+                val linkedClass = state.classIndexOf(linked)
+                if (!entryGraphClass.getOrElse(linkedClass) { false } || !members.add(linked)) {
+                    continue
+                }
+                queue.add(linked)
+                if (transparentGraphClass.getOrElse(linkedClass) { false }) {
+                    concealed.add(linked)
+                } else {
+                    ordered.add(linked)
+                }
+            }
+        }
+
+        val mainCount = ordered.size
+        val extrasBase = state.countOf(ownerDense)
+        synthetic.add(ownerDense)
+        synthetic.add(extrasBase)
+        synthetic.add(mainCount + concealed.size)
+        for (orderedIndex in 0 until mainCount) synthetic.add(ordered.getInt(orderedIndex))
+        for (concealedIndex in 0 until concealed.size) {
+            synthetic.add(concealed.getInt(concealedIndex) or EXTRA_FLAG or PROJ_FLAG)
+        }
+        state.setCount(ownerDense, extrasBase + mainCount + concealed.size)
+        if (walkMains + mainCount == 0) state.setFlag(ownerDense, ObjectFlags.LEAF)
+    }
+
+    private fun binarySearch(values: IntArray, size: Int, key: Int): Int {
+        var low = 0
+        var high = size - 1
+        while (low <= high) {
+            val middle = (low + high) ushr 1
+            when {
+                values[middle] < key -> low = middle + 1
+                values[middle] > key -> high = middle - 1
+                else -> return middle
+            }
+        }
+        return -1
+    }
+
+    // ------------------------------------------------------------------ CSR build
+
+    private fun prefixSums(state: ExtractionState): Int {
+        val offsets = state.counts
+        var total = 0L
+        for (denseId in 0 until state.objectCount) {
+            val count = state.countOf(denseId)
+            offsets.set(U32, denseId.toLong() shl 2, total.toInt())
+            total += count
+        }
+        require(total <= Int.MAX_VALUE) { "targets overflow: $total" }
+        offsets.set(U32, state.objectCount.toLong() shl 2, total.toInt())
+        return total.toInt()
+    }
+
+    private fun scatter(
+        state: ExtractionState,
+        syntheticBuffers: Array<IntBlockBuffer>,
+        targets: MemorySegment,
+    ) {
+        val offsets = state.counts
+        val spillArena = Arena.ofShared()
+        try {
+            mapChunksParallel(dump.chunks) { chunkIndex, _ ->
+                val reader = IntSpillReader(
+                    state.spillDirectory.file("chunk-$chunkIndex"),
+                    spillArena,
+                )
+                var cursor = 0L
+                while (cursor < reader.intCount) {
+                    val denseId = reader[cursor]
+                    val mainCount = reader[cursor + 1]
+                    val extrasCount = reader[cursor + 2]
+                    cursor += 3
+                    var write = offsets.get(U32, denseId.toLong() shl 2).toLong()
+                    for (mainIndex in 0 until mainCount) {
+                        targets.set(U32, write shl 2, reader[cursor + mainIndex])
+                        write++
+                    }
+                    for (extraIndex in 0 until extrasCount) {
+                        targets.set(
+                            U32,
+                            write shl 2,
+                            reader[cursor + mainCount + extraIndex] or EXTRA_FLAG,
+                        )
+                        write++
+                    }
+                    cursor += mainCount + extrasCount
+                }
+
+                // Synthetic hash-table rows land after the row's extras;
+                // records stream as [dense][extrasBase][mainCount][targets...].
+                val synthetic = syntheticBuffers[chunkIndex]
+                var headerSlot = 0
+                var extrasBase = 0
+                var remainingTargets = -1
+                var write = 0L
+                synthetic.forEach { value ->
+                    when {
+                        headerSlot == 0 -> {
+                            write = offsets.get(U32, value.toLong() shl 2).toLong()
+                            headerSlot = 1
+                        }
+                        headerSlot == 1 -> {
+                            extrasBase = value
+                            headerSlot = 2
+                        }
+                        headerSlot == 2 -> {
+                            remainingTargets = value
+                            write += extrasBase
+                            headerSlot = 3
+                        }
+                        else -> {
+                            targets.set(U32, write shl 2, value)
+                            write++
+                            remainingTargets--
+                        }
+                    }
+                    if (headerSlot == 3 && remainingTargets == 0) {
+                        headerSlot = 0
+                        remainingTargets = -1
+                    }
+                }
+            }
+        } finally {
+            spillArena.close()
+        }
+    }
+
+    private companion object {
+        private val U32 = ValueLayout.JAVA_INT_UNALIGNED
+    }
 }
 
 /** Per-chunk record processor with reusable scratch; owns one spill file. */
@@ -231,8 +475,9 @@ private class ChunkWorker(
 
     private val file = state.file
     private val table = state.table
-    private val classStore = state.index.classStore
+    private val classStore = state.classStore
     private val plans = state.plans
+    private val threadLocalsByAddress = state.dump.threadLocalsByAddress
     private val spill = IntSpillWriter(state.spillDirectory.file("chunk-$chunkIndex"))
     private val links = state.linkBuffers[chunkIndex]
     private val expansion = state.expansionBuffers[chunkIndex]
@@ -422,7 +667,7 @@ private class ChunkWorker(
         }
 
         // MAT models stack locals as outbound references of the thread object.
-        val threadLocals = state.index.threadLocalsByAddress.get(address)
+        val threadLocals = threadLocalsByAddress.get(address)
         if (threadLocals != null) {
             for (localIndex in 0 until threadLocals.size) {
                 counters.rawNonNullRefs++
@@ -430,7 +675,7 @@ private class ChunkWorker(
             }
         }
 
-        // Backbone fields (tree root, list head/tail) defer to assembly: the
+        // Backbone fields (tree root, list head/tail) defer to expansion: the
         // chain expansion rewires this instance to its full element set.
         val hasExpansion = plan.expandOffsets.isNotEmpty()
         if (hasExpansion) {
@@ -508,7 +753,7 @@ private class ChunkWorker(
                 finishRecord(denseId, leafWhenEmpty = true)
             }
             PlanKind.NODE_TABLE -> {
-                // Elements defer to assembly: entry-node chains expand there.
+                // Elements defer to expansion: entry-node chains expand there.
                 var elementCount = 0
                 keptValues = ensure(keptValues, count.toInt())
                 for (elementIndex in 0 until count) {
@@ -615,7 +860,7 @@ private class ChunkWorker(
     }
 
     private fun addExtraValue(address: Long, scopeTraversable: Boolean) {
-        val projBit = if (scopeTraversable) HeapGraphAssembler.PROJ_FLAG else 0
+        val projBit = if (scopeTraversable) PROJ_FLAG else 0
         val target = table.denseIdOf(address)
         if (target >= 0) {
             addExtra(target or projBit)

@@ -8,13 +8,13 @@ import shapes.graph.AnalysisGraph
 import java.util.BitSet
 
 /** Computes per-shape aggregates and assigns deterministic public shape ids. */
-internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
-    fun build(
-        collapse: ShapeCollapseResult,
-        components: StronglyConnectedComponents,
-        rootIds: IntArray,
-        reachableObjectCount: Long,
-    ): ShapeAnalysisResult {
+internal class ShapeAggregator(
+    private val graph: AnalysisGraph,
+    private val components: StronglyConnectedComponents,
+    private val collapse: CanonicalShapes,
+) {
+    operator fun invoke(): ShapeAnalysisResult {
+        val rootIds = graph.roots
         val shapes = collapse.shapes
         val shapeCount = shapes.size
         val instanceCounts = LongArray(shapeCount)
@@ -81,7 +81,7 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
             collapse,
             publicIdByInternalId,
         )
-        return ShapeAnalysisResult(reachableObjectCount, entries, edges, rootsHistogram)
+        return ShapeAnalysisResult(graph.totalObjectCount, entries, edges, rootsHistogram)
     }
 
     private fun createEntry(
@@ -228,7 +228,7 @@ internal class ShapeAnalysisResultBuilder(private val graph: AnalysisGraph) {
     private fun createRootsHistogram(
         rootIds: IntArray,
         components: StronglyConnectedComponents,
-        collapse: ShapeCollapseResult,
+        collapse: CanonicalShapes,
         publicIdByInternalId: IntArray,
     ): Map<Int, Long> {
         val histogram = HashMap<Int, Long>()

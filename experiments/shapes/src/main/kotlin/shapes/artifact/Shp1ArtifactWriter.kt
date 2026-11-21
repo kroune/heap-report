@@ -5,6 +5,9 @@ import java.io.DataOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
 
+/** Writes the SHP1 artifact to [path]. */
+fun ShapeAnalysisResult.writeArtifact(path: Path) = Shp1ArtifactWriter(path).write(this)
+
 /**
  * Writes the SHP1 shape table and its SCC2 member-graph section in big-endian
  * binary form. Unsigned shallow-size values are written as their raw 64 bits.

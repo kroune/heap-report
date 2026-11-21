@@ -1,7 +1,10 @@
 package shapes.verification
 
-import shapes.analysis.ShapeAnalysisDebugSnapshot
+import shapes.Log
 import shapes.analysis.ShapeAnalysisResult
+import shapes.analysis.internal.CanonicalShapes
+import shapes.analysis.internal.ObjectRelaxations
+import shapes.analysis.internal.StronglyConnectedComponents
 import shapes.graph.AnalysisGraph
 import shapes.relaxation.StructuralRelaxation
 
@@ -9,19 +12,19 @@ import shapes.relaxation.StructuralRelaxation
 internal object ShapeEdgeAccountingVerifier {
     internal fun verify(
         graph: AnalysisGraph,
-        debug: ShapeAnalysisDebugSnapshot,
-        progress: (String) -> Unit = {},
+        components: StronglyConnectedComponents,
+        relaxations: ObjectRelaxations,
+        shapes: CanonicalShapes,
+        result: ShapeAnalysisResult,
+        log: Log = {},
     ): List<String> {
-        val relaxations = debug.objectRelaxations
-        val result = debug.result
         val publicIdByDigest = result.entries.associate { it.digest to it.id }
-        val publicIdByInternalId = IntArray(debug.collapse.shapes.size) { internalId ->
-            publicIdByDigest.getValue(debug.collapse.shapes[internalId].digest)
+        val publicIdByInternalId = IntArray(shapes.shapes.size) { internalId ->
+            publicIdByDigest.getValue(shapes.shapes[internalId].digest)
         }
         val shapeOfObject = IntArray(graph.size) { -1 }
-        val components = debug.components
         for (componentId in 0 until components.members.count) {
-            val internalShapeId = debug.collapse.shapeOfComponent[componentId]
+            val internalShapeId = shapes.shapeOfComponent[componentId]
             val publicShapeId = publicIdByInternalId[internalShapeId]
             components.members.forEachMember(componentId) { objectId ->
                 shapeOfObject[objectId] = publicShapeId
@@ -31,7 +34,7 @@ internal object ShapeEdgeAccountingVerifier {
         val externalTruth = HashMap<ShapeEdgeKey, Long>()
         val internalTruth = HashMap<Int, Long>()
         val nonExemptShapes = HashSet<Int>()
-        val quotientExempt = findQuotientExemptObjects(graph, debug)
+        val quotientExempt = findQuotientExemptObjects(graph, components, relaxations)
         // A set-children component conceals duplicates, so its shape cannot be
         // audited exactly — even where other, non-relaxed components intern
         // into the same shape (identical structure with nothing to conceal).
@@ -66,7 +69,7 @@ internal object ShapeEdgeAccountingVerifier {
                 }
                 if (classOnly) continue
                 val targetShapeId = if (targetId < 0) {
-                    publicIdByInternalId[debug.collapse.leafShapeInternalIds[-targetId - 1]]
+                    publicIdByInternalId[shapes.leafShapeInternalIds[-targetId - 1]]
                 } else {
                     shapeOfObject[targetId]
                 }
@@ -74,7 +77,7 @@ internal object ShapeEdgeAccountingVerifier {
             }
         }
         if (relaxedSourceCount > 0) {
-            progress(
+            log(
                 "verify-edges: $relaxedSourceCount objects of relaxed classes have their " +
                     "concealed edges accounted by ShapeRelaxationStats instead"
             )
@@ -86,20 +89,20 @@ internal object ShapeEdgeAccountingVerifier {
 
     private fun findQuotientExemptObjects(
         graph: AnalysisGraph,
-        debug: ShapeAnalysisDebugSnapshot,
+        components: StronglyConnectedComponents,
+        relaxations: ObjectRelaxations,
     ): BooleanArray {
-        val relaxations = debug.objectRelaxations
         val exempt = BooleanArray(graph.size)
         if (relaxations.isEmpty) return exempt
 
-        for (componentId in 0 until debug.components.members.count) {
+        for (componentId in 0 until components.members.count) {
             var hasSetChildrenMember = false
-            debug.components.members.forEachMember(componentId) { objectId ->
+            components.members.forEachMember(componentId) { objectId ->
                 val relaxation = relaxations.relaxationOf(objectId)
                 if (relaxation == StructuralRelaxation.SET_CHILDREN) hasSetChildrenMember = true
             }
             if (hasSetChildrenMember) {
-                debug.components.members.forEachMember(componentId) { objectId ->
+                components.members.forEachMember(componentId) { objectId ->
                     exempt[objectId] = true
                 }
             }

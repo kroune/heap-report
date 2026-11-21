@@ -1,7 +1,7 @@
 package shapes.verification
 
-import shapes.analysis.AnalysisScope
-import shapes.analysis.ShapesAnalyzer
+import shapes.analysis.Analysis
+import shapes.analysis.analyzeShapes
 import shapes.graph.ClassName
 import shapes.graph.ObjectGraph
 import shapes.relaxation.ShapeRelaxationRules
@@ -12,6 +12,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ShapeEdgeAccountingVerifierTest {
+    private fun verify(analysis: Analysis): List<String> = ShapeEdgeAccountingVerifier.verify(
+        analysis.graph,
+        analysis.components,
+        analysis.relaxations,
+        analysis.shapes,
+        analysis.result,
+    )
     @Test
     fun `merged non-uniform SCC emits exact per-instance edge totals`() {
         val graph = ObjectGraph.of(
@@ -28,19 +35,15 @@ class ShapeEdgeAccountingVerifierTest {
                 intArrayOf(),
             ),
         )
-        val analyzer = ShapesAnalyzer(graph)
-        val debug = analyzer.analyzeDebug(AnalysisScope.ReachableFrom(intArrayOf(0, 3)))
+        val analysis = graph.select(intArrayOf(0, 3)).analyzeShapes()
 
-        val scc = debug.result.entries.single { it.members != null }
+        val scc = analysis.result.entries.single { it.members != null }
         assertEquals(4, scc.instanceCount)
         assertEquals(2, scc.sccInstanceSize)
         assertFalse(scc.edgesPerMember)
-        assertEquals(1, debug.result.edges.single().multiplicity)
+        assertEquals(1, analysis.result.edges.single().multiplicity)
 
-        val violations = ShapeEdgeAccountingVerifier.verify(
-            graph,
-            debug,
-        )
+        val violations = verify(analysis)
         assertTrue(violations.isEmpty(), violations.joinToString("\n"))
     }
 
@@ -54,15 +57,13 @@ class ShapeEdgeAccountingVerifierTest {
             shallow = ULongArray(3) { 5U },
             refs = arrayOf(intArrayOf(1), intArrayOf(0, 2), intArrayOf()),
         )
-        val analyzer = ShapesAnalyzer(
-            graph,
+        val analysis = graph.select(intArrayOf(0)).analyzeShapes(
             ShapeRelaxationRules(mapOf(ClassName("A") to StructuralRelaxation.CLASS_ONLY)),
         )
-        val debug = analyzer.analyzeDebug(AnalysisScope.ReachableFrom(intArrayOf(0)))
-        val scc = debug.result.entries.single { it.members != null }
+        val scc = analysis.result.entries.single { it.members != null }
         assertEquals(2, scc.internalEdgesPerInstance)
 
-        val violations = ShapeEdgeAccountingVerifier.verify(graph, debug)
+        val violations = verify(analysis)
         assertTrue(violations.isEmpty(), violations.joinToString("\n"))
     }
 
@@ -76,14 +77,14 @@ class ShapeEdgeAccountingVerifierTest {
             shallow = ULongArray(4) { 5U },
             refs = arrayOf(intArrayOf(1, 3), intArrayOf(2, 3), intArrayOf(0, 3), intArrayOf()),
         )
-        val debug = ShapesAnalyzer(graph).analyzeDebug(AnalysisScope.ReachableFrom(intArrayOf(0)))
-        val scc = debug.result.entries.single { it.members != null }
+        val analysis = graph.select(intArrayOf(0)).analyzeShapes()
+        val scc = analysis.result.entries.single { it.members != null }
         assertEquals(1, scc.members?.size)
         assertEquals(3, scc.members?.single()?.memberCount)
         assertEquals(3, scc.sccInstanceSize)
         assertEquals(3, scc.internalEdgesPerInstance)
 
-        val violations = ShapeEdgeAccountingVerifier.verify(graph, debug)
+        val violations = verify(analysis)
         assertTrue(violations.isEmpty(), violations.joinToString("\n"))
     }
 }

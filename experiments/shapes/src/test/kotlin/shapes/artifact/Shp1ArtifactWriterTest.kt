@@ -1,8 +1,7 @@
 package shapes.artifact
 
-import shapes.analysis.AnalysisScope
 import shapes.analysis.ShapeKind
-import shapes.analysis.ShapesAnalyzer
+import shapes.analysis.analyzeShapes
 import shapes.graph.ClassName
 import shapes.graph.ObjectGraph
 import java.io.DataInputStream
@@ -18,9 +17,7 @@ class Shp1ArtifactWriterTest {
             shallow = ulongArrayOf(5U, 5U),
             refs = arrayOf(intArrayOf(1), intArrayOf(0)),
         )
-        val result = ShapesAnalyzer(graph).analyze(
-            AnalysisScope.ReachableFrom(intArrayOf(0))
-        )
+        val result = graph.select(intArrayOf(0)).analyzeShapes().result
         val path = Files.createTempFile("shapes-artifact-", ".shp1")
 
         try {
