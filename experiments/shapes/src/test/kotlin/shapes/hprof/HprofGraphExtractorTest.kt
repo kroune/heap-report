@@ -3,6 +3,7 @@ package shapes.hprof
 import shapes.relaxation.FieldConcealmentRules
 import shapes.relaxation.PatternFieldConcealment
 import shapes.graph.ClassName
+import java.lang.foreign.Arena
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +22,11 @@ class HprofGraphExtractorTest {
                 val references = indexed.extractReferences(ProjectionRules(concealmentRules)) {}
                 val selection = scopeClassName?.let(Selection::ClassClosure)
                     ?: Selection.WholeHeap(foldLeaves)
-                return HprofExtractionOutput(references.counters, references.select(selection) {})
+                return HprofExtractionOutput(
+                    references.counters,
+                    references.graphClasses,
+                    references.select(selection) {},
+                )
             }
         } finally {
             Files.deleteIfExists(path)
@@ -30,6 +35,7 @@ class HprofGraphExtractorTest {
 
     private class HprofExtractionOutput(
         val counters: ExtractionCounters,
+        val graphClasses: GraphClassTable,
         val graph: HeapGraph,
     )
 
@@ -792,5 +798,92 @@ class HprofGraphExtractorTest {
             assertEquals(listOf("leaf:demo.Sig"), graph.targetsOf(method))
         }
         assertEquals(3L, graph.totalObjectCount)
+    }
+
+    @Test
+    fun `address ranks are stable across spans and source buffers`() {
+        val addresses = longArrayOf(4096, 511, 512, 1023, 0, 255, 256, 2048, 2049, 1024)
+        val sorted = addresses.sorted()
+        val table = Arena.ofShared().use { arena ->
+            val buffers = listOf(AddressBuffer(arena), AddressBuffer(arena))
+            addresses.forEachIndexed { index, address -> buffers[index % buffers.size].add(address) }
+            ObjectAddressTable.build(buffers)
+        }
+        table.use {
+            for (address in addresses) {
+                assertEquals(sorted.indexOf(address), table.denseIdOf(address), "address $address")
+            }
+            assertEquals(-1, table.denseIdOf(1))
+            assertEquals(-1, table.denseIdOf(4097))
+        }
+
+        val sortedTable = Arena.ofShared().use { arena ->
+            val first = AddressBuffer(arena)
+            val second = AddressBuffer(arena)
+            val third = AddressBuffer(arena)
+            sorted.take(2).forEach(first::add)
+            sorted.slice(2..4).forEach(second::add)
+            sorted.drop(5).forEach(third::add)
+            ObjectAddressTable.build(
+                listOf(first, second, third),
+                sorted.first(),
+                sorted.last(),
+                presorted = true,
+            )
+        }
+        sortedTable.use {
+            for (address in addresses) {
+                assertEquals(sorted.indexOf(address), it.denseIdOf(address), "presorted address $address")
+            }
+            assertEquals(-1, it.denseIdOf(1))
+            assertEquals(-1, it.denseIdOf(4097))
+        }
+    }
+
+    @Test
+    fun `array and instance shallow sizes survive selection`() {
+        val dump = HprofTestDump()
+        dump.clazz(100, "java/lang/Object")
+        dump.clazz(101, "java/lang/Object[]", 100)
+        dump.clazz(102, "demo/Value", 100)
+        dump.clazz(110, "[B", 100)
+        dump.instance(1000, 102)
+        dump.instance(1001, 102)
+        dump.objectArray(2000, 101, 1000, 1001)
+        dump.primitiveArray(3000, 16)
+        dump.root(2000)
+        dump.root(3000)
+
+        val graph = extract(dump, foldLeaves = false).graph
+        assertEquals(24L, graph.shallowSizeOf(graph.nodesOf("java.lang.Object[]").single()))
+        assertEquals(32L, graph.shallowSizeOf(graph.nodesOf("byte[]").single()))
+        for (node in graph.nodesOf("demo.Value")) assertEquals(16L, graph.shallowSizeOf(node))
+        assertEquals(88L, graph.totalShallowBytes())
+    }
+
+    @Test
+    fun `merged class dumps retain individual shallow sizes`() {
+        val dump = HprofTestDump()
+        dump.clazz(100, "java/lang/Object")
+        dump.clazz(101, "demo/Value", 100)
+        dump.clazz(
+            102,
+            "demo/Value",
+            100,
+            fields = listOf("first" to HprofType.OBJECT, "second" to HprofType.OBJECT),
+        )
+        dump.instance(1000, 101)
+        dump.instance(1001, 102, 0, 0)
+        dump.root(1000)
+        dump.root(1001)
+
+        val output = extract(dump, foldLeaves = false)
+        val graph = output.graph
+        val graphClass = output.graphClasses.indexOf("demo.Value")
+        assertEquals(16L, output.graphClasses.shallowSizes[graphClass])
+        assertTrue(output.graphClasses.instanceShallowOverrides[graphClass])
+        val nodes = graph.nodesOf("demo.Value")
+        assertEquals(listOf(16L, 24L), nodes.map { graph.shallowSizeOf(it) }.sorted())
+        assertEquals(40L, graph.totalShallowBytes())
     }
 }

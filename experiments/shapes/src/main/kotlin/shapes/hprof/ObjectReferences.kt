@@ -50,13 +50,14 @@ class ExtractionCounters {
 
 /**
  * Per-object flag bits. LEAF and EXCLUDED are decided by extraction;
- * LIVE and SCOPE are written by selection into the same byte.
+ * LIVE, SCOPE and ROOT_SEED are written by selection into the same byte.
  */
 internal object ObjectFlags {
     const val LEAF = 1
     const val EXCLUDED = 2
     const val LIVE = 4
     const val SCOPE = 8
+    const val ROOT_SEED = 16
 }
 
 /**
@@ -69,6 +70,8 @@ class GraphClassTable internal constructor(
     val shallowSizes: LongArray,
     /** Store class indices behind each graph class. */
     internal val storeClassesByGraphClass: Array<IntArray>,
+    /** Graph classes containing instances with per-object shallow overrides. */
+    internal val instanceShallowOverrides: BooleanArray,
 ) {
     val size: Int
         get() = names.size
@@ -151,11 +154,18 @@ class ObjectReferences internal constructor(
     internal fun flagsOf(denseId: Int): Int =
         flags.get(ValueLayout.JAVA_BYTE, denseId.toLong()).toInt()
 
-    internal fun hasFlag(denseId: Int, bit: Int): Boolean = flagsOf(denseId) and bit != 0
-
     internal fun setFlag(denseId: Int, bit: Int) {
         val current = flags.get(ValueLayout.JAVA_BYTE, denseId.toLong()).toInt()
         flags.set(ValueLayout.JAVA_BYTE, denseId.toLong(), (current or bit).toByte())
+    }
+
+    internal fun markLive(denseId: Int, markScope: Boolean): Boolean {
+        val current = flagsOf(denseId)
+        if (current and ObjectFlags.LIVE != 0) return false
+        var updated = current or ObjectFlags.LIVE
+        if (markScope && current and ObjectFlags.EXCLUDED == 0) updated = updated or ObjectFlags.SCOPE
+        flags.set(ValueLayout.JAVA_BYTE, denseId.toLong(), updated.toByte())
+        return true
     }
 
     internal fun classIndexOf(denseId: Int): Int =

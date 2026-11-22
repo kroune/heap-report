@@ -2,10 +2,10 @@
 
 Implementation of `backend/mat/SHAPES.md`, in Kotlin. The analyzer operates on
 a compact graph behind the `AnalysisGraph` interface; real dumps are read by
-`hprof-analyze`, a standalone parallel HPROF reader. Whole-heap on the
-15.6 GB / 260.8M-object `run-jfr-38` dump: **~150–240 s end-to-end,
-≤4.0 GB peak physical footprint** (Xmx 1500m; the CSR graph lives in unlinked
-file-backed mappings, so memory pressure evicts instead of OOMing).
+`hprof-analyze`, a standalone parallel HPROF reader. On the
+15.6 GB / 260.8M-object `run-jfr-38` dump, the measured local run completed in
+**350.8 s end-to-end at Xmx 2g**, with byte-identical output to the original
+implementation (measurement details below).
 
 Spec section references below are to SHAPES.md.
 
@@ -166,8 +166,9 @@ point 4, discretized by class and merged exactly).
 
 ## HPROF pipeline (`hprof-analyze`, `shapes/hprof/`)
 
-Reads the dump directly in one small-heap JVM; this is the path that meets
-the "whole heap in under 5 minutes within ~6 GB" target. Pipeline:
+Reads the dump directly in one small-heap JVM. Large graph arrays live in
+unlinked file-backed mappings, allowing the OS to reclaim resident pages under
+pressure instead of growing the Java heap. Pipeline:
 
 1. **Directory scan** — one pass over top-level records: UTF-8 strings,
    `LOAD_CLASS`, heap-segment extents (HotSpot writes ~1 MiB segments; they
@@ -176,7 +177,8 @@ the "whole heap in under 5 minutes within ~6 GB" target. Pipeline:
    byte offsets over the super chain, static/loader retained addresses), GC
    roots incl. per-thread locals, object addresses per chunk.
 3. **Address table** — dense ids are address ranks; lookup is a span table
-   (4 KiB spans → u16 deltas, ~2.1 B/object) built by parallel counting sort.
+   (512-byte spans → u16 deltas) built in parallel from ordered chunks, with
+   a counting-sort fallback for unordered heaps.
 4. **Record walk (walk B, parallel)** — per-class extraction plans apply the
    reference-mechanics filter, conceal rules and all structural projections
    (map/table flattening per SHAPES.md "projection") from raw field bytes;
@@ -220,14 +222,21 @@ Semantics notes, pinned by measurement on run-jfr-38:
   members (deduped per member); like all relaxed components they are exempt
   from edge-accounting verification.
 
-### Whole-heap result (run-jfr-38, M1 Max, warm-ish cache)
+### Whole-heap result (run-jfr-38, i7-13700H, four processors)
 
-259,731,971 objects / 587,440,446 refs → 104,612 shapes (collapse 2,483×).
-Phases: directory ~3 s, heap index ~18 s, address table ~3.5 s, record walk
-14–45 s, scatter ~6 s, liveness ~21 s, fold+compact ~11 s, Tarjan ~13–16 s,
-cons ~16 s (lazy WL), aggregate ~15 s; **total ~150–240 s** (cache-state
-dependent) in one JVM at Xmx 1500m, peak physical footprint **≤4.0 GB**
-(plus evictable file-backed pages).
+259,731,971 selected objects / 510,745,821 graph edges → 104,612 shapes
+(collapse 2,483×). With JFR enabled and Xmx 2g: index 51.8 s, extraction
+152.8 s, selection 44.8 s, Tarjan 13.9 s, cons 79.1 s, aggregate 4.1 s;
+**total 350.8 s**. The final SHP1, extraction JSON and relaxation JSON were
+byte-identical to the original implementation's output.
+
+For comparison, the original took 532.6 s in its successful Xmx 4g run and
+OOMed at Xmx 2g after 315.0 s. Those timings have different heap limits and
+cache conditions, so they are not a perfectly controlled speedup ratio.
+Optimized runs at Xmx 2g have reached 8.38–11.04 GiB peak RSS, including
+memory-mapped input and file-backed graph pages; RSS varies with OS page
+reclamation. SCC descriptor storage alone removes two 138.7M-entry Java int
+arrays (~1.03 GiB) in favor of one file-backed mapping.
 `--verify` passes inv1/2/4; inv3 differs by exactly the class-only concealed
 edge count when relax rules are active (those edges are accounted by
 `ShapeRelaxationStats`).

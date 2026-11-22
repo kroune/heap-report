@@ -50,7 +50,8 @@ internal class ObjectSelector(
     private val scopeClassName = (selection as? Selection.ClassClosure)?.className
 
     operator fun invoke(): HeapGraph {
-        log.phase("live", { "$it objects" }) { markLive() }
+        val markScope = scopeClassName == null
+        log.phase("live", { "$it objects" }) { markLive(markScope) }
         val scopeRoots = selectScope()
         val leafState = foldLeafStats()
         val graph = compact(leafState, scopeRoots)
@@ -60,7 +61,7 @@ internal class ObjectSelector(
 
     // ------------------------------------------------------------------ liveness
 
-    private fun markLive(): Long {
+    private fun markLive(markScope: Boolean): Long {
         val classStore = references.classes
         val classLive = BooleanArray(classStore.size)
         val graphClassFired = BooleanArray(graphClasses.size + 1)
@@ -77,8 +78,7 @@ internal class ObjectSelector(
                 for (target in staticTargets[cursor]) {
                     if (target >= classBase) {
                         fireClass(target - classBase)
-                    } else if (!references.hasFlag(target, ObjectFlags.LIVE)) {
-                        references.setFlag(target, ObjectFlags.LIVE)
+                    } else if (references.markLive(target, markScope)) {
                         liveCount++
                         queue.push(target)
                     }
@@ -96,8 +96,7 @@ internal class ObjectSelector(
         for (target in references.roots) {
             if (target >= classBase) {
                 fireClass(target - classBase)
-            } else if (!references.hasFlag(target, ObjectFlags.LIVE)) {
-                references.setFlag(target, ObjectFlags.LIVE)
+            } else if (references.markLive(target, markScope)) {
                 liveCount++
                 queue.push(target)
             }
@@ -112,8 +111,7 @@ internal class ObjectSelector(
                 val raw = references.targetAt(flat) and TARGET_MASK
                 if (raw >= classBase) {
                     fireClass(raw - classBase)
-                } else if (!references.hasFlag(raw, ObjectFlags.LIVE)) {
-                    references.setFlag(raw, ObjectFlags.LIVE)
+                } else if (references.markLive(raw, markScope)) {
                     liveCount++
                     queue.push(raw)
                 }
@@ -127,25 +125,17 @@ internal class ObjectSelector(
     /** Marks the SCOPE flag; returns scope roots (dense ids). */
     private fun selectScope(): IntArray {
         if (scopeClassName == null) {
-            for (denseId in 0 until objectCount) {
-                val flags = references.flagsOf(denseId)
-                if (flags and ObjectFlags.LIVE != 0 && flags and ObjectFlags.EXCLUDED == 0) {
-                    references.setFlag(denseId, ObjectFlags.SCOPE)
-                }
-            }
             // Whole-heap scope roots: GC-root targets plus class statics —
             // exactly the objects the liveness walk was seeded with. They
             // seed the analyzer's observability cascade and the per-shape
             // root counts.
-            val seen = LongArray((objectCount + 63) ushr 6)
             val seeds = IntArrayList()
             fun addSeed(denseId: Int) {
                 val flags = references.flagsOf(denseId)
-                if (flags and ObjectFlags.LIVE == 0 || flags and ObjectFlags.EXCLUDED != 0) return
-                val word = denseId ushr 6
-                val bit = 1L shl (denseId and 63)
-                if (seen[word] and bit != 0L) return
-                seen[word] = seen[word] or bit
+                if (flags and ObjectFlags.LIVE == 0 || flags and ObjectFlags.EXCLUDED != 0 ||
+                    flags and ObjectFlags.ROOT_SEED != 0
+                ) return
+                references.setFlag(denseId, ObjectFlags.ROOT_SEED)
                 seeds.add(denseId)
             }
             for (target in references.roots) if (target < classBase) addSeed(target)
@@ -199,68 +189,65 @@ internal class ObjectSelector(
         val leafOrdinalByClass: IntArray,
         val leafShapes: ArrayList<LeafShapeStats>,
         var foldedObjects: Long,
+        val keptBits: LongArray,
     )
 
     private fun foldLeafStats(): LeafFoldState {
         val pairs = references.shallowOverrides.toSortedPairs()
-
+        val keptBits = LongArray((objectCount + 63) ushr 6)
         val leafOrdinalByClass = IntArray(graphClasses.size + 1) { -1 }
         val leafShapes = ArrayList<LeafShapeStats>()
         var foldedObjects = 0L
-        if (foldLeaves) {
-            var pairCursor = 0
-            for (denseId in 0 until objectCount) {
-                val flags = references.flagsOf(denseId)
-                while (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() < denseId) {
-                    pairCursor++
-                }
-                if (flags and ObjectFlags.SCOPE == 0 || flags and ObjectFlags.LEAF == 0) continue
-                val graphClass = references.classIndexOf(denseId)
-                var ordinal = leafOrdinalByClass[graphClass]
-                if (ordinal < 0) {
-                    ordinal = leafShapes.size
-                    leafOrdinalByClass[graphClass] = ordinal
-                    leafShapes.add(LeafShapeStats(graphClass))
-                }
-                val shallow =
-                    if (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() == denseId) {
-                        pairs[pairCursor] and 0xFFFFFFFFL
-                    } else {
-                        graphClasses.shallowSizes[graphClass]
-                    }
-                leafShapes[ordinal].add(shallow)
-                foldedObjects++
+        var pairCursor = 0
+        for (denseId in 0 until objectCount) {
+            val flags = references.flagsOf(denseId)
+            val folded = foldLeaves && flags and ObjectFlags.LEAF != 0
+            if (flags and ObjectFlags.SCOPE != 0 && !folded) {
+                keptBits[denseId ushr 6] = keptBits[denseId ushr 6] or (1L shl (denseId and 63))
             }
+            if (!foldLeaves) continue
+            while (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() < denseId) {
+                pairCursor++
+            }
+            if (flags and ObjectFlags.SCOPE == 0 || flags and ObjectFlags.LEAF == 0) continue
+            val graphClass = references.classIndexOf(denseId)
+            var ordinal = leafOrdinalByClass[graphClass]
+            if (ordinal < 0) {
+                ordinal = leafShapes.size
+                leafOrdinalByClass[graphClass] = ordinal
+                leafShapes.add(LeafShapeStats(graphClass))
+            }
+            val shallow =
+                if (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() == denseId) {
+                    pairs[pairCursor] and 0xFFFFFFFFL
+                } else {
+                    graphClasses.shallowSizes[graphClass]
+                }
+            leafShapes[ordinal].add(shallow)
+            foldedObjects++
         }
-        return LeafFoldState(pairs, leafOrdinalByClass, leafShapes, foldedObjects)
+        return LeafFoldState(pairs, leafOrdinalByClass, leafShapes, foldedObjects, keptBits)
     }
 
     // ------------------------------------------------------------------ compaction
 
     private fun compact(leafState: LeafFoldState, scopeRoots: IntArray): HeapGraph {
         // Rank structure over kept objects for target renumbering.
-        val wordCount = (objectCount + 63) ushr 6
-        val keptBits = LongArray(wordCount)
+        val keptBits = leafState.keptBits
+        val wordCount = keptBits.size
         val rankPrefix = IntArray(wordCount + 1)
-        var nodeCount = 0
-        for (denseId in 0 until objectCount) {
-            if (isKept(denseId)) {
-                keptBits[denseId ushr 6] = keptBits[denseId ushr 6] or (1L shl (denseId and 63))
-                nodeCount++
-            }
-        }
         var running = 0
         for (word in 0 until wordCount) {
             rankPrefix[word] = running
             running += java.lang.Long.bitCount(keptBits[word])
         }
         rankPrefix[wordCount] = running
-        check(running == nodeCount)
+        val nodeCount = running
 
         val newClassIdx = references.graphArena.allocate(maxOf(nodeCount.toLong(), 1) shl 1)
-        val overrides = it.unimi.dsi.fastutil.longs.LongArrayList()
         val pairs = leafState.sortedShallowPairs
         var pairCursor = 0
+        var overrideCount = 0
         var writeCursor = 0L
         var newId = 0
         var strippedExcluded = 0L
@@ -270,7 +257,7 @@ internal class ObjectSelector(
             while (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() < denseId) {
                 pairCursor++
             }
-            if (!isKept(denseId)) continue
+            if (keptBits[denseId ushr 6] and (1L shl (denseId and 63)) == 0L) continue
             val rowStart = references.rowStart(denseId)
             val rowEnd = references.rowEnd(denseId)
             offsets.set(U32, newId.toLong() shl 2, writeCursor.toInt())
@@ -278,7 +265,8 @@ internal class ObjectSelector(
             val graphClass = references.classIndexOf(denseId)
             newClassIdx.set(ValueLayout.JAVA_SHORT_UNALIGNED, newId.toLong() shl 1, graphClass.toShort())
             if (pairCursor < pairs.size && (pairs[pairCursor] ushr 32).toInt() == denseId) {
-                overrides.add((newId.toLong() shl 32) or (pairs[pairCursor] and 0xFFFFFFFFL))
+                pairs[overrideCount++] =
+                    (newId.toLong() shl 32) or (pairs[pairCursor] and 0xFFFFFFFFL)
             }
 
             for (flat in rowStart until rowEnd) {
@@ -329,7 +317,9 @@ internal class ObjectSelector(
             targets = targets,
             classIndices = newClassIdx,
             classShallowSizes = graphClasses.shallowSizes,
-            shallowOverrides = overrides.toLongArray(),
+            instanceShallowOverrides = graphClasses.instanceShallowOverrides,
+            shallowOverrides = pairs,
+            shallowOverrideCount = overrideCount,
             leafShapes = leafState.leafShapes.map { stats ->
                 LeafShapeAggregate(
                     classIndex = stats.classIndex,
@@ -345,12 +335,6 @@ internal class ObjectSelector(
             totalEdgeCount = writeCursor,
             sourceObjectCount = objectCount.toLong(),
         )
-    }
-
-    private fun isKept(denseId: Int): Boolean {
-        val flags = references.flagsOf(denseId)
-        if (flags and ObjectFlags.SCOPE == 0) return false
-        return !(foldLeaves && flags and ObjectFlags.LEAF != 0)
     }
 
     private fun rankOf(keptBits: LongArray, rankPrefix: IntArray, denseId: Int): Int {

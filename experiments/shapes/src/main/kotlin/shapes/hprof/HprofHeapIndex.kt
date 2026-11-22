@@ -48,6 +48,8 @@ class HprofHeapIndex private constructor(
     val counts: HeapCounts,
     /** GC-root object addresses, duplicates included. */
     val rootAddresses: LongArray,
+    val minAddress: Long,
+    val maxAddress: Long,
     /**
      * Stack locals and blocked monitors per thread object address. MAT models
      * them as outbound references of the thread, and shapes follow suit.
@@ -55,6 +57,9 @@ class HprofHeapIndex private constructor(
     val threadLocalsByAddress: Long2ObjectOpenHashMap<LongArrayList>,
     /** Per-chunk object addresses (instances + arrays, class objects excluded). */
     val addressBuffers: List<AddressBuffer>,
+    val addressesAscending: BooleanArray,
+    val firstAddresses: LongArray,
+    val lastAddresses: LongArray,
     /** Owns [addressBuffers]; close after the address table is built. */
     val addressArena: Arena,
 ) {
@@ -92,7 +97,11 @@ class HprofHeapIndex private constructor(
                 val threadObjects: LongArrayList,
                 /** Interleaved (threadSerial, localAddress) pairs. */
                 val threadLocals: LongArrayList,
+                var minAddress: Long = Long.MAX_VALUE,
                 var maxAddress: Long = 0,
+                var firstAddress: Long = 0,
+                var lastAddress: Long = 0,
+                var addressesAscending: Boolean = true,
             )
 
             val chunks = groupIntoChunks(directory.heapSegments)
@@ -106,7 +115,11 @@ class HprofHeapIndex private constructor(
                 val threadObjects = LongArrayList()
                 val threadLocals = LongArrayList()
                 val addresses = addressBuffers[chunkIndex]
+                var minAddress = Long.MAX_VALUE
                 var maxAddress = 0L
+                var firstAddress = 0L
+                var lastAddress = 0L
+                var addressesAscending = true
                 chunk.forEachRange { start, end ->
                     var offset = start
                     while (offset < end) {
@@ -126,15 +139,34 @@ class HprofHeapIndex private constructor(
                             HprofSubTag.INSTANCE_DUMP,
                             HprofSubTag.OBJECT_ARRAY_DUMP,
                             HprofSubTag.PRIMITIVE_ARRAY_DUMP -> {
-                                when (tag) {
-                                    HprofSubTag.INSTANCE_DUMP -> counts.instances++
-                                    HprofSubTag.OBJECT_ARRAY_DUMP -> counts.objectArrays++
-                                    else -> counts.primitiveArrays++
+                                val identifierSize = file.identifierSize
+                                val nextOffset = when (tag) {
+                                    HprofSubTag.INSTANCE_DUMP -> {
+                                        counts.instances++
+                                        val dataBytes = file.u4(offset + identifierSize + 4 + identifierSize)
+                                        offset + identifierSize + 4 + identifierSize + 4 + dataBytes
+                                    }
+                                    HprofSubTag.OBJECT_ARRAY_DUMP -> {
+                                        counts.objectArrays++
+                                        val count = file.u4(offset + identifierSize + 4)
+                                        offset + identifierSize + 4 + 4 + identifierSize + count * identifierSize
+                                    }
+                                    else -> {
+                                        counts.primitiveArrays++
+                                        val count = file.u4(offset + identifierSize + 4)
+                                        val elementType = file.u1(offset + identifierSize + 4 + 4)
+                                        offset + identifierSize + 4 + 4 + 1 +
+                                            count * HprofType.byteSize(elementType, identifierSize)
+                                    }
                                 }
                                 val address = file.id(offset)
+                                if (addresses.size == 0L) firstAddress = address
+                                if (addresses.size > 0L && address <= lastAddress) addressesAscending = false
+                                lastAddress = address
+                                if (address < minAddress) minAddress = address
                                 if (address > maxAddress) maxAddress = address
                                 addresses.add(address)
-                                offset = skipSubRecord(file, tag, offset)
+                                offset = nextOffset
                             }
                             HprofSubTag.ROOT_THREAD_OBJECT -> {
                                 val threadAddress = file.id(offset)
@@ -172,7 +204,11 @@ class HprofHeapIndex private constructor(
                     rootAddresses,
                     threadObjects,
                     threadLocals,
+                    minAddress,
                     maxAddress,
+                    firstAddress,
+                    lastAddress,
+                    addressesAscending,
                 )
             }
 
@@ -183,8 +219,10 @@ class HprofHeapIndex private constructor(
             val rootAddresses = LongArrayList()
             val threadBySerial = Int2LongOpenHashMap()
             val allThreadLocals = LongArrayList()
+            var minAddress = Long.MAX_VALUE
             var maxAddress = 0L
             for (result in results) {
+                if (result.minAddress < minAddress) minAddress = result.minAddress
                 if (result.maxAddress > maxAddress) maxAddress = result.maxAddress
                 var pairIndex = 0
                 while (pairIndex < result.threadObjects.size) {
@@ -227,8 +265,13 @@ class HprofHeapIndex private constructor(
                 chunks,
                 counts,
                 rootAddresses.toLongArray(),
+                minAddress,
+                maxAddress,
                 threadLocalsByAddress,
                 addressBuffers,
+                BooleanArray(results.size) { results[it].addressesAscending },
+                LongArray(results.size) { results[it].firstAddress },
+                LongArray(results.size) { results[it].lastAddress },
                 addressArena,
             )
         }

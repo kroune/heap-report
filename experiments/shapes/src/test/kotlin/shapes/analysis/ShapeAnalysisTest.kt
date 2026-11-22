@@ -2,9 +2,12 @@ package shapes.analysis
 
 import shapes.graph.ClassName
 import shapes.graph.ObjectGraph
+import shapes.relaxation.ShapeRelaxationRules
+import shapes.relaxation.StructuralRelaxation
 import shapes.synthetic.SyntheticObjectGraphs
 import shapes.verification.ShapeInvariantVerifier
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -92,6 +95,25 @@ class ShapeAnalysisTest {
     }
 
     @Test
+    fun `singleton keeps all children when scratch grows`() {
+        val builder = ObjectGraph.Builder()
+        val leaves = (0 until 65).map { index ->
+            builder.addObject(ClassName("L$index"), 5U)
+        }
+        val root = builder.addObject(ClassName("R"), 5U, leaves.toIntArray())
+        val result = analyze(builder.build(), intArrayOf(root))
+
+        val source = result.entry("R")
+        val childLabels = result.edges
+            .filter { it.shapeId == source.id }
+            .map { edge ->
+                result.entries.single { it.id == edge.childShapeId }.label to edge.multiplicity
+            }
+            .sortedBy { it.first }
+        assertEquals((0 until 65).map { "L$it" to 1L }.sortedBy { it.first }, childLabels)
+    }
+
+    @Test
     fun `shallow size is not part of the key`() {
         val builder = ObjectGraph.Builder()
         val small = builder.addObject(ClassName("byte[]"), 16U)
@@ -149,6 +171,46 @@ class ShapeAnalysisTest {
             listOf(SccMemberEntry(ClassName("N"), 1, listOf(SccMemberConnection(0, 1)))),
             shape.members,
         )
+    }
+
+    @Test
+    fun `component numbering and member iteration follow tarjan completion order`() {
+        val graph = ObjectGraph.of(
+            classes = listOf("Root", "A", "B", "Self", "C", "D", "Leaf")
+                .map(::ClassName)
+                .toTypedArray(),
+            shallow = ULongArray(7) { 5U },
+            refs = arrayOf(
+                intArrayOf(1, 2),
+                intArrayOf(2),
+                intArrayOf(1),
+                intArrayOf(3),
+                intArrayOf(5),
+                intArrayOf(4),
+                intArrayOf(),
+            ),
+        )
+
+        val components = graph.findComponents {}
+        assertEquals(5, components.members.count)
+        assertContentEquals(
+            intArrayOf(1, 0, 0, 2, 3, 3, 4),
+            IntArray(graph.size) { components.assignment.componentOf(it) },
+        )
+        val expectedMembers = arrayOf(
+            intArrayOf(1, 2),
+            intArrayOf(0),
+            intArrayOf(3),
+            intArrayOf(4, 5),
+            intArrayOf(6),
+        )
+        for (componentId in expectedMembers.indices) {
+            assertEquals(expectedMembers[componentId].size, components.members.size(componentId))
+            val actualMembers = IntArray(expectedMembers[componentId].size)
+            var index = 0
+            components.members.forEachMember(componentId) { actualMembers[index++] = it }
+            assertContentEquals(expectedMembers[componentId], actualMembers, "component $componentId")
+        }
     }
 
     @Test
@@ -301,6 +363,37 @@ class ShapeAnalysisTest {
         assertTrue(entry.membersComplete)
         assertEquals(listOf(1024, 1024), entry.members?.map { it.memberCount })
         assertEquals(2048, entry.internalEdgesPerInstance)
+    }
+
+    @Test
+    fun `large set-children scc deduplicates each member exactly once`() {
+        val memberCount = 2048
+        val nodeClass = ClassName("N")
+        val leafClass = ClassName("L")
+        val graph = ObjectGraph.of(
+            classes = Array(memberCount + 1) { if (it < memberCount) nodeClass else leafClass },
+            shallow = ULongArray(memberCount + 1) { 5U },
+            refs = Array(memberCount + 1) { objectId ->
+                if (objectId == memberCount) {
+                    intArrayOf()
+                } else {
+                    intArrayOf((objectId + 1) % memberCount, memberCount, memberCount)
+                }
+            },
+        )
+        val analysis = graph.select(intArrayOf(0)).analyzeShapes(
+            ShapeRelaxationRules(mapOf(nodeClass to StructuralRelaxation.SET_CHILDREN)),
+        )
+
+        val scc = analysis.result.entries.single { it.kind == ShapeKind.SCC }
+        val leaf = analysis.result.entry("L")
+        val outgoing = analysis.result.edges.single { it.shapeId == scc.id }
+        assertEquals(leaf.id, outgoing.childShapeId)
+        assertEquals(memberCount.toLong(), outgoing.multiplicity)
+        assertEquals(memberCount.toLong(), analysis.shapes.relaxationStats.relaxedObjects)
+        assertEquals(memberCount.toLong(), analysis.shapes.relaxationStats.setChildrenHiddenEdges)
+        assertEquals(0, analysis.shapes.relaxationStats.classOnlyHiddenEdges)
+        assertEquals(0, analysis.shapes.relaxationStats.setChildrenConcealedObjects)
     }
 
     @Test

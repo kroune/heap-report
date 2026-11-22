@@ -44,8 +44,10 @@ class HeapGraph internal constructor(
     private val classIndices: MemorySegment,
     /** Modeled shallow size per graph class (instances). */
     private val classShallowSizes: LongArray,
+    private val instanceShallowOverrides: BooleanArray,
     /** Array-node shallow overrides: packed (nodeId << 32 | shallow), sorted. */
     private val shallowOverrides: LongArray,
+    private val shallowOverrideCount: Int,
     override val leafShapes: List<LeafShapeAggregate>,
     /** Node ids of analysis roots: class-closure roots, or the liveness seeds of a whole heap. */
     override val roots: IntArray,
@@ -98,8 +100,11 @@ class HeapGraph internal constructor(
         targets.get(U32, flatIndex.toLong() shl 2)
 
     fun shallowSizeOf(nodeId: Int): Long {
+        val classIndex = classIndexOf(nodeId)
+        val modeled = classShallowSizes[classIndex]
+        if (modeled >= 0 && !instanceShallowOverrides[classIndex]) return modeled
         val override = overrideOf(nodeId)
-        return if (override >= 0) override else classShallowSizes[classIndexOf(nodeId)]
+        return if (override >= 0) override else modeled
     }
 
     /** Total shallow bytes over all selected objects, including folded leaves. */
@@ -112,7 +117,7 @@ class HeapGraph internal constructor(
 
     private fun overrideOf(nodeId: Int): Long {
         var low = 0
-        var high = shallowOverrides.size - 1
+        var high = shallowOverrideCount - 1
         while (low <= high) {
             val middle = (low + high) ushr 1
             val middleNode = (shallowOverrides[middle] ushr 32).toInt()

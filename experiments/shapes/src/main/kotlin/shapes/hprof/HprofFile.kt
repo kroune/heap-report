@@ -3,6 +3,7 @@ package shapes.hprof
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
 import java.nio.file.Path
@@ -14,39 +15,51 @@ import java.nio.file.StandardOpenOption
  */
 class HprofFile private constructor(
     private val arena: Arena,
-    val data: MemorySegment,
+    private val data: Array<ByteBuffer>,
+    val size: Long,
     val identifierSize: Int,
     /** Offset of the first top-level record. */
     val firstRecordOffset: Long,
 ) : AutoCloseable {
-    val size: Long
-        get() = data.byteSize()
+    fun u1(offset: Long): Int =
+        data[(offset ushr REGION_SHIFT).toInt()].get((offset and REGION_MASK).toInt()).toInt() and 0xFF
 
-    fun u1(offset: Long): Int = data.get(ValueLayout.JAVA_BYTE, offset).toInt() and 0xFF
+    fun u2(offset: Long): Int =
+        data[(offset ushr REGION_SHIFT).toInt()].getShort((offset and REGION_MASK).toInt()).toInt() and 0xFFFF
 
-    fun u2(offset: Long): Int = data.get(U2, offset).toInt() and 0xFFFF
+    fun u4(offset: Long): Long =
+        data[(offset ushr REGION_SHIFT).toInt()].getInt((offset and REGION_MASK).toInt()).toLong() and 0xFFFFFFFFL
 
-    fun u4(offset: Long): Long = data.get(U4, offset).toLong() and 0xFFFFFFFFL
-
-    fun u8(offset: Long): Long = data.get(U8, offset)
+    fun u8(offset: Long): Long =
+        data[(offset ushr REGION_SHIFT).toInt()].getLong((offset and REGION_MASK).toInt())
 
     fun id(offset: Long): Long =
         if (identifierSize == 8) u8(offset) else u4(offset)
 
     fun utf8(offset: Long, length: Int): String {
         val bytes = ByteArray(length)
-        MemorySegment.copy(data, offset, MemorySegment.ofArray(bytes), 0, length.toLong())
+        var read = 0
+        while (read < length) {
+            val sourceOffset = offset + read
+            val region = data[(sourceOffset ushr REGION_SHIFT).toInt()].duplicate()
+            val position = (sourceOffset and REGION_MASK).toInt()
+            val count = minOf(length - read, region.capacity() - position)
+            region.position(position)
+            region.get(bytes, read, count)
+            read += count
+        }
         return String(bytes, Charsets.UTF_8)
     }
 
     override fun close() = arena.close()
 
     companion object {
-        private val U2 = ValueLayout.JAVA_SHORT_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN)
         private val U4 = ValueLayout.JAVA_INT_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN)
-        private val U8 = ValueLayout.JAVA_LONG_UNALIGNED.withOrder(ByteOrder.BIG_ENDIAN)
 
         private const val HEADER_PREFIX = "JAVA PROFILE "
+        private const val REGION_SHIFT = 29
+        private const val REGION_CAPACITY = 1L shl REGION_SHIFT
+        private const val REGION_MASK = REGION_CAPACITY - 1
 
         fun open(path: Path): HprofFile {
             val arena = Arena.ofShared()
@@ -74,7 +87,16 @@ class HprofFile private constructor(
                 }
                 // version + NUL + u4 identifier size + u8 timestamp
                 val firstRecord = versionEnd + 1 + 4 + 8
-                return HprofFile(arena, segment, identifierSize, firstRecord)
+                val regions = Array(((segment.byteSize() + REGION_MASK) ushr REGION_SHIFT).toInt()) { index ->
+                    val start = index.toLong() shl REGION_SHIFT
+                    segment.asSlice(
+                        start,
+                        minOf(REGION_CAPACITY + Long.SIZE_BYTES, segment.byteSize() - start),
+                    )
+                        .asByteBuffer()
+                        .order(ByteOrder.BIG_ENDIAN)
+                }
+                return HprofFile(arena, regions, segment.byteSize(), identifierSize, firstRecord)
             } catch (failure: Throwable) {
                 arena.close()
                 throw failure
@@ -121,7 +143,8 @@ object HprofType {
     const val INT = 10
     const val LONG = 11
 
-    fun byteSize(type: Int, identifierSize: Int): Int = when (type) {
+    @Suppress("NOTHING_TO_INLINE")
+    inline fun byteSize(type: Int, identifierSize: Int): Int = when (type) {
         OBJECT -> identifierSize
         BOOLEAN, BYTE -> 1
         CHAR, SHORT -> 2

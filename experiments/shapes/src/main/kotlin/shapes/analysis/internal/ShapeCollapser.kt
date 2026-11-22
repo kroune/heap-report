@@ -79,43 +79,23 @@ internal class ShapeCollapser(
 
         for (componentId in 0 until components.members.count) {
             val memberCount = components.members.size(componentId)
-            var hasSelfLoop = false
-            if (memberCount == 1) {
+            val shape = if (memberCount == 1) {
                 val objectId = components.members.singletonMember(componentId)
-                for (referenceIndex in 0 until graph.referenceCount(objectId)) {
-                    if (graph.referenceAt(objectId, referenceIndex) == objectId) {
+                val relaxation = relaxations.relaxationOf(objectId)
+                val referenceCount = graph.referenceCount(objectId)
+                var hasSelfLoop = false
+                var childCount = 0
+                for (referenceIndex in 0 until referenceCount) {
+                    val targetId = graph.referenceAt(objectId, referenceIndex)
+                    if (targetId == objectId) {
                         hasSelfLoop = true
                         break
                     }
-                }
-            }
-
-            val shape = if (memberCount == 1 && !hasSelfLoop) {
-                val objectId = components.members.singletonMember(componentId)
-                val relaxation = relaxations.relaxationOf(objectId)
-                if (relaxation != StructuralRelaxation.EXACT) relaxationStats.relaxedObjects++
-
-                val referenceCount = graph.referenceCount(objectId)
-                if (referenceCount == 0 || relaxation == StructuralRelaxation.CLASS_ONLY) {
-                    if (relaxation == StructuralRelaxation.CLASS_ONLY) {
-                        relaxationStats.classOnlyHiddenEdges += referenceCount
-                    }
-                    acyclicInterner.intern(
-                        shapes,
-                        graph.classIndex(objectId),
-                        graph.className(objectId),
-                        ShapeKind.LEAF,
-                        packedChildEdges,
-                        0,
-                    )
-                } else {
-                    if (referenceCount > childShapeIds.size) {
-                        childShapeIds = IntArray(maxOf(referenceCount, childShapeIds.size * 2))
-                        packedChildEdges = LongArray(childShapeIds.size)
-                    }
-                    var childCount = 0
-                    for (referenceIndex in 0 until referenceCount) {
-                        val targetId = graph.referenceAt(objectId, referenceIndex)
+                    if (relaxation != StructuralRelaxation.CLASS_ONLY) {
+                        if (childCount == childShapeIds.size) {
+                            childShapeIds = childShapeIds.copyOf(maxOf(referenceCount, childShapeIds.size * 2))
+                            packedChildEdges = LongArray(childShapeIds.size)
+                        }
                         val childShapeId = if (targetId < 0) {
                             leafShapeInternalIds[-targetId - 1]
                         } else {
@@ -128,26 +108,45 @@ internal class ShapeCollapser(
                         }
                         childShapeIds[childCount++] = childShapeId
                     }
+                }
 
-                    sortChildShapeIds(shapes, childShapeIds, childCount)
-                    val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
-                    val packedCount = packChildEdges(
-                        childShapeIds,
-                        childCount,
-                        packedChildEdges,
-                        setChildren,
-                    )
-                    if (setChildren) {
-                        relaxationStats.setChildrenHiddenEdges += childCount - packedCount
+                if (hasSelfLoop) {
+                    cyclicCollapser.collapse(intArrayOf(objectId))
+                } else {
+                    if (relaxation != StructuralRelaxation.EXACT) relaxationStats.relaxedObjects++
+                    if (referenceCount == 0 || relaxation == StructuralRelaxation.CLASS_ONLY) {
+                        if (relaxation == StructuralRelaxation.CLASS_ONLY) {
+                            relaxationStats.classOnlyHiddenEdges += referenceCount
+                        }
+                        acyclicInterner.intern(
+                            shapes,
+                            graph.classIndex(objectId),
+                            graph.className(objectId),
+                            ShapeKind.LEAF,
+                            packedChildEdges,
+                            0,
+                        )
+                    } else {
+                        sortChildShapeIds(shapes, childShapeIds, childCount)
+                        val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
+                        val packedCount = packChildEdges(
+                            childShapeIds,
+                            childCount,
+                            packedChildEdges,
+                            setChildren,
+                        )
+                        if (setChildren) {
+                            relaxationStats.setChildrenHiddenEdges += childCount - packedCount
+                        }
+                        acyclicInterner.intern(
+                            shapes,
+                            graph.classIndex(objectId),
+                            graph.className(objectId),
+                            ShapeKind.NODE,
+                            packedChildEdges,
+                            packedCount,
+                        )
                     }
-                    acyclicInterner.intern(
-                        shapes,
-                        graph.classIndex(objectId),
-                        graph.className(objectId),
-                        ShapeKind.NODE,
-                        packedChildEdges,
-                        packedCount,
-                    )
                 }
             } else if (memberCount > LAZY_WL_THRESHOLD) {
                 cyclicCollapser.collapseLazy(componentId, memberCount, progress)
@@ -203,10 +202,9 @@ internal class ShapeCollapser(
             return
         }
 
-        val sorted = childIds.copyOf(childCount).sortedWith { first, second ->
+        it.unimi.dsi.fastutil.ints.IntArrays.quickSort(childIds, 0, childCount) { first, second ->
             compareChildShapeIds(shapes, first, second)
         }
-        sorted.forEachIndexed { index, childId -> childIds[index] = childId }
     }
 
     private companion object {

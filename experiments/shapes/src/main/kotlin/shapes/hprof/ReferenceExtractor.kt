@@ -53,11 +53,28 @@ internal class ExtractionState(
     val expansionBuffers = Array(chunkCount) { IntBlockBuffer(expansionArena) }
     val shallowPairBuffers = Array(chunkCount) { IntBlockBuffer(shallowArena) }
     val counters = ExtractionCounters()
+    val primitiveClassIndices = IntArray(16) { -1 }.apply {
+        val names = mapOf(
+            HprofType.BOOLEAN to "boolean[]",
+            HprofType.CHAR to "char[]",
+            HprofType.FLOAT to "float[]",
+            HprofType.DOUBLE to "double[]",
+            HprofType.BYTE to "byte[]",
+            HprofType.SHORT to "short[]",
+            HprofType.INT to "int[]",
+            HprofType.LONG to "long[]",
+        )
+        for ((type, name) in names) {
+            val matches = classStore.requireByName(name)
+            if (matches.isNotEmpty()) this[type] = matches[0]
+        }
+    }
 
     private val graphClassIndexByName = ConcurrentHashMap<String, Int>()
     private val graphClassCounter = AtomicInteger()
     val graphClassNamesSlots = arrayOfNulls<String>(1 shl 16)
     val graphClassShallow = LongArray(1 shl 16) { -1 }
+    val graphClassInstanceOverrides = BooleanArray(1 shl 16)
 
     val graphClassCount: Int
         get() = graphClassCounter.get()
@@ -87,6 +104,7 @@ internal class ExtractionState(
             names = (0 until count).map { ClassName(graphClassNamesSlots[it] ?: "unused-$it") },
             shallowSizes = graphClassShallow.copyOf(maxOf(count, 1)),
             storeClassesByGraphClass = Array(count) { storeClasses[it].toIntArray() },
+            instanceShallowOverrides = graphClassInstanceOverrides.copyOf(count),
         )
     }
 
@@ -402,23 +420,13 @@ internal class ReferenceExtractor(
                 var cursor = 0L
                 while (cursor < reader.intCount) {
                     val denseId = reader[cursor]
-                    val mainCount = reader[cursor + 1]
-                    val extrasCount = reader[cursor + 2]
-                    cursor += 3
-                    var write = offsets.get(U32, denseId.toLong() shl 2).toLong()
-                    for (mainIndex in 0 until mainCount) {
-                        targets.set(U32, write shl 2, reader[cursor + mainIndex])
-                        write++
+                    val targetCount = reader[cursor + 1]
+                    cursor += 2
+                    val rowStart = offsets.get(U32, denseId.toLong() shl 2).toLong()
+                    for (targetIndex in 0 until targetCount) {
+                        targets.set(U32, (rowStart + targetIndex) shl 2, reader[cursor + targetIndex])
                     }
-                    for (extraIndex in 0 until extrasCount) {
-                        targets.set(
-                            U32,
-                            write shl 2,
-                            reader[cursor + mainCount + extraIndex] or EXTRA_FLAG,
-                        )
-                        write++
-                    }
-                    cursor += mainCount + extrasCount
+                    cursor += targetCount
                 }
 
                 // Synthetic hash-table rows land after the row's extras;
@@ -492,6 +500,12 @@ private class ChunkWorker(
     private var dropValues = LongArray(16)
     private val dedupSet = it.unimi.dsi.fastutil.longs.LongOpenHashSet(64)
     private val intDedupSet = it.unimi.dsi.fastutil.ints.IntOpenHashSet(64)
+    private val recordIdBase = state.dump.recordIdBases[chunkIndex]
+    private var nextRecordOrdinal = 0
+    private val classAddressKeys = LongArray(256) { Long.MIN_VALUE }
+    private val classAddressValues = IntArray(256)
+    private val graphClassKeys = IntArray(256) { -1 }
+    private val graphClassValues = IntArray(256)
 
     fun finish() = spill.close()
 
@@ -501,12 +515,13 @@ private class ChunkWorker(
         val dataBytes = file.u4(recordStart + identifierSize + 4 + identifierSize)
         val dataStart = recordStart + identifierSize + 4 + identifierSize + 4
 
-        val denseId = table.denseIdOf(address)
-        check(denseId >= 0) { "instance at $recordStart missing from address table" }
-        val storeClassIndex = classStore.indexOf(classAddress)
+        val denseId = ownDenseId(address)
+        check(denseId >= 0) { "instance at $recordStart (address $address) missing from address table" }
+        val storeClassIndex = storeClassIndexOf(classAddress)
         check(storeClassIndex >= 0) { "instance of unknown class at $recordStart" }
         val plan = plans[storeClassIndex]
-        writeClassIndex(denseId, state.graphClassIndexOf(plan))
+        val graphClassIndex = graphClassIndexOf(storeClassIndex, plan)
+        writeClassIndex(denseId, graphClassIndex)
         mainCount = 0
         extrasCount = 0
 
@@ -517,7 +532,8 @@ private class ChunkWorker(
             state.setFlag(denseId, ObjectFlags.LEAF)
             return dataStart + dataBytes
         }
-        if (plan.shallowSize != state.graphClassShallow[plan.graphClassIndex]) {
+        if (plan.shallowSize != state.graphClassShallow[graphClassIndex]) {
+            state.graphClassInstanceOverrides[graphClassIndex] = true
             addShallowPair(denseId, plan.shallowSize)
         }
 
@@ -689,7 +705,7 @@ private class ChunkWorker(
                 if (target >= 0) {
                     expandSeeds[seedCount++] = target
                 } else {
-                    val classTarget = classStore.indexOf(value)
+                    val classTarget = storeClassIndexOf(value)
                     if (classTarget >= 0) {
                         counters.classTargetRefs++
                         addExtra(state.classTargetBase + classTarget)
@@ -714,12 +730,12 @@ private class ChunkWorker(
         val classAddress = file.id(recordStart + identifierSize + 4 + 4)
         val elementsStart = recordStart + identifierSize + 4 + 4 + identifierSize
 
-        val denseId = table.denseIdOf(address)
-        check(denseId >= 0) { "array at $recordStart missing from address table" }
-        val storeClassIndex = classStore.indexOf(classAddress)
+        val denseId = ownDenseId(address)
+        check(denseId >= 0) { "array at $recordStart (address $address) missing from address table" }
+        val storeClassIndex = storeClassIndexOf(classAddress)
         check(storeClassIndex >= 0) { "array of unknown class at $recordStart" }
         val plan = plans[storeClassIndex]
-        writeClassIndex(denseId, state.graphClassIndexOf(plan))
+        writeClassIndex(denseId, graphClassIndexOf(storeClassIndex, plan))
         addShallowPair(
             denseId,
             alignToHeapGrain(classStore.arrayHeaderSize + count * classStore.oopSize.toLong()),
@@ -750,7 +766,7 @@ private class ChunkWorker(
                         counters.dedupDropped++
                     }
                 }
-                finishRecord(denseId, leafWhenEmpty = true)
+                finishRecord(denseId, leafWhenEmpty = true, deduplicate = false)
             }
             PlanKind.NODE_TABLE -> {
                 // Elements defer to expansion: entry-node chains expand there.
@@ -764,7 +780,7 @@ private class ChunkWorker(
                     if (target >= 0) {
                         keptValues[elementCount++] = target.toLong()
                     } else {
-                        val classTarget = classStore.indexOf(value)
+                        val classTarget = storeClassIndexOf(value)
                         if (classTarget >= 0) {
                             counters.classTargetRefs++
                             addExtra(state.classTargetBase + classTarget)
@@ -792,37 +808,40 @@ private class ChunkWorker(
         val elementType = file.u1(recordStart + identifierSize + 4 + 4)
         val elementSize = HprofType.byteSize(elementType, identifierSize)
 
-        val denseId = table.denseIdOf(address)
-        check(denseId >= 0) { "primitive array at $recordStart missing from address table" }
-        val plan = plans[primitiveArrayClassIndex(recordStart, elementType)]
-        writeClassIndex(denseId, state.graphClassIndexOf(plan))
+        val denseId = ownDenseId(address)
+        check(denseId >= 0) { "primitive array at $recordStart (address $address) missing from address table" }
+        val storeClassIndex = state.primitiveClassIndices[elementType]
+        check(storeClassIndex >= 0) { "no class dump for primitive array type $elementType" }
+        val plan = plans[storeClassIndex]
+        writeClassIndex(denseId, graphClassIndexOf(storeClassIndex, plan))
         addShallowPair(denseId, alignToHeapGrain(classStore.arrayHeaderSize + count * elementSize.toLong()))
         state.setCount(denseId, 0)
         state.setFlag(denseId, ObjectFlags.LEAF)
         return recordStart + identifierSize + 4 + 4 + 1 + count * elementSize
     }
 
-    private fun primitiveArrayClassIndex(recordStart: Long, elementType: Int): Int {
-        val cached = primitiveClassCache[elementType]
-        if (cached >= 0) return cached
-        val name = when (elementType) {
-            HprofType.BOOLEAN -> "boolean[]"
-            HprofType.CHAR -> "char[]"
-            HprofType.FLOAT -> "float[]"
-            HprofType.DOUBLE -> "double[]"
-            HprofType.BYTE -> "byte[]"
-            HprofType.SHORT -> "short[]"
-            HprofType.INT -> "int[]"
-            HprofType.LONG -> "long[]"
-            else -> throw IllegalStateException("bad primitive array type $elementType at $recordStart")
-        }
-        val matches = classStore.requireByName(name)
-        check(matches.isNotEmpty()) { "no class dump for $name" }
-        primitiveClassCache[elementType] = matches[0]
-        return matches[0]
+    private fun ownDenseId(address: Long): Int {
+        val ordinal = nextRecordOrdinal++
+        return if (recordIdBase >= 0) recordIdBase + ordinal else table.denseIdOf(address)
     }
 
-    private val primitiveClassCache = IntArray(16) { -1 }
+    private fun storeClassIndexOf(address: Long): Int {
+        val slot = (address ushr 3).toInt() and 255
+        if (classAddressKeys[slot] == address) return classAddressValues[slot]
+        val resolved = classStore.indexOf(address)
+        classAddressKeys[slot] = address
+        classAddressValues[slot] = resolved
+        return resolved
+    }
+
+    private fun graphClassIndexOf(storeClassIndex: Int, plan: ClassExtractionPlan): Int {
+        val slot = storeClassIndex and 255
+        if (graphClassKeys[slot] == storeClassIndex) return graphClassValues[slot]
+        val resolved = state.graphClassIndexOf(plan)
+        graphClassKeys[slot] = storeClassIndex
+        graphClassValues[slot] = resolved
+        return resolved
+    }
 
     private fun writeClassIndex(denseId: Int, graphClassIndex: Int) {
         state.classIdx.set(
@@ -850,7 +869,7 @@ private class ChunkWorker(
             counters.mainEmitted++
             return
         }
-        val classTarget = classStore.indexOf(address)
+        val classTarget = storeClassIndexOf(address)
         if (classTarget >= 0) {
             counters.classTargetRefs++
             addExtra(state.classTargetBase + classTarget)
@@ -866,13 +885,13 @@ private class ChunkWorker(
             addExtra(target or projBit)
             return
         }
-        val classTarget = classStore.indexOf(address)
+        val classTarget = storeClassIndexOf(address)
         if (classTarget >= 0) addExtra((state.classTargetBase + classTarget) or projBit)
     }
 
     private fun addExtra(encoded: Int) {
         extras = ensure(extras, extrasCount + 1)
-        extras[extrasCount++] = encoded
+        extras[extrasCount++] = encoded or EXTRA_FLAG
     }
 
     /** Each object's references form a target set; duplicate targets collapse. */
@@ -904,14 +923,13 @@ private class ChunkWorker(
         mainCount = write
     }
 
-    private fun finishRecord(denseId: Int, leafWhenEmpty: Boolean) {
-        dedupeMains()
+    private fun finishRecord(denseId: Int, leafWhenEmpty: Boolean, deduplicate: Boolean = true) {
+        if (deduplicate) dedupeMains()
         state.setCount(denseId, mainCount + extrasCount)
         if (leafWhenEmpty && mainCount == 0) state.setFlag(denseId, ObjectFlags.LEAF)
         if (mainCount + extrasCount == 0) return
         spill.write(denseId)
-        spill.write(mainCount)
-        spill.write(extrasCount)
+        spill.write(mainCount + extrasCount)
         for (index in 0 until mainCount) spill.write(mains[index])
         for (index in 0 until extrasCount) spill.write(extras[index])
     }

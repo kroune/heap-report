@@ -1,8 +1,6 @@
 package shapes.analysis.internal
 
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
-import it.unimi.dsi.fastutil.ints.Int2LongOpenHashMap
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet
 import shapes.analysis.ShapeDigest
 import shapes.analysis.SccMemberConnection
 import shapes.analysis.computeShapeDigest
@@ -49,10 +47,12 @@ internal class CyclicShapeCollapser(
     // ------------------------------------------------------------------
 
     /** Shape id of an external target: a folded leaf class or a collapsed component. */
-    private fun childShapeIdOf(targetId: Int): Int = if (targetId < 0) {
+    private fun childShapeIdOf(targetId: Int, targetComponent: Int = -1): Int = if (targetId < 0) {
         leafShapeInternalIds[-targetId - 1]
     } else {
-        shapeOfComponent[components.assignment.componentOf(targetId)]
+        shapeOfComponent[
+            if (targetComponent >= 0) targetComponent else components.assignment.componentOf(targetId)
+        ]
     }
 
     private fun memberIdsOf(componentId: Int, memberCount: Int): IntArray {
@@ -329,18 +329,27 @@ internal class CyclicShapeCollapser(
     private class ComponentSummary(
         val memberCount: Int,
         val internalEdges: Long,
-        val classHistogram: Int2LongOpenHashMap,
-        val externalTotals: Int2LongOpenHashMap,
+        val classHistogram: LongArray,
+        val externalTotals: LongArray,
     ) {
         fun signature() = LazySignature(
             memberCount,
             internalEdges,
-            classHistogram.int2LongEntrySet()
-                .map { (it.intKey.toLong() shl 32) or it.longValue }
-                .sorted(),
-            externalTotals.int2LongEntrySet()
-                .sortedBy { it.intKey }
-                .flatMap { listOf(it.intKey.toLong(), it.longValue) },
+            buildList {
+                for (classIndex in classHistogram.indices) {
+                    val count = classHistogram[classIndex]
+                    if (count > 0) add((classIndex.toLong() shl 32) or count)
+                }
+            },
+            buildList {
+                for (childShapeId in externalTotals.indices) {
+                    val count = externalTotals[childShapeId]
+                    if (count > 0) {
+                        add(childShapeId.toLong())
+                        add(count)
+                    }
+                }
+            },
         )
     }
 
@@ -386,33 +395,44 @@ internal class CyclicShapeCollapser(
 
     /** One streaming pass: class histogram, edge totals, relaxation counters. */
     private fun summarizeComponent(componentId: Int, memberCount: Int): ComponentSummary {
-        val classHistogram = Int2LongOpenHashMap()
-        val externalTotals = Int2LongOpenHashMap()
+        val classHistogram = LongArray(graph.classNames.size)
+        val externalTotals = LongArray(shapes.size)
+        val memberChildGenerations = IntArray(shapes.size)
+        var memberChildGeneration = 0
         var internalEdges = 0L
-        val memberChildScratch = IntOpenHashSet()
 
         components.members.forEachMember(componentId) { objectId ->
             val classIndex = graph.classIndex(objectId)
-            classHistogram.addTo(classIndex, 1L)
+            classHistogram[classIndex]++
             val relaxation = relaxations.relaxationOf(objectId)
             if (relaxation != StructuralRelaxation.EXACT) relaxationStats.relaxedObjects++
             val setChildren = relaxation == StructuralRelaxation.SET_CHILDREN
-            if (setChildren) memberChildScratch.clear()
+            if (setChildren) {
+                if (memberChildGeneration == Int.MAX_VALUE) {
+                    memberChildGenerations.fill(0)
+                    memberChildGeneration = 0
+                }
+                memberChildGeneration++
+            }
 
             for (referenceIndex in 0 until graph.referenceCount(objectId)) {
                 val targetId = graph.referenceAt(objectId, referenceIndex)
-                val isInternal = targetId >= 0 &&
-                    components.assignment.componentOf(targetId) == componentId
+                val targetComponent = if (targetId < 0) {
+                    -1
+                } else {
+                    components.assignment.componentOf(targetId)
+                }
                 when {
-                    isInternal -> internalEdges++
+                    targetComponent == componentId -> internalEdges++
                     relaxation == StructuralRelaxation.CLASS_ONLY ->
                         relaxationStats.classOnlyHiddenEdges++
                     else -> {
-                        val childShapeId = childShapeIdOf(targetId)
-                        if (setChildren && !memberChildScratch.add(childShapeId)) {
+                        val childShapeId = childShapeIdOf(targetId, targetComponent)
+                        if (setChildren && memberChildGenerations[childShapeId] == memberChildGeneration) {
                             relaxationStats.setChildrenHiddenEdges++
                         } else {
-                            externalTotals.addTo(childShapeId, 1L)
+                            externalTotals[childShapeId]++
+                            if (setChildren) memberChildGenerations[childShapeId] = memberChildGeneration
                         }
                     }
                 }
@@ -453,17 +473,20 @@ internal class CyclicShapeCollapser(
         bucketOrdinal: Int,
         progress: (String) -> Unit,
     ): CyclicShape {
-        val totalEdges = summary.externalTotals.int2LongEntrySet()
-            .map { entry ->
-                check(entry.longValue <= Int.MAX_VALUE) { "external multiplicity overflow" }
-                CanonicalShapeEdge(shapes[entry.intKey], entry.longValue.toInt())
+        val totalEdges = buildList {
+            for (childShapeId in summary.externalTotals.indices) {
+                val count = summary.externalTotals[childShapeId]
+                if (count > 0) {
+                    check(count <= Int.MAX_VALUE) { "external multiplicity overflow" }
+                    add(CanonicalShapeEdge(shapes[childShapeId], count.toInt()))
+                }
             }
-            .sortedWith(childEdgeByDigest)
+        }.sortedWith(childEdgeByDigest)
         check(summary.internalEdges <= Int.MAX_VALUE) { "internal edge count overflow" }
 
-        val sortedClassIndices = summary.classHistogram.keys.toIntArray().sortedBy {
-            graph.classNames[it].name
-        }
+        val sortedClassIndices = summary.classHistogram.indices
+            .filter { summary.classHistogram[it] > 0 }
+            .sortedBy { graph.classNames[it].name }
         val digest = computeShapeDigest {
             writeByte(4)
             writeInt(summary.memberCount)
@@ -471,7 +494,7 @@ internal class CyclicShapeCollapser(
             writeInt(sortedClassIndices.size)
             for (classIndex in sortedClassIndices) {
                 writeUtf8(graph.classNames[classIndex].name)
-                writeLong(summary.classHistogram.get(classIndex))
+                writeLong(summary.classHistogram[classIndex])
             }
             for (edge in totalEdges) {
                 writeDigest(edge.child.digest)
@@ -490,10 +513,10 @@ internal class CyclicShapeCollapser(
             quotient
         } else {
             sortedClassIndices
-                .sortedByDescending { summary.classHistogram.get(it) }
+                .sortedByDescending { summary.classHistogram[it] }
                 .take(SUMMARY_CLASS_LIMIT)
                 .map { classIndex ->
-                    val instanceCount = summary.classHistogram.get(classIndex)
+                    val instanceCount = summary.classHistogram[classIndex]
                     CanonicalSccMember(
                         graph.classNames[classIndex],
                         memberCount = instanceCount.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),

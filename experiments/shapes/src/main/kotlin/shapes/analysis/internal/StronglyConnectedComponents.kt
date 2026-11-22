@@ -1,9 +1,13 @@
 package shapes.analysis.internal
 
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap
 import shapes.graph.AnalysisGraph
 import java.lang.foreign.Arena
 import java.lang.foreign.MemorySegment
 import java.lang.foreign.ValueLayout
+import java.nio.channels.FileChannel
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
 
 /**
  * Object-to-component mapping; the sign-encoded working representation is
@@ -22,38 +26,75 @@ internal class ComponentAssignment(
     }
 }
 
+/** File-backed primitive array whose resident pages can be reclaimed under pressure. */
+@PublishedApi
+internal class ComponentIntArray(size: Int) {
+    private val values = mapComponentInts(size)
+
+    operator fun get(index: Int): Int =
+        values.get(ValueLayout.JAVA_INT_UNALIGNED, index.toLong() shl 2)
+
+    operator fun set(index: Int, value: Int) {
+        values.set(ValueLayout.JAVA_INT_UNALIGNED, index.toLong() shl 2, value)
+    }
+}
+
+@PublishedApi
+internal const val SCANNED_COMPONENT = Int.MIN_VALUE
+
+private fun mapComponentInts(size: Int): MemorySegment {
+    require(size >= 0)
+    if (size == 0) return MemorySegment.ofArray(IntArray(0))
+    val bytes = size.toLong() shl 2
+    val path = Files.createTempFile("shapes-components", ".bin")
+    try {
+        FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE).use { channel ->
+            channel.truncate(bytes)
+            return channel.map(FileChannel.MapMode.READ_WRITE, 0, bytes, Arena.ofAuto())
+        }
+    } finally {
+        Files.deleteIfExists(path)
+    }
+}
+
 /**
  * Compact component membership: singleton members inline, multi-member lists
- * in CSR rows, and components over [scanThreshold] members scanned from the
+ * in CSR rows, and components over the scan threshold scanned from the
  * assignment instead of being stored (the giant SCC would dominate memory).
+ * Component descriptors share one unlinked file mapping rather than live heap arrays.
  */
 internal class ComponentMembers(
     val count: Int,
-    @PublishedApi internal val sizes: IntArray,
-    @PublishedApi internal val firstMembers: IntArray,
+    @PublishedApi internal val descriptors: ComponentIntArray,
+    @PublishedApi internal val scannedSizes: Int2IntOpenHashMap,
     @PublishedApi internal val multiMemberOffsets: IntArray,
     @PublishedApi internal val multiMemberIds: IntArray,
     @PublishedApi internal val assignment: ComponentAssignment,
     @PublishedApi internal val scopeSize: Int,
-    @PublishedApi internal val scanThreshold: Int,
 ) {
-    fun size(componentId: Int): Int = sizes[componentId]
+    fun size(componentId: Int): Int {
+        val descriptor = descriptors[componentId]
+        if (descriptor >= 0) return 1
+        if (descriptor == SCANNED_COMPONENT) return scannedSizes[componentId]
+        val row = -descriptor - 1
+        return multiMemberOffsets[row + 1] - multiMemberOffsets[row]
+    }
 
-    fun singletonMember(componentId: Int): Int = firstMembers[componentId]
+    fun singletonMember(componentId: Int): Int = descriptors[componentId]
 
     inline fun forEachMember(componentId: Int, action: (objectId: Int) -> Unit) {
-        val memberCount = sizes[componentId]
-        if (memberCount == 1) {
-            action(firstMembers[componentId])
+        val descriptor = descriptors[componentId]
+        if (descriptor >= 0) {
+            action(descriptor)
             return
         }
-        if (memberCount > scanThreshold) {
+        if (descriptor == SCANNED_COMPONENT) {
             for (objectId in 0 until scopeSize) {
                 if (assignment.componentOf(objectId) == componentId) action(objectId)
             }
             return
         }
-        val row = -firstMembers[componentId] - 1
+        val row = -descriptor - 1
         for (index in multiMemberOffsets[row] until multiMemberOffsets[row + 1]) {
             action(multiMemberIds[index])
         }
@@ -76,7 +117,7 @@ internal class ComponentFinder(private val graph: AnalysisGraph) {
             Arena.ofAuto().allocate(graph.size.toLong() shl 2),
         )
         for (objectId in 0 until graph.size) dfsIndexAndComponent.set(objectId, UNVISITED)
-        val onStackBits = LongArray((graph.size ushr 6) + 1)
+        val componentSizes = ComponentIntArray(graph.size)
 
         var tarjanStack = IntArray(INITIAL_STACK_CAPACITY)
         var tarjanStackSize = 0
@@ -93,13 +134,12 @@ internal class ComponentFinder(private val graph: AnalysisGraph) {
             dfsIndexAndComponent.set(startObjectId, nextDfsIndex++)
             tarjanStack = ensureCapacity(tarjanStack, tarjanStackSize + 1)
             tarjanStack[tarjanStackSize++] = startObjectId
-            flipOnStack(onStackBits, startObjectId)
 
             nodeStack = ensureCapacity(nodeStack, dfsStackSize + 1)
             lowLinkStack = ensureCapacity(lowLinkStack, dfsStackSize + 1)
             nextReferenceStack = ensureCapacity(nextReferenceStack, dfsStackSize + 1)
             nodeStack[dfsStackSize] = startObjectId
-            lowLinkStack[dfsStackSize] = dfsIndexAndComponent.get(startObjectId)
+            lowLinkStack[dfsStackSize] = nextDfsIndex - 1
             nextReferenceStack[dfsStackSize] = 0
             dfsStackSize++
 
@@ -113,24 +153,21 @@ internal class ComponentFinder(private val graph: AnalysisGraph) {
                     val targetId = graph.referenceAt(objectId, referenceIndex)
                     if (targetId < 0) continue
 
-                    if (dfsIndexAndComponent.get(targetId) == UNVISITED) {
+                    val targetState = dfsIndexAndComponent.get(targetId)
+                    if (targetState == UNVISITED) {
                         dfsIndexAndComponent.set(targetId, nextDfsIndex++)
                         tarjanStack = ensureCapacity(tarjanStack, tarjanStackSize + 1)
                         tarjanStack[tarjanStackSize++] = targetId
-                        flipOnStack(onStackBits, targetId)
 
                         nodeStack = ensureCapacity(nodeStack, dfsStackSize + 1)
                         lowLinkStack = ensureCapacity(lowLinkStack, dfsStackSize + 1)
                         nextReferenceStack = ensureCapacity(nextReferenceStack, dfsStackSize + 1)
                         nodeStack[dfsStackSize] = targetId
-                        lowLinkStack[dfsStackSize] = dfsIndexAndComponent.get(targetId)
+                        lowLinkStack[dfsStackSize] = nextDfsIndex - 1
                         nextReferenceStack[dfsStackSize] = 0
                         dfsStackSize++
-                    } else if (isOnStack(onStackBits, targetId)) {
-                        val targetDfsIndex = dfsIndexAndComponent.get(targetId)
-                        if (targetDfsIndex < lowLinkStack[frameIndex]) {
-                            lowLinkStack[frameIndex] = targetDfsIndex
-                        }
+                    } else if (targetState >= 0 && targetState < lowLinkStack[frameIndex]) {
+                        lowLinkStack[frameIndex] = targetState
                     }
                     continue
                 }
@@ -141,43 +178,51 @@ internal class ComponentFinder(private val graph: AnalysisGraph) {
                     lowLinkStack[dfsStackSize - 1] = lowLink
                 }
                 if (lowLink == dfsIndexAndComponent.get(objectId)) {
+                    var componentSize = 0
                     while (true) {
                         val memberId = tarjanStack[--tarjanStackSize]
-                        flipOnStack(onStackBits, memberId)
                         dfsIndexAndComponent.set(memberId, -(componentCount + 2))
+                        componentSize++
                         if (memberId == objectId) break
                     }
+                    componentSizes[componentCount] = componentSize
                     componentCount++
                 }
             }
         }
 
-        val members = groupMembers(dfsIndexAndComponent, componentCount)
+        val members = groupMembers(dfsIndexAndComponent, componentCount, componentSizes)
         return StronglyConnectedComponents(dfsIndexAndComponent, members)
     }
 
     private fun groupMembers(
         assignment: ComponentAssignment,
         componentCount: Int,
+        descriptors: ComponentIntArray,
     ): ComponentMembers {
-        val componentSizes = IntArray(componentCount)
-        for (objectId in 0 until graph.size) {
-            componentSizes[assignment.componentOf(objectId)]++
-        }
-
         var multiMemberComponentCount = 0
+        var scannedComponentCount = 0
         for (componentId in 0 until componentCount) {
-            if (componentSizes[componentId] in 2..SCAN_THRESHOLD) multiMemberComponentCount++
+            val size = descriptors[componentId]
+            if (size in 2..SCAN_THRESHOLD) multiMemberComponentCount++
+            if (size > SCAN_THRESHOLD) scannedComponentCount++
         }
         val multiMemberOffsets = IntArray(multiMemberComponentCount + 1)
-        val firstMembers = IntArray(componentCount) { -1 }
+        val scannedSizes = Int2IntOpenHashMap(scannedComponentCount)
         var row = 0
         for (componentId in 0 until componentCount) {
-            if (componentSizes[componentId] in 2..SCAN_THRESHOLD) {
-                firstMembers[componentId] = -(row + 1)
-                multiMemberOffsets[row + 1] =
-                    multiMemberOffsets[row] + componentSizes[componentId]
-                row++
+            val size = descriptors[componentId]
+            when {
+                size == 1 -> descriptors[componentId] = Int.MAX_VALUE
+                size <= SCAN_THRESHOLD -> {
+                    descriptors[componentId] = -(row + 1)
+                    multiMemberOffsets[row + 1] = multiMemberOffsets[row] + size
+                    row++
+                }
+                else -> {
+                    descriptors[componentId] = SCANNED_COMPONENT
+                    scannedSizes[componentId] = size
+                }
             }
         }
 
@@ -185,35 +230,28 @@ internal class ComponentFinder(private val graph: AnalysisGraph) {
         val fillCursors = multiMemberOffsets.copyOf()
         for (objectId in 0 until graph.size) {
             val componentId = assignment.componentOf(objectId)
-            if (componentSizes[componentId] == 1) {
-                firstMembers[componentId] = objectId
-            } else if (componentSizes[componentId] <= SCAN_THRESHOLD) {
-                val memberRow = -firstMembers[componentId] - 1
+            val descriptor = descriptors[componentId]
+            if (descriptor >= 0) {
+                descriptors[componentId] = objectId
+            } else if (descriptor != SCANNED_COMPONENT) {
+                val memberRow = -descriptor - 1
                 multiMemberIds[fillCursors[memberRow]++] = objectId
             }
         }
         return ComponentMembers(
             componentCount,
-            componentSizes,
-            firstMembers,
+            descriptors,
+            scannedSizes,
             multiMemberOffsets,
             multiMemberIds,
             assignment,
             graph.size,
-            SCAN_THRESHOLD,
         )
     }
 
     private fun ensureCapacity(values: IntArray, requiredSize: Int): IntArray {
         if (requiredSize <= values.size) return values
         return values.copyOf(maxOf(requiredSize, values.size + (values.size ushr 1)))
-    }
-
-    private fun isOnStack(bits: LongArray, objectId: Int): Boolean =
-        (bits[objectId ushr 6] ushr (objectId and 63)) and 1L != 0L
-
-    private fun flipOnStack(bits: LongArray, objectId: Int) {
-        bits[objectId ushr 6] = bits[objectId ushr 6] xor (1L shl (objectId and 63))
     }
 
     private companion object {
